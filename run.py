@@ -106,14 +106,13 @@ def main():
     if not probe or not probe.is_file():
         fail('vwport not found: build it with build.sh or use a packaged build.')
     # Development builds run from the MSYS2 tree: its CLANG64 DLLs (SDL3, FFmpeg, ...).
-    import game_profiles
-    capabilities = probe.parent / ('vw-gpu-capabilities.exe' if WINDOWS else 'vw-gpu-capabilities')
-    if capabilities.is_file() and game_profiles.radv_nohiz(env, game_profiles.device_name(capabilities)):
-        print('RADV: RADV_DEBUG=nohiz for this GPU (VW_AUTO_NOHIZ=0: off)', flush=True)
     if WINDOWS and not (probe.parent / 'SDL3.dll').is_file():
         clang64 = Path(env.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
         if clang64.is_dir():
             env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
+    import game_profiles
+    if game_profiles.radv_nohiz(env, game_profiles.device_name(probe)):
+        print('RADV: RADV_DEBUG=nohiz for this GPU (VW_AUTO_NOHIZ=0: off)', flush=True)
 
     if not env.get('VW_GAME_DIR'):
         fail('Set VW_GAME_DIR to the game folder (eboot.bin, sce_module, ...).')

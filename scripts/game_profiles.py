@@ -52,11 +52,11 @@ def radv_nohiz(env, device_name):
     return False
 
 
-def device_name(capabilities):
-    """The game's GPU name from vw-gpu-capabilities --device, or ''."""
+def device_name(probe):
+    """The game's GPU name from vwport --gpu-device, or ''."""
     import subprocess
     try:
-        out = subprocess.run([str(capabilities), '--device'], capture_output=True, text=True,
+        out = subprocess.run([str(probe), '--gpu-device'], capture_output=True, text=True,
                              timeout=20, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout
     except (OSError, subprocess.SubprocessError):
         return ''

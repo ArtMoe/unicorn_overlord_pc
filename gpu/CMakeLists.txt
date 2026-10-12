@@ -136,8 +136,10 @@ file(GLOB AVPLAYER CONFIGURE_DEPENDS shadps4/core/libraries/avplayer/*.cpp)
 pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libavutil libswscale libswresample)
 file(GLOB SHIM_SOURCES CONFIGURE_DEPENDS shim/*.cpp shim/*/*.cpp)
 # Windows: a DLL cannot leave the runtime_* symbols for vwport.exe to resolve, so the
-# library is static there and linked into the executable.
-if (WIN32)
+# library is static there and linked into the executable. VW_STATIC does the same on Linux
+# (release packages: one executable); development builds keep libvwgpu.so (faster links).
+option(VW_STATIC "Link the GPU library into vwport" OFF)
+if (WIN32 OR VW_STATIC)
     set(VWGPU_KIND STATIC)
 else()
     set(VWGPU_KIND SHARED)
@@ -178,22 +180,31 @@ else()
     target_link_libraries(vwgpu PUBLIC PkgConfig::X11)
 endif()
 
-# vw (Windows): vwgpu is a static library there, so the loader and the HLE runtime are
-# linked here, where CMake knows its dependencies (build.sh builds them with ninja).
-if (WIN32)
-    enable_language(RC)
+# vw: with a static vwgpu (Windows, VW_STATIC) the loader and the HLE runtime are linked here,
+# where CMake knows its dependencies (build.sh builds them with ninja).
+if (WIN32 OR VW_STATIC)
     file(GLOB VW_RUNTIME CONFIGURE_DEPENDS ../src/runtime*.c)
     file(GLOB VW_ATRAC9 CONFIGURE_DEPENDS ../third_party/LibAtrac9/C/src/*.c)
     add_library(atrac9 STATIC ${VW_ATRAC9})
     target_compile_options(atrac9 PRIVATE -w)
     set_target_properties(atrac9 PROPERTIES C_STANDARD 99 INTERPROCEDURAL_OPTIMIZATION OFF)
-    add_executable(vwport ../src/probe.c ${VW_RUNTIME} ../src/compat_win.c ../src/vulkan_smoke.c
-        ../packaging/windows/vwport.rc)
+    add_executable(vwport ../src/probe.c ${VW_RUNTIME} ../src/vulkan_smoke.c ../src/gpu_device.c)
     set_target_properties(vwport PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
+    target_include_directories(vwport PRIVATE .. ../src)
+endif()
+if (VW_STATIC AND NOT WIN32)
+    target_compile_options(vwport PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror -pthread>)
+    # Guest pointers must stay below 1 TiB: no PIE (as build.sh). The C++ runtime is linked in
+    # so the package runs on other distributions' libstdc++.
+    target_link_options(vwport PRIVATE -no-pie -static-libstdc++ -static-libgcc)
+    target_link_libraries(vwport PRIVATE vwgpu atrac9 Vulkan::Vulkan m -pthread)
+endif()
+if (WIN32)
+    enable_language(RC)
+    target_sources(vwport PRIVATE ../src/compat_win.c ../packaging/windows/vwport.rc)
     # clang 23 added -Wunused-but-set-global (must follow -Wall to stay off).
     target_compile_options(vwport PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror
         -Wno-unknown-warning-option -Wno-unused-but-set-global>)
-    target_include_directories(vwport PRIVATE .. ../src)
     target_link_libraries(vwport PRIVATE vwgpu atrac9 onecore bcrypt ws2_32 -pthread)
     # The PS4 range (64 GiB - 1 TiB) must stay free: no high-entropy ASLR for heaps and stacks.
     # The guest main thread runs on the process stack: 16 MiB, committed (no stack probes).
@@ -213,8 +224,6 @@ if (WIN32)
     target_compile_options(pad-map-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
     target_include_directories(pad-map-test PRIVATE .. ../src)
     target_link_libraries(pad-map-test PRIVATE PkgConfig::SDL3 bcrypt -pthread)
-    add_executable(vw-gpu-capabilities ../tools/gpu_capabilities.c ../packaging/windows/vw-gpu-capabilities.rc)
-    target_link_libraries(vw-gpu-capabilities PRIVATE Vulkan::Vulkan)
 endif()
 
 # Explicit test targets; neither launches the game nor needs a Vulkan device.
