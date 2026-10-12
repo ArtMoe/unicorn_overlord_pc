@@ -3,6 +3,10 @@
 Goal: remove the single-core bottleneck of the emulated GPU command processor
 (`shadPS4:GpuCommandProcessor`, ~100% of one core while the rest of the CPU idles).
 
+A dated lab notebook from the base port. Its measurements were taken on that port's original
+game with a temporal upscaler (FSR 3/4) that has since been removed; the pipeline stages,
+toggles and findings still describe the current code.
+
 ## Measurements (the base port's original game, test scene, ~70 FPS, `VW_DCB_STATS=1`)
 
 | | |
@@ -405,24 +409,6 @@ zero bytes to a frame buffer and a 4-byte label, whose readers are unknown), non
 A/B in one run (16 threads, FSR 4 Ultra Performance, clean toggle bits): whole pipeline
 110.9 vs 83.9 FPS (+32%); constant ring 114.2 vs 102.5 FPS (+11%).
 
-### GPU time per frame vs upscaler preset
-
-The GPU (RX 7800 XT) now limits more than the CPU. Presets change it little:
-
-| mode | FPS | GPU busy | GPU ms/frame |
-|---|---|---|---|
-| upscaler off | 132 | 76% | 5.8 |
-| FSR 3 Native AA | 116 | 76% | 6.6 |
-| FSR 3 Ultra Performance (scene 640x360) | 114 | 71% | 6.3 |
-| FSR 4 Quality | 115 | 88% | 7.7 |
-| FSR 4 Ultra Performance | 114 | 84% | 7.4 |
-
-The reduced scene targets are used (1160 of ~1530 scene draws per frame), but rasterizing the
-scene costs little on this GPU: a ninth of the pixels saves ~0.3 ms. The rest does not depend on
-the preset (shadow maps, full-resolution post-processing and UI, FSR itself — FSR 4 costs
-~1.1-1.4 ms more than FSR 3 —, and emulation overhead: barriers, copies, resampling). FSR 4 at
-Native AA fails to start ("no free provider frame").
-
 ### GPU profile (`VW_GPU_PROFILE=1`, `vk_gpu_profiler.h`)
 
 Timestamps where each render pass, dispatch, upscaler run and submission end starts; the time to
@@ -511,40 +497,6 @@ than stage B, and removing drains helps only where it breaks the lockstep; stage
 Object motion vectors cost ~10% FPS (155 vs 141 FPS with `object_motion=0`): stage B spends
 ~0.28 µs more per packet, spread over DrawRecord (bone palette hashes, index range cache, motion
 pipeline variants).
-
-### Scene resolution and the preset/GPU load question
-
-GPU busy time per frame (profile total minus the idle time between submissions):
-
-| mode | GPU busy |
-|---|---|
-| upscaler off (native 1080p) | 3.67 ms |
-| FSR 4 Quality | 5.64 -> 5.50 ms |
-| FSR 4 Ultra Performance | 5.11 -> 4.98 -> 4.86 ms |
-
-Rasterizing the scene costs little on this GPU, so a lower preset saves ~0.5 ms, while FSR 4
-itself costs ~1.4 ms at 1080p output; FSR 4 Ultra Performance takes more GPU time than native
-rendering without an upscaler. Found on the way:
-
-- The reduced-size decision looked at all eight color slots, but slots past the mask width keep
-  earlier passes' targets — in the lighting passes the G-buffer images they sample. The light
-  accumulation passes stayed at 1920x1080 at every preset. Fixed (toggle 1 << 47 restores it).
-- Every pass that sampled a reduced target made the proxy be resampled to the native size first
-  (~25 resolves per frame, 0.4 ms; `VW_GPU_PROFILE` now labels resolves, fills, image uploads and
-  downloads). The recompiler marks images read by anything but normalized sampling without
-  offsets (`ImageResource::needs_native`); other sampled bindings read the proxy directly
-  (toggle 1 << 48): GPU busy 5.02 -> 4.86 ms, identical screenshots. Changes the `Info` layout:
-  shader meta version 7, pipeline key version 5 (caches rebuilt once).
-- `VW_SCENE_DEBUG=<file>`: touching the file prints the next frame's scene passes with the reason
-  each keeps the native size. What remains native before the upscaler: half-resolution
-  (960x540) passes, which `SceneTargets::Eligible` does not handle.
-
-Next GPU item (matters most on the Steam Deck): guest compute `3d5ebf4e` is a dword memcpy that
-copies render target memory (the 1080p depth buffer, 12 MB, sampled afterwards as R32F; a
-G-buffer target; two 960x540 targets): 8 dispatches, and each needs the image downloaded into
-the buffer, the proxy resolved and the destination image uploaded again. Recognizing copies
-whose source is an image and turning them into image copies (or a proxy-sized copy) would remove
-most of that. Skipping the dispatches blacks out the scene, so the copies are needed.
 
 ### Fixed: guest heap corruption with the draw pipeline (2026-10-01)
 

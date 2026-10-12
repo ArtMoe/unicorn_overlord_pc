@@ -1,70 +1,67 @@
-# Mods de arquivos
+# File mods and third-party patches
 
-O launcher tem a página **Mods & patches**: escolha da pasta, chave geral, ativação de cada mod
-e setas de ordem de carga. As mudanças valem no próximo início. O mod mais abaixo na lista tem
-prioridade; quando dois mods trocam o mesmo arquivo, o log mostra qual venceu.
+Both work for every game and are applied by `run.py` at each start. The game folder is never
+changed.
 
-A pasta padrão é `mods/` no diretório de dados. Cada mod fica na sua própria pasta:
+## File mods
+
+Put each mod in its own folder under `mods/` in the data directory (`VW_DATA_DIR`, by default
+the port folder):
 
 ```text
 mods/
-  Nome do mod/
-    dvdroot_ps4/...
+  Mod name/
+    <files laid out as in the game folder, e.g. dvdroot_ps4/... or data/...>
 ```
 
-Também são aceitos:
+These layouts are also accepted:
 
-- `Nome do mod/app0/dvdroot_ps4/...`;
-- uma pasta a mais por fora, como a de um arquivo extraído numa pasta com o nome dele:
-  `Nome do mod/Nome do mod v1.2/dvdroot_ps4/...` (readme e imagens ao lado são ignorados).
+- `Mod name/app0/...`
+- One extra folder level, as left by extracting an archive into a folder of its own name:
+  `Mod name/Mod name v1.2/...`. Readme files and images beside it are ignored.
 
-Maiúsculas e minúsculas nos nomes do mod não importam: um arquivo com outra caixa troca o
-arquivo do jogo de mesmo nome. O log mostra quantos arquivos o mod trocou e quantos acrescentou:
-`Mods: 12 game files replaced, 0 added`. Se o mod deveria trocar arquivos e aparece
-`0 game files replaced`, confira os caminhos dentro dele. Arquivos ZIP/7z precisam ser extraídos
-antes. Dois mods que trocam o mesmo arquivo não são mesclados: o último vence inteiro.
+Name case does not matter: a mod file replaces the game file with the same name in any case.
+The log reports what each start used, for example `Mods: 12 game files replaced, 0 added`. If a
+mod that should replace files reports `0 game files replaced`, check its paths. Extract ZIP/7z
+archives first.
 
-Uma pasta `<pasta do jogo>-mods/dvdroot_ps4/...` ao lado da pasta do jogo (convenção do shadPS4)
-entra antes dos mods da lista. A chave geral também a desliga.
+When two mods replace the same file, the later one in the order wins the whole file, and the log
+names the winner. A `<game folder>-mods/` folder beside the game folder (the shadPS4 convention)
+loads before the listed mods.
 
-Os arquivos do jogo nunca são alterados. A cada início é montada uma árvore de links em
-`out/mod-game-*` no diretório de dados, apagada quando o jogo termina. `/app0` fica só para
-leitura; os saves continuam na pasta de sempre.
+Each start builds a tree of links in `out/mod-game-*` and removes it when the game ends. `/app0`
+is read-only; saves stay where they are. Mods that replace `eboot.bin`, `sce_module` or
+`sce_sys`, DLL injectors and script plugins are not supported, and symbolic links inside a mod
+are refused.
 
-Mods que trocam `eboot.bin`, `sce_module` ou `sce_sys`, injetores de DLL e plugins de script não
-são suportados. Patches de código ficam em `patches/` / `VW_PATCHES`. Links simbólicos dentro
-do mod são recusados.
+The order and the disabled mods are kept in `mods.json` in the data directory. New folders are
+enabled and go to the end of the list, in alphabetical order.
 
-Pelo terminal:
+```json
+{"order": ["First", "Second"], "disabled": ["First"]}
+```
+
+| Variable | Effect |
+|---|---|
+| `VW_MODS_DIR` | Another mods folder. |
+| `VW_MODS_ENABLED=0` | Starts without any mod. |
+| `VW_MODS_CONFIG` | Another `mods.json`. |
+
+## Third-party patches (shadPS4 XML)
+
+Put shadPS4/GoldHEN patch XML files in `patches/` in the data directory. Only the `Metadata`
+entries for the game's title ID, its version and `eboot.bin` are used. Each patch's default
+comes from its `isEnabled` attribute; `patches.json` overrides it:
+
+```json
+{"enabled": ["file.xml/Patch name"], "disabled": ["file.xml/Other patch"]}
+```
+
+Supported line types are `bytes`, `bytes16/32/64`, `float32/64`, `utf8` and `utf16`. A patch with
+`mask` lines or an address outside the eboot is skipped entirely, with a warning in the log.
+Third-party patches are applied after the built-in ones (`patches/<game>.xml`); where both write,
+the third-party patch wins.
 
 ```sh
-VW_GAME_DIR=/caminho/CUSA01623 VW_MODS_DIR=/caminho/mods python run.py
-VW_GAME_DIR=/caminho/CUSA01623 VW_MODS_ENABLED=0 python run.py
+VW_PATCHES_DIR=/path VW_PATCHES_CONFIG=/path/patches.json python run.py
 ```
-
-Ordem e desativações ficam em `mods.json` no diretório de dados:
-
-```json
-{"order": ["Primeiro", "Segundo"], "disabled": ["Primeiro"]}
-```
-
-Pastas novas entram ativadas, no fim da lista, em ordem alfabética. `VW_MODS_CONFIG` muda o
-caminho desse arquivo.
-
-# Patches de terceiros (XML do shadPS4)
-
-Pasta `patches/` no diretório de dados (no launcher, grupo **Third-party patches**, onde também
-dá para escolher outra pasta). Servem arquivos XML no formato shadPS4/GoldHEN: entram os
-`Metadata` da versão do jogo (01.02) para `eboot.bin`, e arquivos com `TitleID` de outros jogos
-são ignorados. A ativação padrão vem do `isEnabled` do arquivo; a escolha do launcher fica em
-`patches.json`:
-
-```json
-{"enabled": ["arquivo.xml/Nome do patch"], "disabled": ["arquivo.xml/Outro patch"]}
-```
-
-Tipos de linha aceitos: `bytes`, `bytes16/32/64`, `float32/64`, `utf8`, `utf16`. Um patch com
-linhas `mask` (busca por padrão) ou com endereço fora do eboot é ignorado inteiro, com aviso no
-log. Os patches de terceiros são aplicados depois dos embutidos
-(`patches/God_of_War_III_Remastered.xml`): onde os dois escrevem, vence o de terceiros. Pelo
-terminal: `VW_PATCHES_DIR=/caminho VW_PATCHES_CONFIG=/caminho/patches.json python run.py`.
