@@ -410,7 +410,7 @@ void Menu() {
     // vw: the game's own title (param.sfo), not a fixed one.
     static const std::string heading = [] {
         const std::string_view title = Common::ElfInfo::Instance().Title();
-        return std::string(title.empty() ? "God of War III" : title) + "  (Insert / R3+L2)";
+        return std::string(title.empty() ? "vwport" : title) + "  (Insert / R3+L2)";
     }();
     if (!ImGui::Begin(heading.c_str(), &keep_open, ImGuiWindowFlags_NoCollapse)) {
         ImGui::End();
@@ -820,7 +820,7 @@ bool HandleEvent(const SDL_Event& event) {
     case SDL_EVENT_GAMEPAD_BUTTON_UP: {
         const bool down = event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
         const u8 button = event.gbutton.button;
-        // R3+L2 opens the menu: L3+R3 is a game action in God of War III.
+        // R3+L2 opens the menu: L3+R3 is a game action in many games.
         if (button == SDL_GAMEPAD_BUTTON_RIGHT_STICK) {
             r3_down = down;
             if (down && l2_down) {

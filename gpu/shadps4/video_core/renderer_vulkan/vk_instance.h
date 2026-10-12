@@ -42,13 +42,6 @@ public:
     }
 
     /// Returns the current physical device
-    /// vw: device features the temporal upscaler reports as enabled.
-    bool IsStorageImageWriteWithoutFormatEnabled() const {
-        return features.shaderStorageImageWriteWithoutFormat;
-    }
-    bool IsShaderFloat16Enabled() const {
-        return vk12_features.shaderFloat16;
-    }
     bool IsSubgroupSizeControlEnabled() const {
         return vk13_features.subgroupSizeControl;
     }

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // vw: frame analyzer. Creating the file named by VW_CAPTURE_TRIGGER records the next full
 // frame: every render pass (targets, depth, draw count, shaders, sampled textures) and compute
-// dispatch, in order, plus the buffer that was presented. Input for placing a temporal
-// upscaler (scene color, depth, motion vectors, UI) in the game's frame.
+// dispatch, in order, plus the buffer that was presented.
 
 #pragma once
 
