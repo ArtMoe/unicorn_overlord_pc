@@ -10,7 +10,7 @@
 #include <ranges>
 #include <string>
 #include <unordered_set>
-#include "gow3_threads.h"
+#include "vw_threads.h"
 
 #include "common/hash.h"
 #include "common/thread.h"
@@ -22,12 +22,11 @@
 #include "shader_recompiler/info.h"
 #include "shader_recompiler/recompiler.h"
 #include "shader_recompiler/runtime_info.h"
-#include "gow3_settings.h"
+#include "vw_settings.h"
 #include "video_core/amdgpu/liverpool.h"
 #include "video_core/cache_storage.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
 #include "video_core/renderer_vulkan/vk_depth_stencil_state.h"
-#include "video_core/renderer_vulkan/motion_history.h"
 #include "video_core/renderer_vulkan/vk_draw_prep.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
@@ -214,7 +213,6 @@ const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& se
             !instance.IsDepthClipControlSupported() &&
             regs.clipper_control.clip_space == AmdGpu::ClipSpace::MinusWToW;
         info.hw.vs.clip_disable = regs.IsClipDisabled();
-        info.hw.vs.motion_vectors = sel.motion;
         break;
     }
     case HwStage::Fragment: {
@@ -228,7 +226,6 @@ const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& se
                 ? regs.aa_config.NumSamples()
                 : 1;
         info.hw.fs.z_export_format = regs.z_export_format;
-        info.hw.fs.motion_vectors = sel.motion;
         u8 stencil_ref_export_enable = regs.depth_shader_control.stencil_op_val_export_enable |
                                        regs.depth_shader_control.stencil_test_val_export_enable;
         info.hw.fs.mrtz_mask = regs.depth_shader_control.z_export_enable |
@@ -373,9 +370,9 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
         .supports_shader_subgroup_clock = instance_.IsShaderSubgroupClockSupported(),
         .needs_manual_interpolation = instance.IsFragmentShaderBarycentricSupported() &&
                                       instance.GetDriverID() == vk::DriverId::eNvidiaProprietary,
-        // gow3: older NVIDIA (Pascal) has no barycentrics; GOW3_INTERP_INT_FIX=0/1 overrides.
+        // vw: older NVIDIA (Pascal) has no barycentrics; VW_INTERP_INT_FIX=0/1 overrides.
         .needs_integer_interpolation_fix = [&] {
-            if (const char* env = std::getenv("GOW3_INTERP_INT_FIX")) {
+            if (const char* env = std::getenv("VW_INTERP_INT_FIX")) {
                 return env[0] == '1';
             }
             return !instance.IsFragmentShaderBarycentricSupported() &&
@@ -393,25 +390,25 @@ PipelineCache::PipelineCache(const Instance& instance_, Scheduler& scheduler_,
     ASSERT_MSG(cache_result == vk::Result::eSuccess, "Failed to create pipeline cache: {}",
                vk::to_string(cache_result));
     pipeline_cache = std::move(cache);
-    // gow3: the compiler threads always exist; the in-game menu switches async compilation live
-    // (Gow3Settings::async_shaders, GOW3_ASYNC_SHADERS at start).
+    // vw: the compiler threads always exist; the in-game menu switches async compilation live
+    // (VwSettings::async_shaders, VW_ASYNC_SHADERS at start).
     {
-        const auto count = std::clamp(Gow3Threads::Available() / 2, 1u, 6u);
-        const auto capture_count = std::min(2u, std::max(1u, Gow3Threads::Available() / 4));
+        const auto count = std::clamp(VwThreads::Available() / 2, 1u, 6u);
+        const auto capture_count = std::min(2u, std::max(1u, VwThreads::Available() / 4));
         for (unsigned i = 0; i < count; ++i) {
             auto [result, worker_cache] = instance.GetDevice().createPipelineCacheUnique({});
             ASSERT_MSG(result == vk::Result::eSuccess, "Failed to create compiler pipeline cache");
             worker_pipeline_caches.push_back(std::move(worker_cache));
         }
         capture_compiler = std::make_unique<AsyncCompiler>(capture_count, 8, [](unsigned index) {
-            Common::SetCurrentThreadName(("gow3:ShaderCapture" + std::to_string(index)).c_str());
+            Common::SetCurrentThreadName(("vw:ShaderCapture" + std::to_string(index)).c_str());
             Common::SetCurrentThreadPriority(Common::ThreadPriority::High);
         });
         compiler = std::make_unique<AsyncCompiler>(count, 64, [](unsigned index) {
-            Common::SetCurrentThreadName(("gow3:ShaderCompile" + std::to_string(index)).c_str());
+            Common::SetCurrentThreadName(("vw:ShaderCompile" + std::to_string(index)).c_str());
             Common::SetCurrentThreadPriority(Common::ThreadPriority::Low);
         });
-        LOG_INFO(Render_Vulkan, "gow3: async graphics compilation ready ({} capture, {} compile workers)",
+        LOG_INFO(Render_Vulkan, "vw: async graphics compilation ready ({} capture, {} compile workers)",
                  capture_count, count);
     }
 }
@@ -421,13 +418,13 @@ PipelineCache::~PipelineCache() {
     FinishCompilations();
 }
 
-// gow3: shader/pipeline compile time on the GPU thread, reported by GOW3_FRAME_STATS.
-std::atomic<u64> g_gow3_compile_ns;
-std::atomic<u32> g_gow3_compiles;
-std::atomic<u64> g_gow3_capture_ns, g_gow3_async_ns, g_gow3_compile_wait_ns;
-std::atomic<u64> g_gow3_snapshot_ns, g_gow3_guest_wait_ns;
-std::atomic<u32> g_gow3_pool_reuses;
-std::atomic<u32> g_gow3_pending_draws;
+// vw: shader/pipeline compile time on the GPU thread, reported by VW_FRAME_STATS.
+std::atomic<u64> g_vw_compile_ns;
+std::atomic<u32> g_vw_compiles;
+std::atomic<u64> g_vw_capture_ns, g_vw_async_ns, g_vw_compile_wait_ns;
+std::atomic<u64> g_vw_snapshot_ns, g_vw_guest_wait_ns;
+std::atomic<u32> g_vw_pool_reuses;
+std::atomic<u32> g_vw_pending_draws;
 namespace {
 struct PhaseTimer {
     std::atomic<u64>& counter;
@@ -446,10 +443,10 @@ struct PhaseTimer {
 struct CompileTimer {
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
     ~CompileTimer() {
-        g_gow3_compile_ns += u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        g_vw_compile_ns += u64(std::chrono::duration_cast<std::chrono::nanoseconds>(
                                    std::chrono::steady_clock::now() - start)
                                    .count());
-        ++g_gow3_compiles;
+        ++g_vw_compiles;
     }
 };
 } // namespace
@@ -463,7 +460,7 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
     if (!compiler->HasCapacity()) {
         return false;
     }
-    PhaseTimer snapshot{g_gow3_snapshot_ns};
+    PhaseTimer snapshot{g_vw_snapshot_ns};
     auto build = std::make_shared<AsyncShaderCompilation>();
     build->device = instance.GetDevice();
     build->code.assign(params.code.begin(), params.code.end());
@@ -485,13 +482,13 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
     snapshot.Stop();
     AsyncJob<bool> capture_job;
     if (!capture_job.Start(*capture_compiler, [this, build, binding] {
-        PhaseTimer capture{g_gow3_capture_ns};
+        PhaseTimer capture{g_vw_capture_ns};
         auto [pools, reused] = compiler_pools.Acquire();
         build->pools = std::move(pools);
         if (reused) {
-            ++g_gow3_pool_reuses;
+            ++g_vw_pool_reuses;
         }
-        // gow3: the GPU thread waits until all guest reads and specialization are captured.
+        // vw: the GPU thread waits until all guest reads and specialization are captured.
         build->ir.emplace(Shader::TranslateProgram(build->code, *build->pools, build->info,
                                                    build->runtime, profile));
         build->spec = Shader::StageSpecialization(build->info, build->runtime, profile, binding);
@@ -501,7 +498,7 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
         return false;
     }
     {
-        PhaseTimer waiting{g_gow3_guest_wait_ns};
+        PhaseTimer waiting{g_vw_guest_wait_ns};
         capture_job.Wait();
     }
     if (!capture_job.Poll()) {
@@ -511,12 +508,12 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
             specialization->info = &program.info;
             program.failed_permutations.push_back(std::move(*specialization));
         }
-        LOG_ERROR(Render_Vulkan, "gow3: shader {:#x}/{} capture failed: {}", params.hash,
+        LOG_ERROR(Render_Vulkan, "vw: shader {:#x}/{} capture failed: {}", params.hash,
                   permutation, capture_job.Error());
         return false;
     }
     const bool queued = build->job.Start(*compiler, [this, build] {
-        PhaseTimer compile{g_gow3_async_ns};
+        PhaseTimer compile{g_vw_async_ns};
         Shader::Gcn::ScopedFetchShaderSnapshot snapshot{build->fetch};
         auto spv = Shader::Backend::SPIRV::EmitSPIRV(profile, build->runtime, *build->ir,
                                                     build->binding);
@@ -560,7 +557,7 @@ void PipelineCache::PublishShaders(bool wait) {
                     program->failed_permutations.push_back(std::move(build->spec));
                 }
                 program->pending.reset();
-                LOG_ERROR(Render_Vulkan, "gow3: shader {:#x}/{} compilation failed: {}", hash,
+                LOG_ERROR(Render_Vulkan, "vw: shader {:#x}/{} compilation failed: {}", hash,
                           build->permutation, build->job.Error());
                 retire();
             } else {
@@ -600,7 +597,7 @@ void PipelineCache::PublishGraphics(bool wait) {
         auto result = build->job.Poll();
         if (!result) {
             if (build->job.Failed() && !build->failure_logged) {
-                LOG_ERROR(Render_Vulkan, "gow3: pipeline {:#x} compilation failed: {}",
+                LOG_ERROR(Render_Vulkan, "vw: pipeline {:#x} compilation failed: {}",
                           std::hash<GraphicsPipelineKey>{}(it.key()), build->job.Error());
                 build->failure_logged = true;
             }
@@ -628,13 +625,13 @@ void PipelineCache::FinishCompilations() {
         }
         const auto result = instance.GetDevice().mergePipelineCaches(*pipeline_cache, sources);
         if (result != vk::Result::eSuccess) {
-            LOG_ERROR(Render_Vulkan, "gow3: compiler cache merge failed: {}", vk::to_string(result));
+            LOG_ERROR(Render_Vulkan, "vw: compiler cache merge failed: {}", vk::to_string(result));
         }
     }
 }
 
 bool PipelineCache::AsyncCompilation() const {
-    return compiler && Gow3Settings::Get().async_shaders.load(std::memory_order_relaxed);
+    return compiler && VwSettings::Get().async_shaders.load(std::memory_order_relaxed);
 }
 
 void PipelineCache::SeedWorkerCaches() {
@@ -654,7 +651,7 @@ void PipelineCache::ReportCompilerStats() {
                     "%.1f ms, compile %.1f ms; pools retained %zu, reused %u\n",
                     capture_compiler->Depth(), compiler->Depth(),
                     capture_compiler->QueueWaitNs() / 1e6, compiler->QueueWaitNs() / 1e6,
-                    compiler_pools.Retained(), g_gow3_pool_reuses.exchange(0));
+                    compiler_pools.Retained(), g_vw_pool_reuses.exchange(0));
     }
 }
 
@@ -715,7 +712,7 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
     sel.draw_indirect_params = params;
     if (!RefreshGraphicsKey(sel)) {
         if (sel.compilation_pending) {
-            ++g_gow3_pending_draws;
+            ++g_vw_pending_draws;
         }
         return nullptr;
     }
@@ -725,7 +722,7 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
             return found->second.get();
         }
         if (!pending_graphics.contains(sel.graphics_key) && compiler->HasCapacity()) {
-            PhaseTimer capture{g_gow3_snapshot_ns};
+            PhaseTimer capture{g_vw_snapshot_ns};
             auto build = std::make_shared<AsyncGraphicsCompilation>();
             build->selection = sel;
             build->selection.regs = nullptr;
@@ -742,7 +739,7 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
             const bool queued = build->job.Start(*compiler, [this, build] {
                 // Only the vertex stage uses fetch-shader guest pointers during pipeline construction.
                 Shader::Gcn::ScopedFetchShaderSnapshot snapshot{build->fetch[u32(SwStage::Vertex)]};
-                PhaseTimer compile{g_gow3_async_ns};
+                PhaseTimer compile{g_vw_async_ns};
                 auto& s = build->selection;
                 build->pipeline = std::make_unique<GraphicsPipeline>(
                     instance, scheduler, desc_heap, profile, s.graphics_key,
@@ -754,7 +751,7 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
                 pending_graphics.emplace(sel.graphics_key, std::move(build));
             }
         }
-        ++g_gow3_pending_draws;
+        ++g_vw_pending_draws;
         return nullptr;
     }
     const auto [it, is_new] = graphics_pipelines.try_emplace(sel.graphics_key);
@@ -817,7 +814,7 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
     const auto& regs = (*sel.regs);
     auto& key = sel.graphics_key;
 
-    // gow3: a depth/stencil buffer that cannot affect the draw is not attached: on the PC a
+    // vw: a depth/stencil buffer that cannot affect the draw is not attached: on the PC a
     // smaller one would crop a full-screen pass (eltutz, vk_depth_stencil_state.h).
     const bool db_enabled = GetEffectiveDepthStencilState(regs).needs_attachment;
 
@@ -843,22 +840,6 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
     const bool skip_cb_binding =
         regs.color_control.mode == AmdGpu::ColorControl::OperationMode::Disable;
 
-    // Only potentially animated G-buffer draws may use the extra motion attachment. The
-    // ordinary stage variant is needed first to inspect the vertex shader's resources.
-    bool motion_possible = false;
-    {
-        u32 bound = 0;
-        for (s32 cb = 0; cb < AmdGpu::NUM_COLOR_BUFFERS && !skip_cb_binding; ++cb) {
-            bound += (regs.color_buffers[cb] && regs.color_target_mask.GetMask(cb)) ? 1 : 0;
-        }
-        motion_possible = Shader::MotionVectors::positions_address != 0 && bound >= 5 &&
-                          !regs.color_buffers[Shader::MotionVectors::Output] &&
-                          regs.depth_buffer.DepthValid() &&
-                          regs.depth_buffer.NumSamples() == 1 && !regs.IsClipDisabled() &&
-                          regs.stage_enable.raw == AmdGpu::ShaderStageEnable::VgtStages::Vs;
-    }
-    sel.motion = false;
-
     // First pass to fill render target information needed by shader recompiler
     for (s32 cb = 0; cb < AmdGpu::NUM_COLOR_BUFFERS && !skip_cb_binding; ++cb) {
         const auto& col_buf = regs.color_buffers[cb];
@@ -880,56 +861,6 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
     // Compile and bind shader stages
     if (!RefreshGraphicsStages(sel)) {
         return false;
-    }
-    if (motion_possible) {
-        const auto* vs = sel.infos[static_cast<u32>(Shader::SwStage::Vertex)];
-        if (vs) {
-            // Shaders with a bone palette (motion_history.h). Small skeletons (weapons,
-            // props) also include static world pieces: the rasterizer gives those
-            // history only while their constants change.
-            for (const auto& resource : vs->buffers) {
-                if (resource.IsSpecial()) continue;
-                const auto buffer = resource.GetSharp(*vs);
-                if (buffer.Valid() && buffer.GetStride() == 16 &&
-                    Motion::ClassifyBuffer(buffer.GetSize()) != Motion::BufferRole::Other) {
-                    sel.motion = true;
-                    break;
-                }
-            }
-        }
-        // GOW3_MOTION_SELECT_LOG=1: each G-buffer vertex shader once, with its buffer sizes
-        // and the selection, to find animated models that the size rule leaves out.
-        static const bool select_log = [] {
-            const char* value = std::getenv("GOW3_MOTION_SELECT_LOG");
-            return value && value[0] == '1';
-        }();
-        if (select_log && vs) {
-            std::string sizes;
-            for (const auto& resource : vs->buffers) {
-                if (resource.IsSpecial()) continue;
-                const auto buffer = resource.GetSharp(*vs);
-                sizes += fmt::format(" {}/{}", buffer.GetSize(), buffer.GetStride());
-            }
-            static std::mutex log_mutex;
-            static std::unordered_set<u64> logged;
-            std::scoped_lock lock{log_mutex};
-            if (logged.insert(vs->pgm_hash ^ std::hash<std::string>{}(sizes)).second) {
-                std::printf("Motion select: vs %016llx %s, buffers (size/stride):%s\n",
-                            static_cast<unsigned long long>(vs->pgm_hash),
-                            sel.motion ? "ON " : "off", sizes.c_str());
-            }
-        }
-        // Keep the old broad path available for visual A/B tests.
-        static const bool all_motion = [] {
-            const char* value = std::getenv("GOW3_OBJECT_MOTION_ALL");
-            return value && value[0] == '1';
-        }();
-        if (all_motion) {
-            sel.motion = true;
-        }
-        if (sel.motion && !RefreshGraphicsStages(sel)) {
-            return false;
-        }
     }
 
     // Second pass to mask out render targets not written by shader and fill remaining info
@@ -962,19 +893,6 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
         key.num_samples = std::max(key.num_samples, color_samples);
     }
 
-    if (sel.motion) {
-        constexpr u32 mv = Shader::MotionVectors::Output;
-        key.motion_vectors = 1;
-        key.mrt_mask |= 1u << mv;
-        key.num_color_attachments = mv + 1;
-        auto& color_buffer = key.color_buffers[mv];
-        color_buffer.data_format = AmdGpu::DataFormat::Format32_32_32_32;
-        color_buffer.num_format = AmdGpu::NumberFormat::Float;
-        color_buffer.swizzle = AmdGpu::IdentityMapping;
-        key.write_masks[mv] = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-                              vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-        key.color_samples[mv] = 1;
-    }
 
     // Force all color samples to match depth samples to avoid unsupported MSAA configuration
     if (color_samples != 0) {
@@ -1173,7 +1091,7 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
                                                 Shader::Backend::Bindings& binding) {
     auto runtime_info = BuildRuntimeInfo(sel, hw_stage, sw_stage);
     if (sel.worker) {
-        // gow3: draw-preparation worker: look up only, with the worker's own Info copy.
+        // vw: draw-preparation worker: look up only, with the worker's own Info copy.
         auto& worker = *sel.worker;
         std::shared_lock lk{programs_mutex};
         const auto found_program = program_cache.find(params.hash);
@@ -1218,7 +1136,7 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
                                !EmulatorSettings.IsShaderCollect();
     if (!compile_async && it_pgm != program_cache.end() && it_pgm->second->pending) {
         {
-            PhaseTimer waiting{g_gow3_compile_wait_ns};
+            PhaseTimer waiting{g_vw_compile_wait_ns};
             it_pgm->second->pending->job.Wait();
         }
         PublishShaders();
@@ -1279,7 +1197,7 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
 
     vk::ShaderModule module{};
 
-    // gow3: consecutive draws of a program almost always use the same permutation.
+    // vw: consecutive draws of a program almost always use the same permutation.
     auto it = program->last_used < program->modules.size() &&
                       program->modules[program->last_used].spec == spec
                   ? program->modules.begin() + program->last_used

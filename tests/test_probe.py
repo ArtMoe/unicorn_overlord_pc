@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-EXE = ROOT / 'out/gow3-probe'
+EXE = ROOT / 'out/vwport'
 
 
 def package(code, relocs=(), names=(), capabilities=None):

@@ -45,7 +45,6 @@ struct GraphicsPipelineKey {
     u8 depth_samples;
     std::array<u8, AmdGpu::NUM_COLOR_BUFFERS> color_samples;
     u32 mrt_mask;
-    u32 motion_vectors = 0;
     struct {
         AmdGpu::DepthBuffer::ZFormat z_format : 2;
         AmdGpu::DepthBuffer::StencilFormat stencil_format : 1;
@@ -96,7 +95,7 @@ public:
                      bool preloading);
     ~GraphicsPipeline();
 
-    // gow3: switch from compiler-owned snapshots to live stage data on publication.
+    // vw: switch from compiler-owned snapshots to live stage data on publication.
     void PublishStages(std::span<const Shader::Info*, MaxShaderStages> infos) {
         std::ranges::copy(infos, stages.begin());
     }
@@ -109,7 +108,7 @@ public:
         return key;
     }
 
-    /// gow3: second draw squaring a self-scaled MIN/MAX blend, or null (vk_blend_rewrite.h).
+    /// vw: second draw squaring a self-scaled MIN/MAX blend, or null (vk_blend_rewrite.h).
     vk::Pipeline SquarePassHandle() const noexcept {
         return *square_pipeline;
     }

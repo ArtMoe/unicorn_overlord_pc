@@ -23,9 +23,9 @@ namespace Vulkan {
 
 using Shader::Backend::SPIRV::AuxShaderType;
 
-// gow3: where pipeline construction time goes (reported when the background warm-up ends).
-std::atomic<u64> g_gow3_pipeline_total_ns, g_gow3_pipeline_driver_ns;
-std::atomic<u32> g_gow3_pipelines_built;
+// vw: where pipeline construction time goes (reported when the background warm-up ends).
+std::atomic<u64> g_vw_pipeline_total_ns, g_vw_pipeline_driver_ns;
+std::atomic<u32> g_vw_pipelines_built;
 namespace {
 using Clock = std::chrono::steady_clock;
 u64 NsSince(Clock::time_point start) {
@@ -308,7 +308,7 @@ GraphicsPipeline::GraphicsPipeline(
     };
 
     std::array<vk::PipelineColorBlendAttachmentState, AmdGpu::NUM_COLOR_BUFFERS> attachments;
-    // gow3: GNM scales MIN/MAX operands, Vulkan does not (vk_blend_rewrite.h). A self-scaled
+    // vw: GNM scales MIN/MAX operands, Vulkan does not (vk_blend_rewrite.h). A self-scaled
     // MIN/MAX is drawn twice: native, then this pipeline squares the destination.
     std::array<vk::PipelineColorBlendAttachmentState, AmdGpu::NUM_COLOR_BUFFERS> square_attachments;
     bool needs_square_pass = false;
@@ -452,8 +452,8 @@ GraphicsPipeline::GraphicsPipeline(
         square_pipeline = std::move(square);
         SetObjectName(device, *square_pipeline, "Graphics Pipeline {} squaring pass", debug_str);
     }
-    g_gow3_pipeline_total_ns += NsSince(started);
-    ++g_gow3_pipelines_built;
+    g_vw_pipeline_total_ns += NsSince(started);
+    ++g_vw_pipelines_built;
 }
 
 GraphicsPipeline::~GraphicsPipeline() = default;

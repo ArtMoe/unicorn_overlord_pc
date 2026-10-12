@@ -17,7 +17,6 @@ class BlitHelper;
 namespace Vulkan {
 
 class GpuProfiler;
-class SceneTargets;
 
 class Instance;
 class Scheduler;
@@ -40,7 +39,6 @@ public:
     }
 
     void TickFrame();
-    SceneTargets* scene_targets = nullptr;
 
     void CopyBuffer(const VideoCore::Buffer* src, const VideoCore::Buffer* dst,
                     std::span<const vk::BufferCopy> copies);
@@ -53,7 +51,7 @@ public:
                  vk::PipelineStageFlags2 dst_stage, vk::AccessFlags2 dst_access,
                  std::optional<VideoCore::SubresourceRange> subres_range = {});
 
-    /// GOW3_GPU_PROFILE: a profiler segment for a transfer of `image` while it lives; the
+    /// VW_GPU_PROFILE: a profiler segment for a transfer of `image` while it lives; the
     /// segment it interrupted continues afterwards.
     class TransferMark {
     public:
@@ -72,7 +70,7 @@ public:
                        std::span<const vk::BufferImageCopy> download_copies);
 
     void CopyImage(VideoCore::Image* src, VideoCore::Image* dst);
-    /// gow3: mip 0 of an image sharing guest memory with `dst` (texture_cache aliasing).
+    /// vw: mip 0 of an image sharing guest memory with `dst` (texture_cache aliasing).
     void CopyAliasImage(VideoCore::Image* src, VideoCore::Image* dst, const vk::Extent3D& extent);
     void CopyImageWithBuffer(VideoCore::Image* src, VideoCore::Image* dst,
                              const VideoCore::Buffer* buffer, u64 offset);
@@ -99,7 +97,7 @@ public:
 
     void FlushBarriers();
 
-    /// gow3: runs before this thread changes image state (layouts, pending image
+    /// vw: runs before this thread changes image state (layouts, pending image
     /// barriers): the rasterizer joins its texture binding helper there (BindHelper).
     void SetImageAccessHook(void (*hook)(void*), void* context) {
         image_access_hook = hook;
@@ -121,7 +119,7 @@ private:
     BarrierTracker barrier_tracker;
     VideoCore::Image::Barriers image_barriers;
     vk::MemoryBarrier2 memory_barrier{};
-    // gow3: ranges inserted into barrier_tracker since its last Clear(); re-inserting a
+    // vw: ranges inserted into barrier_tracker since its last Clear(); re-inserting a
     // contained range is a no-op, and draws re-bind the same ranges constantly.
     struct AccessMemo {
         u64 resource;

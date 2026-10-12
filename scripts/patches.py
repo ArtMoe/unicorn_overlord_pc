@@ -69,9 +69,7 @@ PATCHES_DIR=Path(__file__).resolve().parent.parent/'patches'
 # Built-in patch file per game, the app version its addresses are for and, when known, the
 # sha256 of the only eboot.bin they were checked against (another build of the same version has
 # its code elsewhere: byte writes there corrupt it).
-GAMES=[({'CUSA01623'},PATCHES_DIR/'God_of_War_III_Remastered.xml','01.02',
-        'd85c8135d330c3b601bf5dc3f1dd86bd6119fb8a9fce372bed2c9785f9a79299'),
-       ({'CUSA05083'},PATCHES_DIR/'Odin_Sphere_Leifthrasir.xml','01.01',
+GAMES=[({'CUSA05083'},PATCHES_DIR/'Odin_Sphere_Leifthrasir.xml','01.01',
         '2865b6cec33f2515def173c1ed0c03afc27a1cd5fad1b0d0f516b4527aba9a88')]
 DMEM_RETAIL_MB=5056  # runtime_memory.c POOL_SIZE default
 
@@ -100,22 +98,13 @@ def eboot_matches(game, profile):
         return False
 
 
-# God of War III notes: the texture fix and the resolution patches both resize the video arena;
-# enable one, never both. A chosen resolution patch replaces the default texture fix.
-EXCLUSIVE_PREFIX='Resolution Patch'
-REPLACED_BY_EXCLUSIVE={'Bug Fix - Texture Corruption Fix'}
-
-
 def selected_patches(xml, app_version, extra, only=False):
     """The file's isEnabled patches for this version, then the names in extra (";"-separated).
     only: extra is the whole selection (the launcher's), without the file's defaults."""
     names=[] if only else [m.get('Name') for m in ET.parse(xml).getroot().iter('Metadata')
                            if m.get('AppVer')==app_version and m.get('isEnabled','false').lower()=='true']
     names+=[n for n in (n.strip() for n in extra.split(';')) if n and n not in names]
-    exclusive=[n for n in names if n.startswith(EXCLUSIVE_PREFIX)]
-    if len(exclusive)>1:
-        raise ValueError(f'choose one resolution patch, not {exclusive}')
-    return [n for n in names if not (exclusive and n in REPLACED_BY_EXCLUSIVE)]
+    return names
 
 
 def patch_requirements(xml, names, app_version):
@@ -196,7 +185,7 @@ def main():
     p.add_argument('--patches-config',type=Path,help='patches.json: enabled/disabled external patches')
     p.add_argument('--extra',default='',help='additional patch names, separated by ";"')
     p.add_argument('--out',type=Path,default=Path(__file__).resolve().parent.parent/'out')
-    p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('GOW3_GAME_DIR','../CUSA01623')))
+    p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('VW_GAME_DIR','../CUSA01623')))
     a=p.parse_args()
     title=game_title_id(a.game_dir)
     profile=game_profile(title)
@@ -208,15 +197,15 @@ def main():
     # The patches are byte writes at the addresses of one game build: on another they would
     # corrupt code, so such a game runs unpatched.
     version=game_app_version(a.game_dir)
-    if version!=needed and not os.environ.get('GOW3_FORCE_PATCHES'):
+    if version!=needed and not os.environ.get('VW_FORCE_PATCHES'):
         write_patches(a.out,[])
         print(f'Patches: game version {version}, {xml.name} is for {needed}: none applied')
         return
-    if not eboot_matches(a.game_dir,profile) and not os.environ.get('GOW3_FORCE_PATCHES'):
+    if not eboot_matches(a.game_dir,profile) and not os.environ.get('VW_FORCE_PATCHES'):
         write_patches(a.out,[])
         print(f'Patches: eboot.bin is not the build {xml.name} was checked against: none applied')
         return
-    names=selected_patches(xml,needed,a.extra,os.environ.get('GOW3_PATCHES_ONLY')=='1')
+    names=selected_patches(xml,needed,a.extra,os.environ.get('VW_PATCHES_ONLY')=='1')
     segments=eboot_segments((a.out/'eboot.elf').read_bytes())
     writes=compile_patches(xml,names,needed,segments)
     if a.patches_dir:

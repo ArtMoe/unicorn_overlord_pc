@@ -22,7 +22,7 @@ typedef struct _stat64 HostStat;
 #define host_stat(path,s) _stat64(path,s)
 #define host_fstat(fd,s) _fstat64(fd,s)
 #define host_lseek _lseeki64
-#define O_DIRECTORY 0x40000000 /* gow3 marker, removed before _open */
+#define O_DIRECTORY 0x40000000 /* vw marker, removed before _open */
 #else
 typedef struct stat HostStat;
 #define host_stat(path,s) stat(path,s)
@@ -64,7 +64,7 @@ static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
 static int save_path(const char *p) { return p && !strncmp(p,"/savedata",9); }
 static int temp_name(const char *name) {
     size_t n=strlen(name);
-    return n>9 && !strcmp(name+n-9,".gow3save");
+    return n>9 && !strcmp(name+n-9,".vwsave");
 }
 /* Copies left by a crash (none of them open): removed when their directory is mounted. */
 static void remove_stale_temps(const char *dir,int depth) {
@@ -220,8 +220,8 @@ static File *get(int fd) {
     if (fd<3 || fd>=MAX_FILES || !files[fd].used) return NULL;
     return &files[fd];
 }
-/* GOW3_AUDIO_TRACE=1: sound file opens and failed reads (missing game sounds). */
-static int audio_trace(void) { static int v=-1; if (v<0) { const char *e=getenv("GOW3_AUDIO_TRACE"); v=e && e[0]=='1'; } return v; }
+/* VW_AUDIO_TRACE=1: sound file opens and failed reads (missing game sounds). */
+static int audio_trace(void) { static int v=-1; if (v<0) { const char *e=getenv("VW_AUDIO_TRACE"); v=e && e[0]=='1'; } return v; }
 /* Game mounts (including linked mod overlays) are read-only. Saves use other mounts. */
 static int game_path(const char *p) {
     if (!p || !*p) return 0;
@@ -264,7 +264,7 @@ static int open_for_commit(const char *path,const char *source,int flags,int mod
     size_t n=strlen(path)+32;
     char *t=malloc(n), *c=strdup(path);
     if (!t || !c) { free(t); free(c); return -ENOMEM; }
-    snprintf(t,n,"%s.%u.gow3save",path,__atomic_add_fetch(&temp_serial,1,__ATOMIC_RELAXED));
+    snprintf(t,n,"%s.%u.vwsave",path,__atomic_add_fetch(&temp_serial,1,__ATOMIC_RELAXED));
     int out=open(t,O_WRONLY|O_CREAT|O_TRUNC|O_BINARY,0644);
     int e=out<0 ? errno : 0;
     if (!e && exists && !(hf&O_TRUNC)) {
@@ -380,7 +380,7 @@ static int64_t do_open(const char *guest,int flags,int mode) {
     ++opens;
     pthread_mutex_unlock(&lock);
     if (audio_trace() && strstr(guest,"sound/")) printf("Audio trace: open(%s) -> fd %d, %lld bytes\n",guest,fd,(long long)s.st_size);
-    const char *mod_trace=getenv("GOW3_MOD_TRACE"), *mod_root=getenv("GOW3_MODS_DIR");
+    const char *mod_trace=getenv("VW_MOD_TRACE"), *mod_root=getenv("VW_MODS_DIR");
     if (mod_trace && mod_trace[0]=='1' && mod_root) {
         char actual[PATH_MAX],root[PATH_MAX];
         static unsigned traced;

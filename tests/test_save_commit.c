@@ -25,7 +25,7 @@ static int listed(int dir,const char *suffix) {
     return 0;
 }
 int main(void) {
-    char root[]="/tmp/gow3-save-commit-XXXXXX";
+    char root[]="/tmp/vw-save-commit-XXXXXX";
     assert(mkdtemp(root));
     char game[512],user[512],saves[512],file[600];
     snprintf(game,sizeof(game),"%s/game",root);
@@ -43,7 +43,7 @@ int main(void) {
     char content[32]; read_file(file,content,sizeof(content)); assert(!strcmp(content,"old"));
     GuestStat info; assert(!do_stat("/savedata0/userdata",&info) && info.size==8); /* the copy */
     int dir=(int)do_open("/savedata0",0x20000,0); assert(dir>=3);
-    assert(!listed(dir,".gow3save")); assert(!do_close(dir));
+    assert(!listed(dir,".vwsave")); assert(!do_close(dir));
     assert(!do_close(fd));
     read_file(file,content,sizeof(content)); assert(!strcmp(content,"new data"));
 
@@ -54,7 +54,7 @@ int main(void) {
     /* A crash mid-save: the copy is left behind, the file is intact; the next mount removes it. */
     fd=(int)do_open("/savedata0/userdata",0x1|0x400,0); assert(fd>=3);
     assert(do_write(fd,"torn",4)==4);
-    char stale[700]; snprintf(stale,sizeof(stale),"%s.%u.gow3save",file,temp_serial);
+    char stale[700]; snprintf(stale,sizeof(stale),"%s.%u.vwsave",file,temp_serial);
     assert(!access(stale,F_OK));
     files[fd]=(File){0}; /* the process dies: no close */
     read_file(file,content,sizeof(content)); assert(!strcmp(content,"new data"));

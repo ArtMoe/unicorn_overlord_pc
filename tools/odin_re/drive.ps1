@@ -6,9 +6,9 @@ $r = 'D:\Emulation\Recomps\Odin Sphere Leifthrasir'
 $run = "$r\run"; $dump = "$run\dump\$Name"
 New-Item -ItemType Directory -Force $dump | Out-Null
 Set-Content -Path "$run\pad.txt" -Value '' -NoNewline
-$env:GOW3_GAME_DIR = "$r\game_dump\CUSA05083"; $env:GOW3_DATA_DIR = $run
-$env:GOW3_PAD_FILE = "$run\pad.txt"; $env:GOW3_FRAME_DUMP_TRIGGER = "$run\dump_now"; $env:GOW3_DUMP_DIR = $dump
-if (-not $env:GOW3_HANG_DUMP) { $env:GOW3_HANG_DUMP = '0' }
+$env:VW_GAME_DIR = "$r\game_dump\CUSA05083"; $env:VW_DATA_DIR = $run
+$env:VW_PAD_FILE = "$run\pad.txt"; $env:VW_FRAME_DUMP_TRIGGER = "$run\dump_now"; $env:VW_DUMP_DIR = $dump
+if (-not $env:VW_HANG_DUMP) { $env:VW_HANG_DUMP = '0' }
 $p = Start-Process python -ArgumentList "`"$r\port\run.py`"" -RedirectStandardOutput "$run\$Name.out" `
     -RedirectStandardError "$run\$Name.err" -PassThru -NoNewWindow
 $start = [DateTime]::Now
@@ -26,6 +26,6 @@ foreach ($step in $Steps) {
 $left = [int]($Seconds * 1000 - ([DateTime]::Now - $start).TotalMilliseconds)
 if ($left -gt 0) { [void]$p.WaitForExit($left) }
 $exited = $p.HasExited
-Get-Process gow3-probe -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process vwport -ErrorAction SilentlyContinue | Stop-Process -Force
 if (-not $p.HasExited) { $p | Stop-Process -Force -ErrorAction SilentlyContinue }
 if ($exited) { "game exited by itself (code $($p.ExitCode))" } else { "stopped after $Seconds s" }

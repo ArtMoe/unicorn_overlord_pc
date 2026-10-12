@@ -49,7 +49,7 @@ typedef struct GuestThread {
     int detached, finished, joined, host_owned;
     int32_t id; /* scePthreadGetthreadid */
 #ifdef _WIN32
-    gow3_jmp_buf exit_jump; /* no SEH unwinding through guest frames */
+    vw_jmp_buf exit_jump; /* no SEH unwinding through guest frames */
 #else
     jmp_buf exit_jump;
 #endif
@@ -265,8 +265,8 @@ static void set_host_name(const char *name) {
     pthread_setname_np(pthread_self(),host);
 }
 #ifdef _WIN32
-#define exit_setjmp(t) gow3_setjmp((t)->exit_jump)
-#define exit_longjmp(t) gow3_longjmp((t)->exit_jump,1)
+#define exit_setjmp(t) vw_setjmp((t)->exit_jump)
+#define exit_longjmp(t) vw_longjmp((t)->exit_jump,1)
 #else
 #define exit_setjmp(t) setjmp((t)->exit_jump)
 #define exit_longjmp(t) longjmp((t)->exit_jump,1)
@@ -427,7 +427,7 @@ uintptr_t runtime_thread_resolve(const char *name) {
     return 0;
 }
 #ifdef _WIN32
-/* GOW3_HANG_DUMP: where every live guest thread is (rip + frame-pointer chain). */
+/* VW_HANG_DUMP: where every live guest thread is (rip + frame-pointer chain). */
 void runtime_thread_dump(void) {
     pthread_mutex_lock(&lock);
     fputs("Thread dump:\n",stderr);

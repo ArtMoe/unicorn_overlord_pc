@@ -8,8 +8,8 @@ Result: dist/Odin Sphere PC/ and an archive of it (.tar.gz on Linux, .zip on Win
     Odin Sphere(.exe)   the launcher (PyInstaller, one file; it also runs the game's preparation
                         scripts, so no Python installation is needed)
     README.txt
-    runtime/            run.py, scripts/, patches/, bin/ (gow3-probe, GPU library, DLLs)
-    data/               created on first start: gow3.ini, saves, generated files
+    runtime/            run.py, scripts/, patches/, bin/ (vwport, GPU library, DLLs)
+    data/               created on first start: vw.ini, saves, generated files
 
 No game file is included: the launcher asks for the folder of the user's own dump.
 """
@@ -95,9 +95,9 @@ def freeze(python):
 
 def copy_binaries(bin_dir):
     if WINDOWS:
-        probe = OUT / 'gow3-probe.exe'
+        probe = OUT / 'vwport.exe'
         shutil.copy2(probe, bin_dir)
-        shutil.copy2(OUT / 'gow3-gpu-capabilities.exe', bin_dir)
+        shutil.copy2(OUT / 'vw-gpu-capabilities.exe', bin_dir)
         # The CLANG64 DLLs the probe loads (ldd lists them with their MSYS2 paths).
         listing = subprocess.run(['ldd', str(probe)], capture_output=True, text=True, check=True).stdout
         for line in listing.splitlines():
@@ -107,11 +107,11 @@ def copy_binaries(bin_dir):
                 shutil.copy2(subprocess.run(['cygpath', '-w', dll], capture_output=True, text=True,
                                             check=True).stdout.strip(), bin_dir)
     else:
-        shutil.copy2(OUT / 'gow3-probe', bin_dir)
-        shutil.copy2(OUT / 'gow3-gpu-capabilities', bin_dir)  # the game's GPU, for launch choices
+        shutil.copy2(OUT / 'vwport', bin_dir)
+        shutil.copy2(OUT / 'vw-gpu-capabilities', bin_dir)  # the game's GPU, for launch choices
         (bin_dir / 'gpu').mkdir()
-        shutil.copy2(OUT / 'gpu' / 'libgow3gpu.so', bin_dir / 'gpu')  # RUNPATH $ORIGIN/gpu
-        for binary in (bin_dir / 'gow3-probe', bin_dir / 'gow3-gpu-capabilities', bin_dir / 'gpu' / 'libgow3gpu.so'):
+        shutil.copy2(OUT / 'gpu' / 'libvwgpu.so', bin_dir / 'gpu')  # RUNPATH $ORIGIN/gpu
+        for binary in (bin_dir / 'vwport', bin_dir / 'vw-gpu-capabilities', bin_dir / 'gpu' / 'libvwgpu.so'):
             subprocess.run(['strip', '--strip-unneeded', str(binary)], check=False)
 
 
@@ -137,7 +137,7 @@ Linux needs these system packages (most desktops have them already):
 
 
 def main():
-    probe = OUT / ('gow3-probe.exe' if WINDOWS else 'gow3-probe')
+    probe = OUT / ('vwport.exe' if WINDOWS else 'vwport')
     if not probe.is_file():
         sys.exit('Build first: bash build.sh')
     python = venv_python()
