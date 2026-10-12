@@ -59,11 +59,43 @@ and what is open. `docs/odin/HANDOFF.md` and `docs/unicorn/HANDOFF.md` cover the
 
 ## Open
 
-1. **CPU threads (next):** the port keeps about two threads busy on a 4-core/8-thread CPU:
-   `shadPS4:GpuComm` (PM4 decode, stage A) and `vw:DrawRec` (draw recording, stage B), about
-   6 µs per draw each, with ~6000 draws per frame in UO battles. Research how the PS4 (GPU
-   command processor, multiple queues) and shadPS4 split this work before optimizing; see
-   `docs/parallel_gpu.md` for what was already tried.
+1. **CPU threads (next, started 2026-10-13).** The user's question: why do only about two
+   threads work on a 4-core/8-thread CPU (Ryzen 5 2500U), when a PS4 runs the game at 60 FPS?
+   What does the PS4 do, how does shadPS4 handle it, and what is the equivalent here? The user's
+   rule: **search online before any optimization**, and prefer a better design over
+   micro-tuning.
+   - Known (docs/unicorn/HANDOFF.md): `shadPS4:GpuComm` (PM4 decode, stage A) and `vw:DrawRec`
+     (draw recording, stage B) saturate, each about 6 µs per draw, with ~6000 draws per UO
+     battle frame. 60 FPS needs < ~2.7 µs per draw.
+   - Why the PS4 is different: on the console the game's own CPU threads build the command
+     buffers, and the GPU's hardware command processor (the CP, plus ACE queues for compute)
+     parses the PM4 packets at no CPU cost. The emulator does that parsing, plus the Vulkan
+     translation (state tracking, pipeline lookup, binding), in software. That is work the PS4
+     CPU never did, and it is serial because register state carries from draw to draw.
+   - Research so far:
+     - Upstream shadPS4 processes a submission on its GPU thread, using coroutines for
+       interleaving queues ([issue #1512](https://github.com/shadps4-emu/shadPS4/issues/1512),
+       [DeepWiki: Liverpool CP](https://deepwiki.com/shadps4-emu/shadPS4/4.2-liverpool-gpu-command-processor)).
+     - cuesta4's fork moved staging copies and command recording to helper threads
+       ([releases](https://github.com/cuesta4/shadPS4/releases)); this port already has that
+       (stage A/B).
+     - RPCS3 offloads transfers to a second thread, for +5-10%
+       ([PR #6112](https://github.com/RPCS3/rpcs3/pull/6112)).
+     - Vulkan allows parallel recording into per-thread command pools and secondary buffers
+       ([Vulkan docs](https://docs.vulkan.org/samples/latest/samples/performance/command_buffer_usage/README.html)).
+     - No emulator found yet that splits one PM4 stream across threads.
+   - Next steps:
+     1. Measure per-thread CPU in a UO battle (`top -H -p $(pgrep -x vwport)` plus
+        `perf record -g` per thread): how busy are the game's own threads (JobManager workers)
+        and the helpers?
+     2. Research more: yuzu/Ryujinx/Xenia GPU threading, and AMD PAL/RADV's own PM4
+        handling.
+     3. Candidate design: split a frame's draws across N recording workers. Stage A snapshots
+        the register state per draw, as it already does for stage B. Workers record secondary
+        command buffers per render pass, or per contiguous draw range inside one, and the
+        primary executes them in order. Also: make stage A cheaper by applying only the
+        registers that changed. Read `docs/parallel_gpu.md` first; it lists what has been
+        tried.
 2. Run the Windows script on the Windows PC and fix what it reports.
 3. UO: movies (`sceVideodec2*`), `sce::Json`, saving; see its handoff.
 
