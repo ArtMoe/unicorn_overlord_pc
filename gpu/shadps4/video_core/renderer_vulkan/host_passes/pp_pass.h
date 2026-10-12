@@ -18,6 +18,7 @@ public:
         float gamma = 1.0f;
         u32 hdr = 0;
         u32 srgb_input = 0;
+        float sharpen = 0.0f; ///< gow3: CAS on a downscaled image, 0 off to 1
     };
 
     void Create(vk::Device device, vk::Format surface_format);

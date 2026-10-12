@@ -396,7 +396,8 @@ void ImageTab() {
         std::snprintf(text, sizeof(text), "%d x %d", ww, wh);
         InfoRow("Window", text);
         InfoRow("FSR 1", !s.fsr1 ? "off" : upscaling ? "active" : "no effect (image not smaller than window)");
-        InfoRow("Sharpening", s.rcas_applied ? "applied" : "not applied");
+        InfoRow("Sharpening", s.rcas_applied ? (downscaling ? "applied (CAS)" : "applied") : "not applied");
+        InfoRow("Supersampling", downscaling ? "on: the larger image is averaged down to the window" : "off");
         ImGui::EndTable();
     }
 }
@@ -428,8 +429,14 @@ void PerformanceTab() {
         ChoiceRow("Render resolution", s.render_resolution, resolution_labels, nullptr, int(G::Resolutions.size()),
                   "The resolution the game draws at. Higher is sharper and slower.");
         static const char* const engine_labels[] = {"60 (original)", "120", "240"};
+        // Odin Sphere advances its logic once per frame: a higher engine rate speeds the game up.
+        const char* title = std::getenv("GOW3_TITLE_ID");
+        const bool fixed_step = title && std::strcmp(title, "CUSA05083") == 0;
+        ImGui::BeginDisabled(fixed_step);
         ChoiceRow("Engine frame rate", s.engine_fps, engine_labels, G::EngineFps.data(), int(G::EngineFps.size()),
-                  "The highest frame rate the game itself runs at.");
+                  fixed_step ? "Not available: this game runs its logic once per frame (60 FPS)."
+                             : "The highest frame rate the game itself runs at.");
+        ImGui::EndDisabled();
         CheckRow("Game reads GPU data without waiting", s.stale_readback,
                  "Big FPS gain. Switch it off if lighting or objects look wrong.");
         CheckRow("Deferred GPU readbacks", s.deferred_readback,

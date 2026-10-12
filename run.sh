@@ -45,6 +45,7 @@ if [[ ! -f $game/eboot.bin ]]; then echo "No eboot.bin in $game (set GOW3_GAME_D
 if grep -qa 'CUSA05083' "$game/sce_sys/param.sfo" 2>/dev/null; then
     export GOW3_DISABLED_OPTIMIZATIONS=${GOW3_DISABLED_OPTIMIZATIONS:-$(( (1<<35) | (1<<36) | (1<<37) ))}
     export GOW3_UPSCALER=${GOW3_UPSCALER:-none} GOW3_READBACK_LINEAR=${GOW3_READBACK_LINEAR:-1}
+    export GOW3_TITLE_ID=CUSA05083
 fi
 original_game=$game
 game=$("$PYTHON" scripts/mods.py "$game" --out "$out" \

@@ -410,7 +410,7 @@ static void install_actor_watch(const char *app0, Segment *segments, uint64_t co
     printf("Health display: damage hook ready (enemy health bar in the menu)\n");
 }
 
-/* Odin Sphere Leifthrasir: GOW3_RENDER_SCALE=<factor> (1 < factor <= 3) renders at
+/* Odin Sphere Leifthrasir: GOW3_RENDER_SCALE=<factor> (0.4 to 3) renders at
  * 1920x1080 times the factor (src/odin_render_scale.h); the presenter scales to the window. */
 static int odin_prefix(const char *text, const char *prefix) {
     for (; *prefix; ++text, ++prefix)
@@ -418,15 +418,20 @@ static int odin_prefix(const char *text, const char *prefix) {
     return 1;
 }
 
+/* A resolution name of the in-game menu (gow3_graphics.h Resolutions) or a factor. */
 static float odin_render_scale_value(const char *text) {
     while (*text == ' ' || *text == '\t') ++text;
+    if (odin_prefix(text, "native") || odin_prefix(text, "1080p")) return 1.0f;
+    if (odin_prefix(text, "480p")) return 4.0f / 9.0f;
+    if (odin_prefix(text, "720p")) return 2.0f / 3.0f;
     if (odin_prefix(text, "1440p")) return 4.0f / 3.0f;
+    if (odin_prefix(text, "1800p")) return 5.0f / 3.0f;
     if (odin_prefix(text, "4k") || odin_prefix(text, "2160p")) return 2.0f;
-    if (odin_prefix(text, "1080p")) return 1.0f;
     return strtof(text, NULL);
 }
 
-/* GOW3_RENDER_SCALE, else render_scale= in gow3.ini (GOW3_CONFIG): 1080p, 1440p, 4k or a factor. */
+/* GOW3_RENDER_SCALE, else render_resolution= in gow3.ini (GOW3_CONFIG; the menu's "Render
+ * resolution", applied on restart). */
 static float odin_render_scale_setting(void) {
     const char *env = getenv("GOW3_RENDER_SCALE");
     if (env && *env) return odin_render_scale_value(env);
@@ -435,7 +440,7 @@ static float odin_render_scale_setting(void) {
     float scale = 1.0f;
     char line[256];
     while (f && fgets(line, sizeof(line), f))
-        if (!strncmp(line, "render_scale=", 13)) scale = odin_render_scale_value(line + 13);
+        if (!strncmp(line, "render_resolution=", 18)) scale = odin_render_scale_value(line + 18);
     if (f) fclose(f);
     return scale;
 }
@@ -443,12 +448,12 @@ static float odin_render_scale_setting(void) {
 static void install_odin_render_scale(const char *app0, Segment *segments, uint64_t count,
                                       uint64_t size) {
     const float scale = odin_render_scale_setting();
-    if (!(scale > 1.0f)) return;
+    if (!(scale > 0.0f) || (scale > 0.999f && scale < 1.001f)) return;
     char path[4096], serial[32] = "", version[32] = "";
     snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
     sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
     sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(serial, "CUSA05083") || strcmp(version, "01.01") || scale > 3.0f ||
+    if (strcmp(serial, "CUSA05083") || strcmp(version, "01.01") || scale > 3.0f || scale < 0.4f ||
         !mapped(segments, count, ODIN_VIEWPORT_HOOK_OFFSET, ODIN_VIEWPORT_HOOK_LENGTH) ||
         !odin_render_scale_signature_match(image, size)) {
         printf("Render scale: unavailable (game version, code signature or factor %.2f)\n", scale);
@@ -499,7 +504,7 @@ static void install_odin_render_scale(const char *app0, Segment *segments, uint6
         memcpy(image + odin_scale_height_float[i], &height_f, 4);
     }
     const uint32_t heap = ((uint32_t)(ODIN_RENDERBUFFER_HEAP_SIZE * scale * scale) + 0x1fffff) & ~0x1fffffu;
-    if (parts & 4) memcpy(image + ODIN_RENDERBUFFER_HEAP_IMM, &heap, 4);
+    if ((parts & 4) && heap > ODIN_RENDERBUFFER_HEAP_SIZE) memcpy(image + ODIN_RENDERBUFFER_HEAP_IMM, &heap, 4);
     const int64_t scissor_delta = (int64_t)(uintptr_t)scissor -
                                   (int64_t)(uintptr_t)(image + ODIN_SCISSOR_HOOK_OFFSET + 5);
     if ((parts & 8) && scissor_delta >= INT32_MIN && scissor_delta <= INT32_MAX) {

@@ -389,6 +389,10 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
     static const char* frame_dump_trigger = std::getenv("GOW3_FRAME_DUMP_TRIGGER");
     static int frame_dump_index = 0;
     const bool frame_dump = frame_dump_trigger && std::remove(frame_dump_trigger) == 0;
+    if (frame_dump) {
+        std::printf("Frame dump %d: display buffer %#llx\n", frame_dump_index,
+                    (unsigned long long)cpu_address);
+    }
     // gow3: scaled upscaler presets: the output-size display buffer drawn by the port.
     TemporalUpscaler::Display display{};
     const bool upscaled = rasterizer->GetUpscaler().DisplayOverride(cpu_address, display);
@@ -489,6 +493,15 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
         fsr_settings.use_rcas &&
         Gow3Graphics::FsrPassRuns(fsr_settings.enable, true, int(image_size.width), int(image_size.height),
                                   int(frame->width), int(frame->height));
+    // gow3: an image larger than the window is averaged down in the post process pass, which
+    // also sharpens it (CAS) when sharpening is on: RCAS only runs at the same size or above.
+    const bool downscaling = image_size.width > frame->width || image_size.height > frame->height;
+    pp_settings.sharpen = downscaling && graphics.rcas
+                              ? float(Gow3Graphics::ParseRcasStrength(graphics.rcas_strength)) / 100.0f
+                              : 0.0f;
+    if (pp_settings.sharpen > 0.0f) {
+        Gow3Settings::Get().rcas_applied = true;
+    }
     image_view = fsr_pass.Render(cmdbuf, image_view, image_size, {frame->width, frame->height},
                                  fsr_settings, frame->is_hdr);
 

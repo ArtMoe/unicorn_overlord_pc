@@ -57,8 +57,8 @@ FSR 3.1 (the GPU default) rendered below 1080p and dropped translucent UI layers
 `GOW3_UPSCALER=none GOW3_READBACK_LINEAR=1` for CUSA05083 (as run.py).
 
 **Render scale (Phase 7, `src/odin_render_scale.h`, `install_odin_render_scale` in probe.c).**
-`render_scale=` in gow3.ini (`1080p`, `1440p`, `4k`, or a factor 1-3; `GOW3_RENDER_SCALE`
-overrides) renders at 1920x1080 times the factor; the 2D layout stays in 1080p units. Verified at
+`render_resolution=` in gow3.ini (the in-game menu's "Render resolution": native, 480p, 720p,
+1440p, 1800p, 4K; `GOW3_RENDER_SCALE=<factor 0.4-3>` overrides) renders at 1920x1080 times the factor; the 2D layout stays in 1080p units. Verified at
 1440p and 4K from the title through the attic, the book intro, cutscenes and the first stage
 (HUD, minimap) at 60 fps. Patched: render target/offscreen buffer/viewport immediates, the
 RENDERBUFFER heap (scale^2), view viewports (FUN_006b5f80), clip scissors (FUN_006b4140), the
@@ -67,6 +67,16 @@ on-demand layer buffer (FUN_006b5900), and the texture sizes texel coordinates a
 1920x1080 there). The last one was the 4K book-intro bug: the text layer was composited from the
 top-left quarter of the 4K layer, showing a stretched strip of the title logo left in it.
 `GOW3_RENDER_SCALE_PARTS` (bits, default 63) switches the parts off for bisecting.
+
+Downscaling (render resolution above the window) averages each output pixel's footprint in
+post_process.frag instead of one bilinear tap; "Sharpening" then applies CAS there (RCAS only runs
+at the same size or upscaling).
+
+Open: the selected item of menus (the cutscene skip menu's orange bar) pulses in a 4-frame cycle
+(A, brighter, A, dimmer). The game's draws, vertices, constants and textures are identical across
+those frames (captures with GOW3_CAPTURE_FRAMES=4); not the GPU optimizations (all 51 bits off),
+linear readbacks or jitter. Next: which display buffer each flip shows (presenter logs the address
+on frame dumps).
 
 High fps: logic advances one fixed step per frame (an unlocked 120 Hz run plays at double
 speed), so the "Frame Limiter - VBlank Only" patch (patches/, off) is not a usable unlock; it

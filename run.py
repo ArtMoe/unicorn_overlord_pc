@@ -133,11 +133,14 @@ def main():
         # early draw inputs / the constant ring (bits 35, 36) flicker; all three stay off.
         if game_title_id(game) == 'CUSA05083':
             env.setdefault('GOW3_DISABLED_OPTIMIZATIONS', str((1 << 35) | (1 << 36) | (1 << 37)))
+        env['GOW3_TITLE_ID'] = game_title_id(game) or ''
         if patched:
             # The patch notes give the direct memory and VBlank rate the selected patches need.
             names = selected_patches(profile[1], profile[2], env.get('GOW3_PATCHES', ''), env.get('GOW3_PATCHES_ONLY') == '1')
             # gow3.ini decides the resolution and frame rate patches (in-game menu, launcher).
-            names = graphics_options.patch_names(names, graphics)
+            # Odin Sphere's render resolution is a code patch in the probe (render_resolution).
+            if game_title_id(game) != 'CUSA05083':
+                names = graphics_options.patch_names(names, graphics)
             env['GOW3_PATCHES'] = ';'.join(names)
             env['GOW3_PATCHES_ONLY'] = '1'
             dmem, vblank = patch_requirements(profile[1], names, profile[2])
