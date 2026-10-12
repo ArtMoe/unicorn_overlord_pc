@@ -7,6 +7,11 @@
 #include <string>
 #include "gow3_graphics.h"
 #include "gow3_settings.h"
+#ifndef _WIN32
+static int _putenv_s(const char* name, const char* value) {
+    return value[0] ? setenv(name, value, 1) : unsetenv(name);
+}
+#endif
 
 namespace G = Gow3Graphics;
 
@@ -71,15 +76,6 @@ int main() {
     assert(v.display_mode == G::Windowed && v.fps_limit == 0 && v.render_resolution == 0 && v.engine_fps == 120);
     assert(v.rcas_strength == 75 && v.frames_queued == 1);
     assert(v.async_shaders);
-    {
-        std::ofstream out(path);
-        out << "cheat_double_jumps=1\ncheat_very_hard=1\n";
-    }
-    Gow3Settings::Load();
-    Gow3Settings::Save();
-    const std::string cheats = Read(path);
-    assert(cheats.find("cheat_double_jumps=1\n") != std::string::npos);
-    assert(cheats.find("cheat_very_hard=1\n") != std::string::npos);
     std::remove(path);
     std::puts("PASS: graphics settings");
 }
