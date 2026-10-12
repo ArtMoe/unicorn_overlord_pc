@@ -7,8 +7,9 @@ Read this first, then `PLAN.md` (phases) and `RE_NOTES.md` (reverse-engineering 
 A fork of [gow3_pc](https://github.com/FelipePrado0/gow3_pc) (itself from bloodborne_pc) adapted to
 **Odin Sphere Leifthrasir, PS4, CUSA05083 (US, UP0177), app version 01.01**. The PS4 eboot runs
 natively on x86-64; `src/runtime_*.c` replaces the PS4 system libraries; `gpu/shadps4` (shadPS4
-video core) translates GPU work to Vulkan. Branch: `odin-sphere`. vw-specific hooks/patches are
-gated on CUSA01623 01.02 and stay inert.
+video core) translates GPU work to Vulkan. Branch: `odin-sphere`. The God of War III parts
+(cheats, temporal upscalers, its launcher) were removed on 2026-10-13; see
+`docs/CLEANUP_HANDOFF.md`.
 
 Game files are **not** in the repo and must never be committed (copyright; GitHub size limits).
 `out_odin/` and `out/` hold dump-derived binaries and are git-ignored.
@@ -53,8 +54,8 @@ user data points to, ahead of the GPU thread; Odin Sphere rewrites that table in
 sprite parts, and only the flattened user data was verified. `BindVertexBuffers` now re-reads the
 V#s and drops the prepared vertex inputs when they differ. Found by bisecting `VW_TOGGLE_FILE`.
 
-FSR 3.1 (the GPU default) rendered below 1080p and dropped translucent UI layers: run.sh now sets
-`VW_UPSCALER=none VW_READBACK_LINEAR=1` for CUSA05083 (as run.py).
+FSR 3.1 (then the GPU default) rendered below 1080p and dropped translucent UI layers; the
+temporal upscalers have since been removed. `VW_READBACK_LINEAR=1` stays in the game profile.
 
 **Render scale (Phase 7, `src/odin_render_scale.h`, `install_odin_render_scale` in probe.c).**
 `render_resolution=` in vw.ini (the in-game menu's "Render resolution": native, 1440p, 1800p,
@@ -106,7 +107,7 @@ Copy the dump (folder `CUSA05083` with `eboot.bin`, `sce_module/`, `sce_sys/`, `
 VW_GAME_DIR=/path/to/CUSA05083 VW_DATA_DIR=$PWD/run bash run.sh   # or python3 run.py
 ```
 
-`run.py`/`run.sh` re-run the preparation scripts (`scripts/prepare.py`, `link_libc.py`,
+`run.sh` builds, then runs `run.py`, which re-runs the preparation scripts (`scripts/prepare.py`, `link_libc.py`,
 `link_modules.py`) into `$VW_DATA_DIR/out` automatically. Verify the eboot first:
 sha256 `2865b6cec33f2515def173c1ed0c03afc27a1cd5fad1b0d0f516b4527aba9a88`.
 
@@ -119,7 +120,7 @@ problems): `gpu-screen-recorder -w eDP-1 -f 60 -o rec.mkv`.
 
 Things to check on Linux that were only verified on Windows:
 - `runtime_eventflag.c` waits use `CLOCK_MONOTONIC` there (Windows uses `CLOCK_REALTIME`).
-- `run.py` and `run.sh` both set `VW_DISABLED_OPTIMIZATIONS` for CUSA05083.
+- `scripts/game_profiles.py` sets `VW_DISABLED_OPTIMIZATIONS` for CUSA05083.
 - The Linux watchdog (`--timeout`, thread dumps on SIGALRM) replaces `VW_HANG_DUMP`.
 - `tests/`: `python -m unittest discover -s tests` (4 tests failed on Windows only: symlink
   privilege, CRLF run.sh, nix paths — expected to pass on Linux).
@@ -148,15 +149,14 @@ Key finding: frame limiter `FUN_006b3eb0` — waits `sceVideoOutWaitVblank`, the
 
 ## Per-game settings, saves, GPU workarounds (review 2026-10-12)
 
-- `scripts/game_profiles.py`: one place for a game's launch settings, read by run.py and run.sh
-  (Odin Sphere: optimizations 35-37 off, no upscaler, linear readbacks, no readback shortcuts,
-  `VW_FIXED_TIMESTEP=1` for the menu, no God of War III resolution/frame rate patch names).
+- `scripts/game_profiles.py`: one place for a game's launch settings, read by run.py
+  (Odin Sphere: optimizations 35-37 off, linear readbacks, no readback shortcuts).
 - Saves (`/savedataN`) opened for writing go through a temporary copy (`<name>.<n>.vwsave`),
   synced and renamed over the file on close: a crash mid-save keeps the old save (from bbport,
   its #64; Windows: `_commit` + `MoveFileEx`). Leftover copies are removed when saves mount.
   `tests/test_save_commit.c` (build.sh --test).
 - `RADV_DEBUG=nohiz` is set for GCN 3-5 GPUs under RADV (Polaris, Vega and their APUs: HiZ showed
-  black halos/missing geometry in bbport, its #54/#99), from `vw-gpu-capabilities --device`;
+  black halos/missing geometry in bbport, its #54/#99), from `vwport --gpu-device`;
   `VW_AUTO_NOHIZ=0` or a user RADV_DEBUG keeps it off. This laptop runs the game on its
   discrete RX 560X (Polaris 11); the Vega 8 iGPU is the second device.
 - Render scale: all hooks are checked for range before any is written (a partly scaled frame
@@ -166,20 +166,19 @@ Key finding: frame limiter `FUN_006b3eb0` — waits `sceVideoOutWaitVblank`, the
 
 ## Launcher and packages
 
-`launcher/odin_launcher.py`: Tkinter launcher (Windows and Linux) with the dump's own artwork
-(sce_sys/pic1.png, icon0.png), the game folder check (CUSA05083 01.01), render resolution,
-display mode, VSync, FPS counter and sharpening (vw.ini), Play, log, saves folder.
-`python3 packaging/odin_package.py` (after build.sh) freezes it with PyInstaller into one
-executable that also runs run.py and the scripts, and writes `dist/Odin Sphere PC/`:
-the launcher, README.txt and runtime/ (16 files; data/ is created on first start), plus a
-.tar.gz (Linux) or .zip (Windows, from MSYS2 CLANG64 with a Windows Python; not tried yet).
-run.py now runs on Linux too; the in-game restart uses VW_RESTART_COMMAND on Linux as well.
+`launcher/vw_launcher.py`: Tkinter launcher (Windows and Linux), themed per game (`GAMES`);
+`launcher/odin_launcher.py` starts it for Odin Sphere. The dump's own artwork (sce_sys/pic1.png,
+icon0.png), the game folder check (CUSA05083 01.01), render resolution, display mode, VSync,
+FPS counter, FSR 1 and sharpening (vw.ini), Play, log, saves folder.
+`python3 packaging/package.py odin` builds the static executable (`build.sh --static`) and
+writes `dist/Odin Sphere PC/` with four files: the launcher (PyInstaller, with run.py, scripts/
+and patches/ inside), `vwport`, README.txt and LICENSE, plus a .tar.gz. Windows:
+`bash packaging/windows/build.sh odin` in MSYS2 CLANG64 (not tried since the cleanup).
 
 ## Next steps (Phase 2–4, see PLAN.md)
 
 1. Press past the title: New Game → first chapter; watch for missing files, CRI USM movie
    playback, save writing (`run/user`), errors in the log.
 2. Fix crashes/rendering issues as they show up (frame dumps + `VW_TOGGLE_FILE` bisecting).
-3. Rebrand the launcher later (Phase 6).
-4. Enhancements (Phase 7): render scale done (above); high fps needs interpolation of the
-   triple-buffered render state or frame generation; render_scale in the launcher UI; cheats.
+3. Enhancements (Phase 7): render scale done (above, also in the launcher); high fps needs
+   interpolation of the triple-buffered render state or frame generation.
