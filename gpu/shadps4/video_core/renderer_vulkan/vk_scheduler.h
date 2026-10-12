@@ -748,8 +748,10 @@ public:
             return;
         }
         if (!record_chunk->Push(std::forward<Func>(func))) {
-            full_chunks.push_back(std::move(record_chunk));
-            record_chunk = AcquireChunk();
+            // The replacement is taken first: record_chunk is never null, even for a fault
+            // handler recording on this thread meanwhile (from bbport).
+            auto next = AcquireChunk();
+            full_chunks.push_back(std::exchange(record_chunk, std::move(next)));
             const bool pushed = record_chunk->Push(std::forward<Func>(func));
             ASSERT(pushed);
         }
@@ -769,8 +771,8 @@ public:
         }
         ASSERT(bytes + 1024 <= RecordChunk::Capacity);
         if (RecordChunk::Capacity - record_chunk->Size() < bytes + 1024) {
-            full_chunks.push_back(std::move(record_chunk));
-            record_chunk = AcquireChunk();
+            auto next = AcquireChunk();
+            full_chunks.push_back(std::exchange(record_chunk, std::move(next)));
         }
     }
 
