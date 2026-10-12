@@ -132,7 +132,7 @@ static ABI int32_t posix_nanosleep(const GuestTimespec *rq,GuestTimespec *rem) {
     if (rem) { rem->sec=0; rem->nsec=0; }
     return 0;
 }
-/* A base PS4 without sanitizers: no PS4 Pro mode, no sanitizer hooks. */
+/* No sanitizers: no sanitizer hooks. */
 static ABI int32_t kernel_false(void) { return 0; }
 static ABI int32_t kernel_not_found(void) { return (int32_t)0x80020002; }
 static ABI int32_t kernel_nanosleep(const GuestTimespec *rq,GuestTimespec *rem) {
