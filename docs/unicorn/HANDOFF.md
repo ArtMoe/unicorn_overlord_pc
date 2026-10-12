@@ -40,15 +40,15 @@ shown so far (everything through the first battle renders and the text is Englis
 ## Running
 
 ```
-GOW3_GAME_DIR=$HOME/Downloads/game_dump/CUSA36381 GOW3_DATA_DIR=$HOME/odin_sphere_pc/run_uo bash run.sh
+VW_GAME_DIR=$HOME/Downloads/game_dump/CUSA36381 VW_DATA_DIR=$HOME/odin_sphere_pc/run_uo bash run.sh
 ```
-(with the shell environment cleaned as in docs/odin/HANDOFF.md). Saves, caches and gow3.ini are
+(with the shell environment cleaned as in docs/odin/HANDOFF.md). Saves, caches and vw.ini are
 in `run_uo/`. The launcher and package (`launcher/odin_launcher.py`, `packaging/odin_package.py`)
 are Odin Sphere's; they check the title ID and need a Unicorn Overlord variant.
 
 ## What the port needed (commit 1f99c4c)
 
-Imports: 720 (Odin Sphere 215), 44 required modules. `out/gow3-probe … --check-imports` lists
+Imports: 720 (Odin Sphere 215), 44 required modules. `out/vwport … --check-imports` lists
 every import the game would stop at without running it; names come from shadPS4's
 `aerolib.inl` (~/.local/src/ps4tools/aerolib.inl).
 
@@ -80,13 +80,13 @@ Still missing (stop when first called): `sceVideodec2*` (movies: an FFmpeg backe
 Measured in the first battle (scripts below drive there):
 - ~6000 draws per frame (`perf probe` on `Vulkan::Rasterizer::DrawRecord`: 584,069 in 5 s at
   ~20 FPS): every sprite part, unit, building and effect is its own draw.
-- Two threads saturate: `shadPS4:GpuComm` (PM4 decode, stage A) and `gow3:DrawRec` (draw
+- Two threads saturate: `shadPS4:GpuComm` (PM4 decode, stage A) and `vw:DrawRec` (draw
   recording, stage B), ~6 µs per draw each. 60 FPS needs < ~2.7 µs.
 
 Done — **draw pipe batching** (commit b426b8b, `vk_draw_pipe.h`, also merged into odin-sphere):
 each draw was handed to stage B with a seq_cst store to the line B polls, plus a read of B's
 position per Begin, plus a locked add on a counter sharing a line with A's. Now draws are
-published every 16 (`GOW3_PIPE_BATCH`) and before A drains, waits for ring space, yields
+published every 16 (`VW_PIPE_BATCH`) and before A drains, waits for ring space, yields
 (`YIELD` in liverpool.cpp) or ends a submission; the space check uses the last position seen.
 18.6 → 27.3 FPS. bbport (the project this port was forked from) still publishes per draw.
 
@@ -106,12 +106,12 @@ Next steps, by expected gain:
    of the buffer cache lookup); skip rebinding resources/textures identical to the previous draw.
 2. Stage A: a pipeline fast path keyed on the pipeline-relevant state and the specialization
    inputs only (not user data addresses); cheaper register packet application.
-3. Then test the God of War III options: `GOW3_DEFERRED_READBACK=1 GOW3_STALE_READBACK=1`
+3. Then test the God of War III options: `VW_DEFERRED_READBACK=1 VW_STALE_READBACK=1`
    (run.py enables them by default, run.sh does not) and toggle bits 35-37 (EarlyDrawInputs,
    ConstantRing, DrawPipeline; Odin Sphere needs them off — black/partial frames and flicker),
    one at a time, checking the battle and menus for glitches.
 4. FPS measurement: frame dumps for every frame (`fps.sh`) cost time themselves; the overlay's
-   FPS (`frame_ms_avg` in gpu/shim/gow3_overlay.cpp, Render()) is the accurate one — log it to
+   FPS (`frame_ms_avg` in gpu/shim/vw_overlay.cpp, Render()) is the accurate one — log it to
    stdout behind an env variable for scripted runs.
 5. Move `TITLE_MODULES` (link_modules.py) into `scripts/game_profiles.py` with a CUSA36381
    profile, like Odin Sphere's.
@@ -119,16 +119,16 @@ Next steps, by expected gain:
 ## Test machine notes
 
 - Two GPUs: Radeon RX 560X (Polaris 11, `card1`, 01:00.0) and Vega 8 (Raven, 04:00.0). The
-  renderer prefers the discrete one; `out/gow3-gpu-capabilities --device` prints the one it uses.
+  renderer prefers the discrete one; `out/vw-gpu-capabilities --device` prints the one it uses.
   Both get `RADV_DEBUG=nohiz` automatically (game_profiles.radv_nohiz).
 - `perf` works for user-space profiling of the game; uprobes (`perf probe -x
-  out/gpu/libgow3gpu.so`, addresses from `readelf -Ws | c++filt`) need sudo.
+  out/gpu/libvwgpu.so`, addresses from `readelf -Ws | c++filt`) need sudo.
 
 ## Driving the game (scratchpad scripts, not in the repo)
 
-The pad is a file (`GOW3_PAD_FILE`): `press.sh <seconds> <buttons>` writes button names
+The pad is a file (`VW_PAD_FILE`): `press.sh <seconds> <buttons>` writes button names
 (cross, circle, options, up, …) or `lx=`/`ly=` for the left stick. Frame dumps
-(`GOW3_FRAME_DUMP_TRIGGER`) show the game's own output without screen capture.
+(`VW_FRAME_DUMP_TRIGGER`) show the game's own output without screen capture.
 - `uo_run.sh [seconds]`: launch through run.sh, log to `uo.log`, print the first STOP.
 - `uo_to_battle.sh`: launch and press through title → New Game → story (≈120 Cross presses with
   1.7 s gaps) to the first battle; timing varies, a few extra presses may be needed.

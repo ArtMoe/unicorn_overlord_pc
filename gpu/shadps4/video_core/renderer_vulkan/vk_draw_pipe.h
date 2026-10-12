@@ -77,7 +77,7 @@ public:
     }
 
     /// Stage A: hands the packet from Begin() to stage B.
-    /// gow3: packets are published to stage B in batches (GOW3_PIPE_BATCH, default 16): each
+    /// vw: packets are published to stage B in batches (VW_PIPE_BATCH, default 16): each
     /// publication is a fenced store to a line stage B polls, and sprite-heavy games hand over
     /// ~6000 draws a frame. Stage A publishes before it waits for B (Drain, ring space), yields
     /// to another queue or ends a submission.
@@ -86,7 +86,7 @@ public:
         head += pending_size;
         ++packets;
         static const u32 batch_size = [] {
-            const char* env = std::getenv("GOW3_PIPE_BATCH");
+            const char* env = std::getenv("VW_PIPE_BATCH");
             return env ? std::max(1, std::atoi(env)) : 16;
         }();
         if (++unpublished >= batch_size) {

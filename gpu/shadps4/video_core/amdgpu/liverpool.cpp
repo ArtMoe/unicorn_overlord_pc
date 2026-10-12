@@ -43,7 +43,7 @@ static const char* acb_task_name[] = NAME_ARRAY(ACB_TASK, MAX_NAMES);
 
 #define YIELD(name)                                                                                \
     if (rasterizer) {                                                                              \
-        rasterizer->PublishDrawPipe(); /* gow3: batched draws reach the recording thread */       \
+        rasterizer->PublishDrawPipe(); /* vw: batched draws reach the recording thread */       \
     }                                                                                              \
     FIBER_EXIT;                                                                                    \
     co_yield {};                                                                                   \
