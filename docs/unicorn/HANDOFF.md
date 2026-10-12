@@ -1,7 +1,7 @@
 # Unicorn Overlord (CUSA36381, Asia, v01.04) — handoff
 
 Branch `unicorn-overlord` of `hachi23/odin_sphere_pc` (it contains all of `odin-sphere`, merged
-2026-10-13). Same method as Odin Sphere and God of War III: the game's x86-64 code runs natively,
+2026-10-13). Same method as Odin Sphere: the game's x86-64 code runs natively,
 `src/runtime_*.c` replaces the PS4 libraries, `gpu/shadps4` translates the GPU to Vulkan.
 Read `docs/odin/HANDOFF.md` first for building on Linux, the run scripts and the tooling.
 
@@ -41,10 +41,41 @@ shown so far (everything through the first battle renders and the text is Englis
 
 ```
 VW_GAME_DIR=$HOME/Downloads/game_dump/CUSA36381 VW_DATA_DIR=$HOME/odin_sphere_pc/run_uo bash run.sh
+python3 launcher/unicorn_launcher.py          # the launcher (data: run_uo/)
+python3 packaging/package.py unicorn          # dist/Unicorn Overlord PC/: 4 files
 ```
 (with the shell environment cleaned as in docs/odin/HANDOFF.md). Saves, caches and vw.ini are
-in `run_uo/`. The launcher and package (`launcher/odin_launcher.py`, `packaging/odin_package.py`)
-are Odin Sphere's; they check the title ID and need a Unicorn Overlord variant.
+in `run_uo/`. `run.sh` builds and then runs `run.py`, so since 2026-10-13 UO runs with run.py's
+defaults: deferred and stale readbacks on (graphics options in vw.ini). The battle rendered
+correctly with them; switch them off in the menu if something looks wrong.
+
+The per-game settings are in `scripts/game_profiles.py` (`CUSA36381`: the native PSN modules).
+
+## Render resolution (PS4 Pro path)
+
+`VW_RENDER_SCALE=1440p|1800p|4K` (or the launcher's Resolution, `render_resolution=` in vw.ini)
+sets `VW_NEO_MODE=1` (sceKernelIsNeoMode returns 1) and, below 4K, patches the six `mov ecx,
+imm32` operands of the game's width/height getters (`src/unicorn_render_scale.h`). Checked: 4K
+title and battle, 1440p title, menu and battle. Native (1080p) is the base PS4 path.
+
+## Graphics options in the game code (Ghidra survey, 2026-10-13)
+
+The game has no graphics settings of its own (no AA, shadow or quality options; it is a 2D
+sprite renderer). The only switch is the PS4 Pro check `FUN_00218680` (sceKernelIsNeoMode),
+read through `FUN_0003f470` (bool) and the size getters:
+
+| Where | What the Pro path changes |
+|---|---|
+| `FUN_0003e2b0`/`FUN_0003e2d0` (+ inlined in `FUN_0003cb60`) | Render/display size 3840x2160 instead of 1920x1080 (the patched immediates) |
+| `FUN_0003fa20` (display setup) | `FUN_002153a0(ctx, 0xff, 1, 0)` instead of `FUN_00215330(ctx, 0xff, 0)`: the video-out/render target mode for 4K; then the viewport from the getters |
+| `FUN_00041c50` | Viewport width/height floats from the getters |
+| `FUN_00503ec0` (startup) | A larger memory budget (base: `0x29f19c00`) |
+| `FUN_00232650`, `FUN_003871e0` | UI/text layout sizes from tables (ids 0x22e, 0x235) times 0.5: the Pro path loads `Font_4K/*.ftx` and other double-size UI assets |
+
+So the Pro path is the game's own high-resolution mode (4K fonts and UI art), not only a bigger
+render target: above 1080p it gives sharper text and UI as well as supersampling.
+Image options on the port side: render resolution (supersampling to the window), FSR 1 and RCAS
+(for a window larger than the render size), in the launcher and the in-game menu.
 
 ## What the port needed (commit 1f99c4c)
 
@@ -106,15 +137,13 @@ Next steps, by expected gain:
    of the buffer cache lookup); skip rebinding resources/textures identical to the previous draw.
 2. Stage A: a pipeline fast path keyed on the pipeline-relevant state and the specialization
    inputs only (not user data addresses); cheaper register packet application.
-3. Then test the God of War III options: `VW_DEFERRED_READBACK=1 VW_STALE_READBACK=1`
-   (run.py enables them by default, run.sh does not) and toggle bits 35-37 (EarlyDrawInputs,
-   ConstantRing, DrawPipeline; Odin Sphere needs them off — black/partial frames and flicker),
-   one at a time, checking the battle and menus for glitches.
-4. FPS measurement: frame dumps for every frame (`fps.sh`) cost time themselves; the overlay's
-   FPS (`frame_ms_avg` in gpu/shim/vw_overlay.cpp, Render()) is the accurate one — log it to
-   stdout behind an env variable for scripted runs.
-5. Move `TITLE_MODULES` (link_modules.py) into `scripts/game_profiles.py` with a CUSA36381
-   profile, like Odin Sphere's.
+3. Toggle bits 35-37 (EarlyDrawInputs, ConstantRing, DrawPipeline; Odin Sphere needs them
+   off: black/partial frames and flicker), one at a time, checking the battle and menus.
+4. FPS measurement: `VW_FPS_LOG=1` prints `[fps] X (Y ms)` once a second.
+
+UO performance work is paused (2026-10-13): a fetch-V# snapshot and a draw-merge diagnostic
+gave no gain (git stash "uo session 2026-10-13", kept for reference). The next question is
+why only two threads are busy on a 4-core/8-thread CPU (see the cleanup handoff).
 
 ## Test machine notes
 
