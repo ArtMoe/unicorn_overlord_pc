@@ -1735,6 +1735,19 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
             ? &prepared->vertex
             : nullptr;
     if (ready) {
+        // The V#s come from the table the user data points to, not from the flattened user
+        // data the prepared draw was verified against: a table rewritten in place between draws
+        // (Odin Sphere's sprite parts) leaves the worker's copy stale.
+        const auto& vs_info = pipeline->GetStage(Shader::SwStage::Vertex);
+        for (u32 i = 0; i < ready->count; ++i) {
+            const auto live = fetch->attributes[i].GetSharp(vs_info);
+            if (std::memcmp(&live, &ready->buffers[i], sizeof(live)) != 0) {
+                ready = nullptr;
+                break;
+            }
+        }
+    }
+    if (ready) {
         attributes.assign(ready->attributes, ready->attributes + ready->count);
         bindings.assign(ready->bindings, ready->bindings + ready->count);
         guest_buffers.assign(ready->buffers, ready->buffers + ready->count);

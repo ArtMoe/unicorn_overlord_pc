@@ -42,6 +42,20 @@ Changes on top of gow3_pc:
   wchar.h` for vendored code, and `-Wno-unused-but-set-global` on the loader. Linux builds are
   unaffected by these.
 
+**Phase 2 (in game, Linux) — started 2026-10-12.** On Linux (CachyOS, AMD Raven Ridge, KDE
+Wayland) the game runs New Game → voice language → attic → "Valkyrie" prologue → cutscenes
+(Options → SKIP ALL) → Gwendolyn's first stage (Storming Battlefields) with movement, jump,
+attack, HUD, minimap and area wipes correct, all GPU optimizations except 35-37 on.
+
+Fixed: character sprites (Alice, Socrates, the book; every multi-part sprite) drew as scrambled
+blocks. Draw preparation (toggle bits 4096/8192) read the fetch shader's V#s from the table the
+user data points to, ahead of the GPU thread; Odin Sphere rewrites that table in place between
+sprite parts, and only the flattened user data was verified. `BindVertexBuffers` now re-reads the
+V#s and drops the prepared vertex inputs when they differ. Found by bisecting `GOW3_TOGGLE_FILE`.
+
+Open: on the plain text prompts ("There is no save data", voice language) the guest display
+buffer has a grey band and text glow that the presented image lacks.
+
 ## Building on Linux
 
 ```sh
@@ -62,6 +76,13 @@ GOW3_GAME_DIR=/path/to/CUSA05083 GOW3_DATA_DIR=$PWD/run bash run.sh   # or pytho
 `run.py`/`run.sh` re-run the preparation scripts (`scripts/prepare.py`, `link_libc.py`,
 `link_modules.py`) into `$GOW3_DATA_DIR/out` automatically. Verify the eboot first:
 sha256 `2865b6cec33f2515def173c1ed0c03afc27a1cd5fad1b0d0f516b4527aba9a88`.
+
+Arch/CachyOS: `pacman -S boost robin-map zydis spirv-headers spirv-cross` (+ the usual vulkan,
+sdl3, ffmpeg, fmt, xxhash, glslang); VulkanMemoryAllocator is not packaged, so clone it and pass
+`CMAKE_INCLUDE_PATH=<VMA>/include` to `build.sh`. xbyak comes from `gpu/third_party/xbyak` on all
+platforms. A shell that exports another toolchain (CC/CXX/CMAKE_SYSROOT/LDFLAGS) breaks the
+build; unset those first. Real-screen capture at 60 fps (frame dumps do not show presentation
+problems): `gpu-screen-recorder -w eDP-1 -f 60 -o rec.mkv`.
 
 Things to check on Linux that were only verified on Windows:
 - `runtime_eventflag.c` waits use `CLOCK_MONOTONIC` there (Windows uses `CLOCK_REALTIME`).
