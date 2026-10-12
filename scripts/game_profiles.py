@@ -3,9 +3,8 @@
 """Per-game launch settings, one place for run.py and run.sh.
 
 `defaults` apply unless the variable is already set; `forced` always apply (they are what the
-port was tested with). `graphics_patches` False: the startup resolution and frame rate options of
-gow3.ini are not God of War III patch names for this game (Odin Sphere's render resolution is a
-code patch in the probe, src/odin_render_scale.h).
+port was tested with). Render resolution is a code patch in the probe for each game
+(src/odin_render_scale.h).
 
 Shell use (run.sh): python3 scripts/game_profiles.py GAME_DIR prints `export` lines;
 `--nohiz CAPABILITIES` the RADV workaround for the game's GPU (radv_nohiz).
@@ -20,8 +19,6 @@ PROFILES = {
             # The draw pipeline (bit 37) presents black/partial frames; early draw inputs and
             # the constant ring (bits 35, 36) flicker.
             'GOW3_DISABLED_OPTIMIZATIONS': str((1 << 35) | (1 << 36) | (1 << 37)),
-            # FSR 3 renders below 1080p and drops translucent UI layers here.
-            'GOW3_UPSCALER': 'none',
             'GOW3_READBACK_LINEAR': '1',
         },
         'forced': {
@@ -31,7 +28,6 @@ PROFILES = {
             'GOW3_DEFERRED_READBACK': '0',
             'GOW3_STALE_READBACK': '0',
         },
-        'graphics_patches': False,
     },
 }
 
@@ -73,10 +69,6 @@ def device_name(capabilities):
     except (OSError, subprocess.SubprocessError):
         return ''
     return out.strip().partition('\t')[2]
-
-
-def graphics_patches(title_id):
-    return profile(title_id).get('graphics_patches', True)
 
 
 def main():

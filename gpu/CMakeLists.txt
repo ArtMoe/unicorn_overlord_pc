@@ -215,10 +215,6 @@ if (WIN32)
     target_link_libraries(pad-map-test PRIVATE PkgConfig::SDL3 bcrypt -pthread)
     add_executable(gow3-gpu-capabilities ../tools/gpu_capabilities.c ../packaging/windows/gow3-gpu-capabilities.rc)
     target_link_libraries(gow3-gpu-capabilities PRIVATE Vulkan::Vulkan)
-    # "Play God of War III.exe": the game with the launcher's saved settings, no launcher window.
-    add_executable(gow3-play WIN32 ../packaging/windows/play.c ../packaging/windows/play.rc)
-    target_compile_options(gow3-play PRIVATE -municode)
-    target_link_options(gow3-play PRIVATE -municode)
 endif()
 
 # Explicit test targets; neither launches the game nor needs a Vulkan device.

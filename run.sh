@@ -19,10 +19,6 @@ data=${GOW3_DATA_DIR:-.}
 out=$data/out
 mkdir -p "$out"
 export GOW3_CONFIG=${GOW3_CONFIG:-$data/gow3.ini}
-# FSR 4.1.1 assets (tools/fsr4cap/build_assets.sh): next to run.sh or in the data directory.
-if [[ -z ${GOW3_FSR411_DIR:-} && ! -d fsr4_411 && -d $data/fsr4_411 ]]; then
-    export GOW3_FSR411_DIR=$data/fsr4_411
-fi
 if [[ -z ${GOW3_PREBUILT:-} && -z ${GOW3_IN_NIX_SHELL:-} ]] && ! { command -v pkg-config >/dev/null && pkg-config --exists vulkan sdl3; } && command -v nix-shell >/dev/null; then
     args=''; if (( $# )); then args=$(printf '%q ' "$@"); fi
     exec env GOW3_IN_NIX_SHELL=1 nix-shell shell.nix --run "bash run.sh $args"
@@ -36,8 +32,8 @@ if [[ -z ${PYTHON:-} ]]; then
     fi
 fi
 if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1; fi
-# GOW3_GAME_DIR: the game's folder (eboot.bin, sce_module, ...); default next to this directory.
-game=${GOW3_GAME_DIR:-../CUSA01623}
+# GOW3_GAME_DIR: the game's folder (eboot.bin, sce_module, ...).
+game=${GOW3_GAME_DIR:?Set GOW3_GAME_DIR to the game folder (eboot.bin, sce_module, ...).}
 if [[ ! -f $game/eboot.bin ]]; then echo "No eboot.bin in $game (set GOW3_GAME_DIR)." >&2; exit 1; fi
 # Per-game settings (scripts/game_profiles.py, shared with run.py).
 eval "$("$PYTHON" scripts/game_profiles.py "$game")"
@@ -57,10 +53,6 @@ fi
 # GOW3_PATCHES adds patch names ("a;b") to the game's built-in patch file.
 "$PYTHON" scripts/patches.py --out "$out" --extra "${GOW3_PATCHES:-}" --game-dir "$game"     --patches-dir "${GOW3_PATCHES_DIR:-$data/patches}" --patches-config "${GOW3_PATCHES_CONFIG:-$data/patches.json}"
 export GOW3_VBLANK_HZ=${GOW3_VBLANK_HZ:-60}
-# FSR 4: faster post passes next to the downloaded ones (incremental; tools/fsr4_optimize.sh).
-if [[ -z ${GOW3_PREBUILT:-} && -d fsr4_shaders ]] && command -v spirv-cross >/dev/null; then
-    bash tools/fsr4_optimize.sh || echo 'FSR 4: optimized post passes not built' >&2
-fi
 if [[ -n ${GOW3_PREBUILT:-} ]]; then
     probe=${GOW3_PROBE:-bin/gow3-probe}
 else
