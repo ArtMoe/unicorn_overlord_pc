@@ -106,6 +106,14 @@ static ABI uint64_t tsc_frequency(void) {
 uint64_t runtime_process_time_us(void) { return process_time(); }
 uint64_t runtime_process_time_counter(void) { return process_time_counter(); }
 uint64_t runtime_tsc_frequency(void) { return tsc_frequency(); }
+/* VW_NEO_MODE=1 reports a PS4 Pro: games pick their Pro rendering path (higher resolution,
+ * 4K assets). The GPU library asks the same function, so both sides agree. */
+int runtime_neo_mode(void) {
+    static int neo=-1;
+    if (neo<0) { const char *v=getenv("VW_NEO_MODE"); neo=v && v[0]=='1'; }
+    return neo;
+}
+static ABI int32_t kernel_is_neo_mode(void) { return runtime_neo_mode(); }
 static int sleep_ns(uint64_t ns) {
 #ifdef _WIN32
     compat_sleep_ns(ns);
@@ -369,6 +377,7 @@ static const RuntimeExport exports[]={
     {"sceKernelGetProcessTimeCounterFrequency",process_time_frequency},
     {"sceKernelReadTsc",read_tsc}, {"sceKernelGetTscFrequency",tsc_frequency},
     {"sceKernelUsleep",kernel_usleep}, {"usleep",posix_usleep}, {"sleep",posix_sleep},
+    {"sceKernelIsNeoMode",kernel_is_neo_mode},
     {"nanosleep",posix_nanosleep}, {"sceKernelNanosleep",kernel_nanosleep},
     {"sceKernelGettimezone",kernel_gettimezone}, {"gettimeofday",posix_gettimeofday},
     {"sceKernelGettimeofday",kernel_gettimeofday},
