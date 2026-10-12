@@ -50,6 +50,8 @@ void AddBuffers(Entry& entry) {
     pending_buffers.clear();
 }
 bool pass_open = false;
+// GOW3_CAPTURE_FRAMES: display passes recorded into one capture (default 1).
+u32 frames_left = 0;
 std::mutex display_mutex;
 std::vector<VAddr> display_buffers;
 // gow3: read on every draw; the game registers a handful of display buffers once.
@@ -227,19 +229,26 @@ void FrameCapture::BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_
     const bool new_pass = !(pass_open && !entries.empty() && !entries.back().compute &&
                             entries.back().colors == targets);
     if (display && new_pass) {
-        if (state.load(std::memory_order_relaxed) == Recording) {
+        if (state.load(std::memory_order_relaxed) == Recording && frames_left > 1) {
+            --frames_left;
+            entries.push_back({.compute = false, .colors = targets, .note = "--- display frame ---"});
+            pass_open = false;
+        } else if (state.load(std::memory_order_relaxed) == Recording) {
             Write(last_presented.load(std::memory_order_relaxed));
             entries.clear();
             pending_sampled.clear();
             pending_buffers.clear();
             state.store(Idle, std::memory_order_release);
             return;
-        }
+        } else {
         entries.clear();
         pending_sampled.clear();
         pending_buffers.clear();
         pass_open = false;
+        const char* frames = std::getenv("GOW3_CAPTURE_FRAMES");
+        frames_left = frames ? std::max(1, std::atoi(frames)) : 1;
         state.store(Recording, std::memory_order_release);
+        }
     }
     if (state.load(std::memory_order_relaxed) != Recording) {
         pending_sampled.clear();

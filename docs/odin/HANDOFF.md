@@ -53,6 +53,29 @@ user data points to, ahead of the GPU thread; Odin Sphere rewrites that table in
 sprite parts, and only the flattened user data was verified. `BindVertexBuffers` now re-reads the
 V#s and drops the prepared vertex inputs when they differ. Found by bisecting `GOW3_TOGGLE_FILE`.
 
+FSR 3.1 (the GPU default) rendered below 1080p and dropped translucent UI layers: run.sh now sets
+`GOW3_UPSCALER=none GOW3_READBACK_LINEAR=1` for CUSA05083 (as run.py).
+
+**Render scale (Phase 7, `src/odin_render_scale.h`, `install_odin_render_scale` in probe.c).**
+`render_scale=` in gow3.ini (`1080p`, `1440p`, `4k`, or a factor 1-3; `GOW3_RENDER_SCALE`
+overrides) renders at 1920x1080 times the factor; the 2D layout stays in 1080p units. Verified at
+1440p and 4K from the title through the attic, the book intro, cutscenes and the first stage
+(HUD, minimap) at 60 fps. Patched: render target/offscreen buffer/viewport immediates, the
+RENDERBUFFER heap (scale^2), view viewports (FUN_006b5f80), clip scissors (FUN_006b4140), the
+on-demand layer buffer (FUN_006b5900), and the texture sizes texel coordinates are divided by
+(sprite batches 0x6b87cf, layer composites 0x6b917e/0x6ba130: a scaled target counts as
+1920x1080 there). The last one was the 4K book-intro bug: the text layer was composited from the
+top-left quarter of the 4K layer, showing a stretched strip of the title logo left in it.
+`GOW3_RENDER_SCALE_PARTS` (bits, default 63) switches the parts off for bisecting.
+
+High fps: logic advances one fixed step per frame (an unlocked 120 Hz run plays at double
+speed), so the "Frame Limiter - VBlank Only" patch (patches/, off) is not a usable unlock; it
+needs render interpolation or frame generation.
+
+Debug aids: `GOW3_CAPTURE_FRAMES=<n>` records n display frames per capture;
+`GOW3_CAPTURE_VIEWPORTS=1` adds per-draw viewport/scissor state and texture sharps;
+`GOW3_DUMP_SHADERS=1` dumps newly compiled shaders to ~/.local/share/shadPS4/shader/dumps.
+
 Open: on the plain text prompts ("There is no save data", voice language) the guest display
 buffer has a grey band and text glow that the presented image lacks.
 
@@ -119,5 +142,5 @@ Key finding: frame limiter `FUN_006b3eb0` — waits `sceVideoOutWaitVblank`, the
    playback, save writing (`run/user`), errors in the log.
 2. Fix crashes/rendering issues as they show up (frame dumps + `GOW3_TOGGLE_FILE` bisecting).
 3. Rebrand the launcher later (Phase 6).
-4. Enhancements (Phase 7): resolution/FSR1, high fps (frame limiter above; check whether logic
-   steps per frame first), cheats, graphics options.
+4. Enhancements (Phase 7): render scale done (above); high fps needs interpolation of the
+   triple-buffered render state or frame generation; render_scale in the launcher UI; cheats.

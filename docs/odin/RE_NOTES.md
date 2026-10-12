@@ -26,3 +26,18 @@ step per frame (Vanillaware games usually do) or the 0x1f0 delta.
 
 - `sceGnmSubmitAndFlipCommandBuffers` / `...ForWorkload`: game wrappers at 0x682c00 /
   0x682c10 jump to the PLT stubs at 0x7d4e30 / 0x7d4e40.
+
+## Render targets and resolution (see src/odin_render_scale.h)
+
+- FUN_006ab500 sets up 3 "MAIN BUFFER[n]" + "DepthBuffer" pairs (1920x1080 immediates) and heaps;
+  "RENDERBUFFER" heap 0x4000000 (imm at 0x6ab61e), "TEXTURE" heap 0x10000000.
+- FUN_006adaa0(ctx, w, h): "USER OFFSCREEN BUFFER[n]" (4 slots, stride 0xe8, T# at +0x54); called
+  3x at init (1920x1080) and from FUN_006b5900 (layer buffer, size from the screen getters
+  FUN_006b3dd0/FUN_006b3de0 via FUN_006a90b0).
+- Screen config `[0xc456a8]+0x40`: floats w/h at +0x3c/+0x40 (projection; left at 1920x1080).
+- View: rect floats +0x284..+0x290, RT index +0x29c; FUN_006b5f80 sets its viewport through
+  0x744910 (Gnmx setupScreenViewport).
+- FUN_006b4140(ctx, cmd, x, y, w, h): clip scissor (FUN_006b34e0), tail-jumps to 0x6810c0.
+- Texel coordinates are divided by T# sizes read on the CPU: sprite batches (FUN_006b6aa0 @
+  0x6b87b1, constant to the sprite VS), layer composites (0x6b9165, 0x6ba126: 1/w, 1/h).
+- FUN_006b9740: rectangle clear in 1080p units (VS divides by a constant 1920x1080).

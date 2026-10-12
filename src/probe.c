@@ -9,6 +9,7 @@
 #include "orb_hook.h"
 #include "cheat_hook.h"
 #include "actor_hook.h"
+#include "odin_render_scale.h"
 #include "damage_hook.h"
 #include "gpu/gow3gpu.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
@@ -409,6 +410,131 @@ static void install_actor_watch(const char *app0, Segment *segments, uint64_t co
     printf("Health display: damage hook ready (enemy health bar in the menu)\n");
 }
 
+/* Odin Sphere Leifthrasir: GOW3_RENDER_SCALE=<factor> (1 < factor <= 3) renders at
+ * 1920x1080 times the factor (src/odin_render_scale.h); the presenter scales to the window. */
+static int odin_prefix(const char *text, const char *prefix) {
+    for (; *prefix; ++text, ++prefix)
+        if ((*text | 0x20) != *prefix) return 0;
+    return 1;
+}
+
+static float odin_render_scale_value(const char *text) {
+    while (*text == ' ' || *text == '\t') ++text;
+    if (odin_prefix(text, "1440p")) return 4.0f / 3.0f;
+    if (odin_prefix(text, "4k") || odin_prefix(text, "2160p")) return 2.0f;
+    if (odin_prefix(text, "1080p")) return 1.0f;
+    return strtof(text, NULL);
+}
+
+/* GOW3_RENDER_SCALE, else render_scale= in gow3.ini (GOW3_CONFIG): 1080p, 1440p, 4k or a factor. */
+static float odin_render_scale_setting(void) {
+    const char *env = getenv("GOW3_RENDER_SCALE");
+    if (env && *env) return odin_render_scale_value(env);
+    const char *config = getenv("GOW3_CONFIG");
+    FILE *f = config ? fopen(config, "r") : NULL;
+    float scale = 1.0f;
+    char line[256];
+    while (f && fgets(line, sizeof(line), f))
+        if (!strncmp(line, "render_scale=", 13)) scale = odin_render_scale_value(line + 13);
+    if (f) fclose(f);
+    return scale;
+}
+
+static void install_odin_render_scale(const char *app0, Segment *segments, uint64_t count,
+                                      uint64_t size) {
+    const float scale = odin_render_scale_setting();
+    if (!(scale > 1.0f)) return;
+    char path[4096], serial[32] = "", version[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
+    if (strcmp(serial, "CUSA05083") || strcmp(version, "01.01") || scale > 3.0f ||
+        !mapped(segments, count, ODIN_VIEWPORT_HOOK_OFFSET, ODIN_VIEWPORT_HOOK_LENGTH) ||
+        !odin_render_scale_signature_match(image, size)) {
+        printf("Render scale: unavailable (game version, code signature or factor %.2f)\n", scale);
+        return;
+    }
+    /* Debug: GOW3_RENDER_SCALE_PARTS bits 1 targets/viewport immediates, 2 view viewports, 4 heap,
+     * 8 clip scissors, 16 layer buffers, 32 texture sizes (sprites, layer composites). */
+    const char *parts_env = getenv("GOW3_RENDER_SCALE_PARTS");
+    const unsigned parts = parts_env ? (unsigned)strtoul(parts_env, NULL, 0) : 63;
+    const uint32_t width = (uint32_t)(1920.0f * scale + 0.5f) & ~1u;
+    const uint32_t height = (uint32_t)(1080.0f * scale + 0.5f) & ~1u;
+    unsigned char *stub = allocate(page_size);
+    const uint64_t at = ODIN_VIEWPORT_HOOK_OFFSET;
+    const int64_t delta = (int64_t)(uintptr_t)stub - (int64_t)(uintptr_t)(image + at + 5);
+    if (delta < INT32_MIN || delta > INT32_MAX) {
+        printf("Render scale: unavailable (hook outside relative-jump range)\n");
+        return;
+    }
+    /* The stubs scale by the rounded target width (2560/1920 for 1440p), so 1920 maps exactly. */
+    const float exact = (float)width / 1920.0f;
+    odin_viewport_build_stub(stub, exact, (uintptr_t)(image + at + ODIN_VIEWPORT_HOOK_LENGTH));
+    unsigned char *scissor = stub + 256;
+    odin_scissor_build_stub(scissor, exact, (uintptr_t)(image + ODIN_SCISSOR_TARGET));
+    unsigned char *layer = stub + 512;
+    odin_layer_build_stub(layer, width, height, (uintptr_t)(image + ODIN_LAYER_CALLEE),
+                          (uintptr_t)(image + ODIN_LAYER_HOOK_OFFSET + ODIN_LAYER_HOOK_LENGTH));
+    unsigned char *texsize = stub + 768;
+    odin_texsize_build_stub(texsize, width, height,
+                            (uintptr_t)(image + ODIN_TEXSIZE_HOOK_OFFSET + ODIN_TEXSIZE_HOOK_LENGTH));
+    unsigned char *uvscale[2] = {stub + 1024, stub + 1280};
+    for (unsigned i = 0; i < 2; ++i)
+        odin_uvscale_build_stub(uvscale[i], width, height,
+                                (uintptr_t)(image + odin_uvscale_hooks[i] + ODIN_UVSCALE_HOOK_LENGTH));
+    protect(stub, page_size, 5);
+    const int32_t relative = (int32_t)delta;
+    if (parts & 2) {
+        image[at] = 0xe9;
+        memcpy(image + at + 1, &relative, 4);
+        memset(image + at + 5, 0x90, ODIN_VIEWPORT_HOOK_LENGTH - 5);
+    }
+    for (unsigned i = 0; (parts & 1) && i < sizeof(odin_scale_width_imm) / sizeof(*odin_scale_width_imm); ++i) {
+        memcpy(image + odin_scale_width_imm[i], &width, 4);
+        memcpy(image + odin_scale_height_imm[i], &height, 4);
+    }
+    const float width_f = (float)width, height_f = (float)height;
+    for (unsigned i = 0; (parts & 1) && i < sizeof(odin_scale_width_float) / sizeof(*odin_scale_width_float); ++i) {
+        memcpy(image + odin_scale_width_float[i], &width_f, 4);
+        memcpy(image + odin_scale_height_float[i], &height_f, 4);
+    }
+    const uint32_t heap = ((uint32_t)(ODIN_RENDERBUFFER_HEAP_SIZE * scale * scale) + 0x1fffff) & ~0x1fffffu;
+    if (parts & 4) memcpy(image + ODIN_RENDERBUFFER_HEAP_IMM, &heap, 4);
+    const int64_t scissor_delta = (int64_t)(uintptr_t)scissor -
+                                  (int64_t)(uintptr_t)(image + ODIN_SCISSOR_HOOK_OFFSET + 5);
+    if ((parts & 8) && scissor_delta >= INT32_MIN && scissor_delta <= INT32_MAX) {
+        const int32_t rel = (int32_t)scissor_delta;
+        image[ODIN_SCISSOR_HOOK_OFFSET] = 0xe9;
+        memcpy(image + ODIN_SCISSOR_HOOK_OFFSET + 1, &rel, 4);
+    }
+    const int64_t layer_delta = (int64_t)(uintptr_t)layer -
+                                (int64_t)(uintptr_t)(image + ODIN_LAYER_HOOK_OFFSET + 5);
+    if ((parts & 16) && layer_delta >= INT32_MIN && layer_delta <= INT32_MAX) {
+        const int32_t rel = (int32_t)layer_delta;
+        image[ODIN_LAYER_HOOK_OFFSET] = 0xe9;
+        memcpy(image + ODIN_LAYER_HOOK_OFFSET + 1, &rel, 4);
+        memset(image + ODIN_LAYER_HOOK_OFFSET + 5, 0x90, ODIN_LAYER_HOOK_LENGTH - 5);
+    }
+    const int64_t texsize_delta = (int64_t)(uintptr_t)texsize -
+                                  (int64_t)(uintptr_t)(image + ODIN_TEXSIZE_HOOK_OFFSET + 5);
+    if ((parts & 32) && texsize_delta >= INT32_MIN && texsize_delta <= INT32_MAX) {
+        const int32_t rel = (int32_t)texsize_delta;
+        image[ODIN_TEXSIZE_HOOK_OFFSET] = 0xe9;
+        memcpy(image + ODIN_TEXSIZE_HOOK_OFFSET + 1, &rel, 4);
+        memset(image + ODIN_TEXSIZE_HOOK_OFFSET + 5, 0x90, ODIN_TEXSIZE_HOOK_LENGTH - 5);
+    }
+    for (unsigned i = 0; i < 2; ++i) {
+        const int64_t uv_delta = (int64_t)(uintptr_t)uvscale[i] -
+                                 (int64_t)(uintptr_t)(image + odin_uvscale_hooks[i] + 5);
+        if (!(parts & 32) || uv_delta < INT32_MIN || uv_delta > INT32_MAX) continue;
+        const int32_t rel = (int32_t)uv_delta;
+        image[odin_uvscale_hooks[i]] = 0xe9;
+        memcpy(image + odin_uvscale_hooks[i] + 1, &rel, 4);
+        memset(image + odin_uvscale_hooks[i] + 5, 0x90, ODIN_UVSCALE_HOOK_LENGTH - 5);
+    }
+    printf("Render scale: %.2f (%ux%u, render buffer heap %u MiB)\n", scale, width, height, heap >> 20);
+}
+
 static void install_orb_multiplier(const char *app0, Segment *segments, uint64_t count,
                                    uint64_t size) {
     char path[4096], serial[32] = "", version[32] = "";
@@ -801,6 +927,7 @@ int main(int argc, char **argv) {
     if (gpu_enabled) install_orb_multiplier(app0, segments, ns, size);
     if (gpu_enabled) install_cheats(app0, segments, ns, size);
     if (gpu_enabled) install_actor_watch(app0, segments, ns, size);
+    if (gpu_enabled) install_odin_render_scale(app0, segments, ns, size);
     if (gpu_enabled) install_stat_multipliers(app0, segments, ns, size);
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));

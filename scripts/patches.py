@@ -70,7 +70,9 @@ PATCHES_DIR=Path(__file__).resolve().parent.parent/'patches'
 # sha256 of the only eboot.bin they were checked against (another build of the same version has
 # its code elsewhere: byte writes there corrupt it).
 GAMES=[({'CUSA01623'},PATCHES_DIR/'God_of_War_III_Remastered.xml','01.02',
-        'd85c8135d330c3b601bf5dc3f1dd86bd6119fb8a9fce372bed2c9785f9a79299')]
+        'd85c8135d330c3b601bf5dc3f1dd86bd6119fb8a9fce372bed2c9785f9a79299'),
+       ({'CUSA05083'},PATCHES_DIR/'Odin_Sphere_Leifthrasir.xml','01.01',
+        '2865b6cec33f2515def173c1ed0c03afc27a1cd5fad1b0d0f516b4527aba9a88')]
 DMEM_RETAIL_MB=5056  # runtime_memory.c POOL_SIZE default
 
 

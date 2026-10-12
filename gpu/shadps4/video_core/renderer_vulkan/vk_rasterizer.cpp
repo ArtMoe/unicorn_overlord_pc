@@ -1138,6 +1138,35 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     if (FrameCapture::Active()) {
         const auto* ps = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
         FrameCapture::Draw(vs_info.pgm_hash, ps ? ps->pgm_hash : 0, num_indices, num_instances);
+        if (std::getenv("GOW3_CAPTURE_VIEWPORTS")) {
+            const auto& vp = regs.viewports[0];
+            const auto& ss = regs.screen_scissor;
+            const auto& gs = regs.generic_scissor;
+            const auto& vs0 = regs.viewport_scissors[0];
+            const auto& ws = regs.window_scissor;
+            char note[256];
+            std::snprintf(note, sizeof(note),
+                          "\n  draw ps %08x vp scale %.1f,%.1f off %.1f,%.1f screen %d,%d-%d,%d "
+                          "generic %u,%u-%u,%u vpsc %u,%u-%u,%u window %u,%u-%u,%u",
+                          u32(ps ? ps->pgm_hash : 0), vp.xscale, vp.yscale, vp.xoffset,
+                          vp.yoffset, ss.top_left_x, ss.top_left_y, ss.bottom_right_x,
+                          ss.bottom_right_y, u32(gs.top_left_x), u32(gs.top_left_y),
+                          u32(gs.bottom_right_x), u32(gs.bottom_right_y), u32(vs0.top_left_x),
+                          u32(vs0.top_left_y), u32(vs0.bottom_right_x), u32(vs0.bottom_right_y),
+                          u32(ws.top_left_x), u32(ws.top_left_y), u32(ws.bottom_right_x),
+                          u32(ws.bottom_right_y));
+            FrameCapture::Note(note);
+            if (ps) {
+                for (const auto& desc : ps->images) {
+                    const auto t = desc.GetSharp(*ps);
+                    std::snprintf(note, sizeof(note), "\n    tex %#llx %ux%u pitch %u fmt %u/%u tile %u",
+                                  (unsigned long long)t.Address(), t.width + 1, t.height + 1,
+                                  t.pitch + 1, u32(t.data_format), u32(t.num_format),
+                                  u32(t.tiling_index));
+                    FrameCapture::Note(note);
+                }
+            }
+        }
         if (const auto& bc = regs.blend_control[0]; bc.enable && regs.color_buffers[0]) {
             char note[128];
             std::snprintf(note, sizeof(note), "\n  blend ps %08x idx %u: src %u dst %u func %u z %u%u",

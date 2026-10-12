@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!-- odin_sphere_pc: CUSA05083 v01.01 eboot.bin with sha256
+     2865b6cec33f2515def173c1ed0c03afc27a1cd5fad1b0d0f516b4527aba9a88 (scripts/patches.py checks it).
+     Addresses are eboot vaddr + 0x400000; see docs/odin/RE_NOTES.md. -->
+<Patch>
+    <TitleID>
+        <ID>CUSA05083</ID>
+    </TitleID>
+    <Metadata Title="Odin Sphere Leifthrasir" Name="Frame Limiter - VBlank Only" Note="FUN_006b3eb0 waits only for VBlank, not until 1e6 / [ctx+0x54] us have passed: the frame rate follows the VBlank rate (GOW3_VBLANK_HZ)." Author="odin_sphere_pc" PatchVer="0.1" AppVer="01.01" AppElf="eboot.bin" isEnabled="false">
+        <PatchList>
+            <Line Type="bytes" Address="0x00ab40c1" Value="eb"/>
+        </PatchList>
+    </Metadata>
+</Patch>
