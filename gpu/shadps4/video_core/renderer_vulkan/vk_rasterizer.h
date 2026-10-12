@@ -105,6 +105,10 @@ public:
                     u64 toggle = Gow3Toggle::PipelinedTasks);
     /// Stage A: the draw pipe position after the last handed-over packet, and whether the
     /// recording thread has run everything before a position.
+    /// Stage A: hands every committed draw to the recording thread (before yielding).
+    void PublishDrawPipe() {
+        if (draw_pipe) draw_pipe->Publish();
+    }
     [[nodiscard]] u64 DrawPipeHead() const {
         return draw_pipe ? draw_pipe->Head() : 0;
     }

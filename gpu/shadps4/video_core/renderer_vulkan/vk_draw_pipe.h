@@ -67,7 +67,7 @@ public:
             reinterpret_cast<Header*>(ring.get() + offset)->size = 0;
             at += Capacity - offset;
             head = at;
-            published.store(at, std::memory_order_release);
+            Publish();
         }
         WaitForSpace(at, size);
         pending_size = size;
@@ -77,11 +77,31 @@ public:
     }
 
     /// Stage A: hands the packet from Begin() to stage B.
+    /// gow3: packets are published to stage B in batches (GOW3_PIPE_BATCH, default 16): each
+    /// publication is a fenced store to a line stage B polls, and sprite-heavy games hand over
+    /// ~6000 draws a frame. Stage A publishes before it waits for B (Drain, ring space), yields
+    /// to another queue or ends a submission.
     void Commit(u32 payload_size) {
         reinterpret_cast<Header*>(ring.get() + head % Capacity)->payload = payload_size;
         head += pending_size;
-        published.store(head, std::memory_order_seq_cst);
         ++packets;
+        static const u32 batch_size = [] {
+            const char* env = std::getenv("GOW3_PIPE_BATCH");
+            return env ? std::max(1, std::atoi(env)) : 16;
+        }();
+        if (++unpublished >= batch_size) {
+            Publish();
+        }
+    }
+
+    /// Stage A: makes every committed packet visible to stage B.
+    void Publish() {
+        unpublished = 0;
+        if (published_head == head) {
+            return;
+        }
+        published_head = head;
+        published.store(head, std::memory_order_seq_cst);
         if (sleeping.load(std::memory_order_seq_cst)) {
             wake.fetch_add(1, std::memory_order_seq_cst);
             wake.notify_one();
@@ -103,6 +123,7 @@ public:
 
     /// Stage A: waits until stage B has run every committed packet.
     void Drain(u32 reason = ReasonRasterizer) {
+        Publish();
         if (consumed.load(std::memory_order_acquire) == head) {
             return;
         }
@@ -137,7 +158,8 @@ public:
     /// Statistics (stage A): packets, drains that had to wait, cycles waited, cycles stage B
     /// spent running packets.
     u64 packets = 0, drains = 0, drain_cycles = 0;
-    std::atomic<u64> busy_cycles{0};
+    /// Written by stage B only (a plain store: no locked add on a line stage A uses).
+    alignas(64) std::atomic<u64> busy_cycles{0};
 
 private:
     struct Header {
@@ -151,7 +173,12 @@ private:
     }
 
     void WaitForSpace(u64 at, u64 size) {
-        while (at + size - consumed.load(std::memory_order_acquire) > Capacity) {
+        // The last position seen is enough while the ring has room: no read of B's line.
+        if (at + size - consumed_seen <= Capacity) {
+            return;
+        }
+        Publish();
+        while (at + size - (consumed_seen = consumed.load(std::memory_order_acquire)) > Capacity) {
             __builtin_ia32_pause();
         }
     }
@@ -200,7 +227,8 @@ private:
             }
             const u64 start = __rdtsc();
             handler(context, reinterpret_cast<const u8*>(header + 1), header->payload);
-            busy_cycles.fetch_add(__rdtsc() - start, std::memory_order_relaxed);
+            busy_cycles.store(busy_cycles.load(std::memory_order_relaxed) + (__rdtsc() - start),
+                              std::memory_order_relaxed);
             at += header->size;
             consumed.store(at, std::memory_order_release);
         }
@@ -211,6 +239,9 @@ private:
     void* context;
     std::unique_ptr<u8[]> ring;
     u64 head = 0; ///< stage A's write position
+    u64 published_head = 0; ///< stage A: the last position handed to B
+    u64 consumed_seen = 0;  ///< stage A: B's position when last read
+    u32 unpublished = 0;    ///< stage A: packets committed since the last publication
     u32 pending_size = 0;
     alignas(64) std::atomic<u64> published{0};
     alignas(64) std::atomic<u64> consumed{0};
