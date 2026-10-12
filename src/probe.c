@@ -7,6 +7,7 @@
 #include <inttypes.h>
 #include "runtime.h"
 #include "odin_render_scale.h"
+#include "unicorn_render_scale.h"
 #include "gpu/vwgpu.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
 #error This prototype requires x86-64 GCC or Clang (including MinGW).
@@ -332,56 +333,57 @@ static int install_jump(uint64_t at, unsigned length, unsigned char *stub) {
     return 1;
 }
 
-/* Odin Sphere Leifthrasir: VW_RENDER_SCALE=<factor> (1 to 3) renders at
- * 1920x1080 times the factor (src/odin_render_scale.h); the presenter scales to the window. */
-static int odin_prefix(const char *text, const char *prefix) {
+/* Render scale: VW_RENDER_SCALE=<factor> or render_resolution= in vw.ini draws the game at
+ * 1920x1080 times the factor (src/odin_render_scale.h, src/unicorn_render_scale.h); the
+ * presenter averages it down to the window. */
+static int render_scale_prefix(const char *text, const char *prefix) {
     for (; *prefix; ++text, ++prefix)
         if ((*text | 0x20) != *prefix) return 0;
     return 1;
 }
 
 /* A resolution name of the in-game menu (vw_graphics.h Resolutions) or a factor. */
-static float odin_render_scale_value(const char *text) {
+static float render_scale_value(const char *text) {
     while (*text == ' ' || *text == '\t') ++text;
-    if (odin_prefix(text, "native") || odin_prefix(text, "1080p")) return 1.0f;
-    if (odin_prefix(text, "480p")) return 4.0f / 9.0f;
-    if (odin_prefix(text, "720p")) return 2.0f / 3.0f;
-    if (odin_prefix(text, "1440p")) return 4.0f / 3.0f;
-    if (odin_prefix(text, "1800p")) return 5.0f / 3.0f;
-    if (odin_prefix(text, "4k") || odin_prefix(text, "2160p")) return 2.0f;
+    if (render_scale_prefix(text, "native") || render_scale_prefix(text, "1080p")) return 1.0f;
+    if (render_scale_prefix(text, "480p")) return 4.0f / 9.0f;
+    if (render_scale_prefix(text, "720p")) return 2.0f / 3.0f;
+    if (render_scale_prefix(text, "1440p")) return 4.0f / 3.0f;
+    if (render_scale_prefix(text, "1800p")) return 5.0f / 3.0f;
+    if (render_scale_prefix(text, "4k") || render_scale_prefix(text, "2160p")) return 2.0f;
     return strtof(text, NULL);
 }
 
 /* VW_RENDER_SCALE, else render_resolution= in vw.ini (VW_CONFIG; the menu's "Render
  * resolution", applied on restart). */
-static float odin_render_scale_setting(void) {
+static float render_scale_setting(void) {
     const char *env = getenv("VW_RENDER_SCALE");
-    if (env && *env) return odin_render_scale_value(env);
+    if (env && *env) return render_scale_value(env);
     const char *config = getenv("VW_CONFIG");
     FILE *f = config ? fopen(config, "r") : NULL;
     float scale = 1.0f;
     char line[256];
     while (f && fgets(line, sizeof(line), f))
-        if (!strncmp(line, "render_resolution=", 18)) scale = odin_render_scale_value(line + 18);
+        if (!strncmp(line, "render_resolution=", 18)) scale = render_scale_value(line + 18);
     if (f) fclose(f);
     return scale;
 }
 
 static void install_odin_render_scale(const char *app0, Segment *segments, uint64_t count,
                                       uint64_t size) {
-    const float scale = odin_render_scale_setting();
+    char path[4096], serial[32] = "", version[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    if (strcmp(serial, "CUSA05083")) return;
+    const float scale = render_scale_setting();
     if (!(scale > 1.001f)) {
         /* Below 1080p a scaled target's size (1280x720, ...) is also a texture asset size:
          * the texture size hooks would misreport those assets. */
         if (scale > 0.0f && scale < 0.999f) printf("Render scale: below 1080p is not supported for this game; native\n");
         return;
     }
-    char path[4096], serial[32] = "", version[32] = "";
-    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
-    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
     sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(serial, "CUSA05083") || strcmp(version, "01.01") || scale > 3.0f ||
-        !odin_render_scale_signature_match(image, size)) {
+    if (strcmp(version, "01.01") || scale > 3.0f || !odin_render_scale_signature_match(image, size)) {
         printf("Render scale: unavailable (game version, code signature or factor %.2f)\n", scale);
         return;
     }
@@ -433,6 +435,59 @@ static void install_odin_render_scale(const char *app0, Segment *segments, uint6
     const uint32_t heap = ((uint32_t)(ODIN_RENDERBUFFER_HEAP_SIZE * scale * scale) + 0x1fffff) & ~0x1fffffu;
     if (parts & 4) memcpy(image + ODIN_RENDERBUFFER_HEAP_IMM, &heap, 4);
     printf("Render scale: %.2f (%ux%u, render buffer heap %u MiB)\n", scale, width, height, heap >> 20);
+}
+
+/* Unicorn Overlord: the render size of this launch, 0x0 when native. Above 1080p the game runs
+ * its PS4 Pro path (VW_NEO_MODE), up to its native 3840x2160. */
+static int unicorn_render_size(const char *app0, uint32_t *width, uint32_t *height) {
+    char path[4096], serial[32] = "", version[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
+    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return 0;
+    float scale = render_scale_setting();
+    if (!(scale > 1.001f)) return 0;
+    if (scale > 2.0f) scale = 2.0f;
+    *width = (uint32_t)(1920.0f * scale + 0.5f) & ~1u;
+    *height = (uint32_t)(1080.0f * scale + 0.5f) & ~1u;
+    return 1;
+}
+
+static void set_env(const char *name, const char *value) {
+#ifdef _WIN32
+    _putenv_s(name, value);
+#else
+    setenv(name, value, 1);
+#endif
+}
+
+/* Before the GPU starts: the Pro path and a video output of the render size. */
+static void prepare_unicorn_render_scale(const char *app0) {
+    uint32_t width, height;
+    if (!unicorn_render_size(app0, &width, &height)) return;
+    char text[16];
+    set_env("VW_NEO_MODE", "1");
+    snprintf(text, sizeof(text), "%u", width);
+    if (!getenv("VW_INTERNAL_WIDTH")) set_env("VW_INTERNAL_WIDTH", text);
+    snprintf(text, sizeof(text), "%u", height);
+    if (!getenv("VW_INTERNAL_HEIGHT")) set_env("VW_INTERNAL_HEIGHT", text);
+}
+
+/* After relocation: Pro sizes below 4K replace the game's 3840x2160 immediates. */
+static void install_unicorn_render_scale(const char *app0, uint64_t size) {
+    uint32_t width, height;
+    if (!unicorn_render_size(app0, &width, &height)) return;
+    if (width != 3840 || height != 2160) {
+        if (!unicorn_render_scale_signature_match(image, size)) {
+            printf("Render scale: unavailable (code signature); the game renders at 3840x2160\n");
+            return;
+        }
+        for (unsigned i = 0; i < 3; ++i) {
+            memcpy(image + unicorn_width_imm[i], &width, 4);
+            memcpy(image + unicorn_height_imm[i], &height, 4);
+        }
+    }
+    printf("Render scale: %ux%u (PS4 Pro path)\n", width, height);
 }
 
 /* G3PATCH2 (patches.py): the patches' image base, then byte writes at image offsets, applied
@@ -689,7 +744,7 @@ int main(int argc, char **argv) {
     if (fread(image, 1, size, f) != size || fgetc(f) != EOF) fail("incorrect memory image size");
     fclose(f);
     if (!cpu_only) {
-        char title[128]="God of War III", serial[16]="UNKNOWN", sfo[4096];
+        char title[128]="Unknown", serial[16]="UNKNOWN", sfo[4096];
         uint32_t attributes=0;
         snprintf(sfo,sizeof(sfo),"%s/sce_sys/param.sfo",app0 ? app0 : ".");
         sfo_value(sfo,"TITLE",title,sizeof(title),NULL);
@@ -698,6 +753,7 @@ int main(int argc, char **argv) {
         uint64_t sdk=0;
         if (procparam) memcpy(&sdk,image+procparam+16,8); /* procparam: size, magic, count, sdk_version */
         VwGpuConfig gpu={title,serial,user_dir ? user_dir : "user",(uint32_t)sdk,attributes,1920,1080};
+        prepare_unicorn_render_scale(app0);
         gpu_enabled=1; /* page tracking starts while the rasterizer registers guest memory */
         if (vwgpu_init(&gpu)) fail("GPU initialization failed");
         printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,vwgpu_symbol_count());
@@ -750,6 +806,7 @@ int main(int argc, char **argv) {
     }
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
     if (gpu_enabled) install_odin_render_scale(app0, segments, ns, size);
+    if (gpu_enabled) install_unicorn_render_scale(app0, size);
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif
