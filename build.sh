@@ -17,11 +17,11 @@ MINGW*|MSYS*)
     cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVW_PGO=off \
         -DVW_LTO="${VW_LTO:-OFF}" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
     echo "GPU library and loader: LTO ${VW_LTO:-OFF}"
-    if ! ninja -C out/gpu vwport vw-gpu-capabilities > out/gpu-build.log 2>&1; then
+    if ! ninja -C out/gpu vwport > out/gpu-build.log 2>&1; then
         grep -v '^\[' out/gpu-build.log | tail -40 >&2
         echo 'Build failed (full log: out/gpu-build.log)' >&2; exit 1
     fi
-    cp out/gpu/vwport.exe out/gpu/vw-gpu-capabilities.exe out/
+    cp out/gpu/vwport.exe out/
     echo "Built $PWD/out/vwport.exe"
     exit 0
     ;;
@@ -57,6 +57,18 @@ mkdir -p pgo
 if [[ ! -f gpu/third_party/imgui/imgui.h ]]; then
     git submodule update --init --recursive
 fi
+# --static: the release executable, out/static/vwport, with the GPU library linked in
+# (packaging/package.py).
+if [[ ${1:-} == --static ]]; then
+    cmake -S gpu -B out/static -G Ninja -DCMAKE_BUILD_TYPE=Release -DVW_STATIC=ON -DVW_PGO="$pgo" \
+        -DVW_LTO="${VW_LTO:-ON}" -DVW_PGO_DIR="$PWD/pgo" -DCMAKE_C_COMPILER="$CC" >/dev/null
+    if ! ninja -C out/static vwport > out/static-build.log 2>&1; then
+        grep -v '^\[' out/static-build.log | tail -40 >&2
+        echo 'Static build failed (full log: out/static-build.log)' >&2; exit 1
+    fi
+    echo "Built $PWD/out/static/vwport"
+    exit 0
+fi
 cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVW_PGO="$pgo" \
     -DVW_LTO="${VW_LTO:-ON}" -DVW_PGO_DIR="$PWD/pgo" >/dev/null
 echo "GPU library: PGO $pgo, LTO ${VW_LTO:-ON}"
@@ -75,10 +87,8 @@ if [[ ! -f out/libatrac9.a || -n $(find third_party/LibAtrac9/C/src -newer out/l
     for source in "${atrac9[@]}"; do "$CC" -std=c99 -O2 -g -w -c "$source" -o "out/atrac9/$(basename "${source%.c}").o"; done
     ar rcs out/libatrac9.a out/atrac9/*.o
 fi
-"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -no-pie "${includes[@]}" -I. -Isrc src/probe.c "${runtime[@]}" src/vulkan_smoke.c out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/vwport
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -no-pie "${includes[@]}" -I. -Isrc src/probe.c "${runtime[@]}" src/vulkan_smoke.c src/gpu_device.c out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/vwport
 echo "Built $PWD/out/vwport"
-# The game's GPU for launch choices (RADV nohiz): links only the Vulkan loader.
-"$CC" -std=c11 -O2 -Wall -Wextra -Werror tools/gpu_capabilities.c "${libraries[@]}" -o out/vw-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test

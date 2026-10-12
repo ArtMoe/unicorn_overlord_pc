@@ -1,5 +1,5 @@
-/* vw-gpu-capabilities --device: the GPU the game will use (vk_instance.cpp's ranking or
- * VW_GPU_ID), printed as "<vendor id>\t<name>" for launch choices (scripts/game_profiles.py). */
+/* vwport --gpu-device: the GPU the game will use (vk_instance.cpp's ranking or VW_GPU_ID),
+ * printed as "<vendor id>\t<name>" for launch choices (scripts/game_profiles.py). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <vulkan/vulkan.h>
@@ -33,10 +33,10 @@ static int better_device(VkPhysicalDevice candidate, VkPhysicalDevice current) {
     return largest_local_heap(candidate) > largest_local_heap(current);
 }
 
-int main(void) {
+int gpu_device(void) {
     const VkApplicationInfo app = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        .pApplicationName = "vw-gpu-capabilities",
+        .pApplicationName = "vwport --gpu-device",
         .apiVersion = VK_API_VERSION_1_3,
     };
     const VkInstanceCreateInfo create = {
@@ -45,18 +45,18 @@ int main(void) {
     };
     VkInstance instance = VK_NULL_HANDLE;
     if (vkCreateInstance(&create, NULL, &instance) != VK_SUCCESS) {
-        fputs("vw-gpu-capabilities: cannot create Vulkan instance\n", stderr);
+        fputs("gpu-device: cannot create Vulkan instance\n", stderr);
         return 1;
     }
     uint32_t count = 0;
     if (vkEnumeratePhysicalDevices(instance, &count, NULL) != VK_SUCCESS || !count) {
-        fputs("vw-gpu-capabilities: no Vulkan device\n", stderr);
+        fputs("gpu-device: no Vulkan device\n", stderr);
         vkDestroyInstance(instance, NULL);
         return 1;
     }
     VkPhysicalDevice *devices = calloc(count, sizeof(*devices));
     if (!devices || vkEnumeratePhysicalDevices(instance, &count, devices) != VK_SUCCESS) {
-        fputs("vw-gpu-capabilities: cannot enumerate Vulkan devices\n", stderr);
+        fputs("gpu-device: cannot enumerate Vulkan devices\n", stderr);
         free(devices);
         vkDestroyInstance(instance, NULL);
         return 1;
@@ -67,7 +67,7 @@ int main(void) {
     if (gpu_id && atoi(gpu_id) >= 0) {
         const unsigned long index = strtoul(gpu_id, NULL, 10);
         if (index >= count) {
-            fputs("vw-gpu-capabilities: VW_GPU_ID is outside the device list\n", stderr);
+            fputs("gpu-device: VW_GPU_ID is outside the device list\n", stderr);
             free(devices);
             vkDestroyInstance(instance, NULL);
             return 1;
