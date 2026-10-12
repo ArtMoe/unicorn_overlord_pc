@@ -36,6 +36,9 @@ void SetBackgroundLoading(u32 done, u32 total);
 /// Whether anything is drawn this frame (menu open or FPS counter on).
 bool Visible();
 
+/// Present thread, once per presented frame (FPS readout and VW_FPS_LOG).
+void NotePresent();
+
 /// Present thread: draws into `view` (layout ColorAttachmentOptimal).
 void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent);
 

@@ -632,6 +632,7 @@ void Presenter::PresentLoadingFrame() {
                            range);
     barrier(vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eColorAttachmentOptimal,
             vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eColorAttachmentWrite);
+    VwOverlay::NotePresent();
     VwOverlay::Render(cmdbuf, swapchain.ImageView(), extent);
     barrier(vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
             vk::AccessFlagBits::eColorAttachmentWrite, {});
@@ -747,6 +748,7 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
                          MakeImageBlitFit(frame->width, frame->height, extent.width, extent.height),
                          vk::Filter::eLinear);
         // vw: the settings menu / FPS counter over the frame, at display resolution.
+        VwOverlay::NotePresent();
         const bool overlay = VwOverlay::Visible();
         const std::array post_barriers{
             vk::ImageMemoryBarrier{
