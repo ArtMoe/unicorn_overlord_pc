@@ -15,7 +15,6 @@
 #include "gow3_overlay.h"
 #include "gow3_settings.h"
 #include "gow3_graphics.h"
-#include "video_core/renderer_vulkan/vk_temporal_upscaler.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
 #include "video_core/renderer_vulkan/vk_warmup_inbox.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
@@ -385,7 +384,7 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
                                VAddr cpu_address) {
     // gow3: GOW3_FRAME_DUMP_TRIGGER=<file>: when the file exists it is removed and this frame's
     // guest display buffer and presented image are written to GOW3_DUMP_DIR (default out/dump)
-    // as raw 32-bit pixels (menus and movies included; the upscaler dumps scene frames only).
+    // as raw 32-bit pixels.
     static const char* frame_dump_trigger = std::getenv("GOW3_FRAME_DUMP_TRIGGER");
     static int frame_dump_index = 0;
     const bool frame_dump = frame_dump_trigger && std::remove(frame_dump_trigger) == 0;
@@ -393,15 +392,9 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
         std::printf("Frame dump %d: display buffer %#llx\n", frame_dump_index,
                     (unsigned long long)cpu_address);
     }
-    // gow3: scaled upscaler presets: the output-size display buffer drawn by the port.
-    TemporalUpscaler::Display display{};
-    const bool upscaled = rasterizer->GetUpscaler().DisplayOverride(cpu_address, display);
-    VideoCore::ImageId image_id{};
-    if (!upscaled) {
-        auto desc = VideoCore::TextureCache::ImageDesc{attribute, cpu_address};
-        image_id = texture_cache.FindImage(desc);
-        texture_cache.UpdateImage(image_id);
-    }
+    auto desc = VideoCore::TextureCache::ImageDesc{attribute, cpu_address};
+    const VideoCore::ImageId image_id = texture_cache.FindImage(desc);
+    texture_cache.UpdateImage(image_id);
 
     Frame* frame = GetRenderFrame();
 
@@ -438,46 +431,21 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
 
     vk::ImageView image_view{};
     vk::Extent2D image_size{};
-    if (upscaled) {
-        const auto device = instance.GetDevice();
-        image_view = Check(device.createImageView({
-            .image = display.image,
-            .viewType = vk::ImageViewType::e2D,
-            .format = view_info.format,
-            .components = {vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity,
-                           vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eOne},
-            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-        }));
-        draw_scheduler.DeferOperation([device, image_view] { device.destroyImageView(image_view); });
-        image_size = vk::Extent2D{display.width, display.height};
-        const vk::ImageMemoryBarrier2 to_read{
-            .srcStageMask = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-            .srcAccessMask = vk::AccessFlagBits2::eColorAttachmentWrite,
-            .dstStageMask = vk::PipelineStageFlagBits2::eAllCommands,
-            .dstAccessMask = vk::AccessFlagBits2::eShaderRead,
-            .oldLayout = vk::ImageLayout::eGeneral,
-            .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-            .image = display.image,
-            .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1},
-        };
-        cmdbuf.pipelineBarrier2({.imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &to_read});
-    } else {
-        auto& image = texture_cache.GetImage(image_id);
-        if (frame_dump) {
-            runtime.Transit(&image, vk::ImageLayout::eTransferSrcOptimal,
-                            vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferRead);
-            runtime.FlushBarriers();
-            DumpRaw(instance, draw_scheduler, cmdbuf, image.GetImage(),
-                    vk::ImageLayout::eTransferSrcOptimal, image.info.size.width,
-                    image.info.size.height, "display", frame_dump_index);
-        }
-        image_view = *image.FindView(view_info).image_view;
-        image_size = vk::Extent2D{image.info.size.width, image.info.size.height};
-        runtime.Transit(&image, vk::ImageLayout::eShaderReadOnlyOptimal,
-                        vk::PipelineStageFlagBits2::eFragmentShader,
-                        vk::AccessFlagBits2::eShaderRead);
+    auto& image = texture_cache.GetImage(image_id);
+    if (frame_dump) {
+        runtime.Transit(&image, vk::ImageLayout::eTransferSrcOptimal,
+                        vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eTransferRead);
         runtime.FlushBarriers();
+        DumpRaw(instance, draw_scheduler, cmdbuf, image.GetImage(),
+                vk::ImageLayout::eTransferSrcOptimal, image.info.size.width,
+                image.info.size.height, "display", frame_dump_index);
     }
+    image_view = *image.FindView(view_info).image_view;
+    image_size = vk::Extent2D{image.info.size.width, image.info.size.height};
+    runtime.Transit(&image, vk::ImageLayout::eShaderReadOnlyOptimal,
+                    vk::PipelineStageFlagBits2::eFragmentShader,
+                    vk::AccessFlagBits2::eShaderRead);
+    runtime.FlushBarriers();
     expected_ratio = static_cast<float>(image_size.width) / static_cast<float>(image_size.height);
 
     // gow3: FSR 1, RCAS and its strength come from the in-game menu, every frame.

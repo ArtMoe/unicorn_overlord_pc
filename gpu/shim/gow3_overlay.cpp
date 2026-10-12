@@ -238,17 +238,6 @@ void SliderRow(const char* label, std::atomic<int>& value, int lo, int hi, const
     ImGui::PopID();
 }
 
-const char* UpscalerLabel(int upscaler) {
-    switch (upscaler) {
-    case Gow3Settings::UpscalerFsr3: return "FSR 3.1";
-    case Gow3Settings::UpscalerFsr4: return "FSR 4";
-    case Gow3Settings::UpscalerFsr411: return "FSR 4.1.1";
-    case Gow3Settings::UpscalerTaa: return "TAA";
-    case Gow3Settings::UpscalerDlss: return "DLSS";
-    default: return "";
-    }
-}
-
 const Vulkan::Instance* overlay_instance = nullptr; // for the overlay's measurements
 
 // The performance overlay's text with the current settings (also the menu's preview).
@@ -262,7 +251,9 @@ std::string OverlayText() {
     P::Sample sample = P::Latest();
     sample.fps = frame_ms_avg > 0.0f ? 1000.0f / frame_ms_avg : 0.0f;
     sample.frame_ms = frame_ms_avg;
-    sample.upscaler = UpscalerLabel(s.upscaler);
+    if (s.image_width > 0) {
+        sample.resolution = std::to_string(s.image_width.load()) + "x" + std::to_string(s.image_height.load());
+    }
     return P::Format(sample, items, s.overlay_layout == 0);
 }
 
@@ -316,13 +307,7 @@ void PerformanceTab() {
     if (BeginRows("##live")) {
         static const char* const fps_labels[] = {"30", "60", "120", "240", "Unlimited"};
         ChoiceRow("Frame rate limit", s.fps_limit, fps_labels, G::FpsLimits.data(), int(G::FpsLimits.size()),
-                  "Caps the frame rate. The engine frame rate (below) is the highest it can go.");
-        const int effective = G::EffectiveFps(s.fps_limit, s.startup_engine_fps);
-        if (s.fps_limit == 0 || effective < s.fps_limit) {
-            char text[48];
-            std::snprintf(text, sizeof(text), "%d FPS (engine frame rate)", effective);
-            InfoRow("Effective limit", text);
-        }
+                  "Caps the frame rate. These games run their logic at up to 60 FPS.");
         static const char* const queued_labels[] = {"1 (lowest latency)", "2", "Unlimited"};
         ChoiceRow("Frames queued", s.frames_queued, queued_labels, G::FramesQueued.data(),
                   int(G::FramesQueued.size()), "More frames queued: steadier FPS, slower response to input.");
@@ -332,21 +317,10 @@ void PerformanceTab() {
     }
     ImGui::SeparatorText("Applied on restart");
     if (BeginRows("##restart")) {
-        static const char* const resolution_labels[] = {"Native (1080p)", "480p", "720p", "1440p", "1800p", "4K"};
+        static const char* const resolution_labels[] = {"Native (1080p)", "1440p", "1800p", "4K"};
         ChoiceRow("Render resolution", s.render_resolution, resolution_labels, nullptr, int(G::Resolutions.size()),
-                  "The resolution the game draws at. Higher is sharper and slower.");
-        static const char* const engine_labels[] = {"60 (original)", "120", "240"};
-        // GOW3_FIXED_TIMESTEP (scripts/game_profiles.py): the game advances its logic once per
-        // frame, so a higher engine rate would speed it up.
-        static const bool fixed_step = [] {
-            const char* env = std::getenv("GOW3_FIXED_TIMESTEP");
-            return env && env[0] == '1';
-        }();
-        ImGui::BeginDisabled(fixed_step);
-        ChoiceRow("Engine frame rate", s.engine_fps, engine_labels, G::EngineFps.data(), int(G::EngineFps.size()),
-                  fixed_step ? "Not available: this game runs its logic once per frame (60 FPS)."
-                             : "The highest frame rate the game itself runs at.");
-        ImGui::EndDisabled();
+                  "Draws the game larger and averages it down to the window: smoother edges, sharper "
+                  "art, more GPU work.");
         CheckRow("Game reads GPU data without waiting", s.stale_readback,
                  "Big FPS gain. Switch it off if lighting or objects look wrong.");
         CheckRow("Deferred GPU readbacks", s.deferred_readback,
@@ -366,7 +340,7 @@ void OverlayTab() {
     ImGui::SeparatorText("What to show");
     if (ImGui::BeginTable("##overlay_items", 2, ImGuiTableFlags_SizingStretchProp)) {
         ImGui::TableNextColumn();
-        static const char* const names[] = {"FPS", "Frametime", "Upscaler", "GPU (name and use)", "CPU (game)",
+        static const char* const names[] = {"FPS", "Frametime", "Render resolution", "GPU (name and use)", "CPU (game)",
                                             "RAM (game / total)", "VRAM (used / available)"};
         for (unsigned item = 0; item < 7; ++item) {
             const unsigned bit = 1u << item;
@@ -418,7 +392,7 @@ void OverlayTab() {
 // Startup options changed since this launch (applied by "Apply and restart").
 int RestartChanges() {
     const auto& s = Gow3Settings::Get();
-    return (s.render_resolution != s.startup_render_resolution) + (s.engine_fps != s.startup_engine_fps) +
+    return (s.render_resolution != s.startup_render_resolution) +
            (s.deferred_readback != s.startup_deferred_readback) + (s.stale_readback != s.startup_stale_readback);
 }
 

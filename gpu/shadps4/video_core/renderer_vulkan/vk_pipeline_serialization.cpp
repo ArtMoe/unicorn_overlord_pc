@@ -32,9 +32,9 @@
 
 namespace Serialization {
 /* You should increment versions below once corresponding serialization scheme is changed. */
-static constexpr u32 ShaderBinaryVersion = 7u; // gow3: interpolated integer fix (Pascal)
-static constexpr u32 ShaderMetaVersion = 7u; // gow3: ImageResource::needs_native
-static constexpr u32 PipelineKeyVersion = 5u; // gow3: Info layout (ImageResource::needs_native)
+static constexpr u32 ShaderBinaryVersion = 8u; // no motion vector outputs or scene size
+static constexpr u32 ShaderMetaVersion = 8u;   // ImageResource without needs_native
+static constexpr u32 PipelineKeyVersion = 6u;  // GraphicsPipelineKey without motion_vectors
 } // namespace Serialization
 
 namespace Vulkan {
@@ -641,12 +641,6 @@ bool LoadShaderMeta(Serialization::Archive& ar, Shader::Info& info,
 
     spec.Deserialize(ar);
     info.Deserialize(ar);
-
-    // Motion vertex shaders embed session-local buffer device addresses. They must be
-    // recompiled for the current allocation, never loaded from a previous process.
-    if (info.hw_stage == Shader::HwStage::Vertex && spec.runtime_info.hw.vs.motion_vectors) {
-        return false;
-    }
 
     fetch_shader_data = spec.fetch_shader_data;
     return true;

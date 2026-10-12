@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // gow3: graphics options of the in-game menu (Insert / R3+L2), kept in gow3.ini. The live ones
-// apply on the next frame; the startup ones (patches, GPU readback modes) are read by run.py and
-// apply through "Apply and restart". The launcher reads and writes the same keys.
+// apply on the next frame; the startup ones (render resolution, GPU readback modes) are read at
+// launch and apply through "Apply and restart". The launcher reads and writes the same keys.
 #pragma once
 
 #include <array>
@@ -18,11 +18,9 @@ inline constexpr std::array<const char*, DisplayModeCount> DisplayModeNames = {
 /// Present rate limits; 0 = unlimited.
 inline constexpr std::array<int, 5> FpsLimits = {30, 60, 120, 240, 0};
 
-/// Game patch suffixes ("Resolution Patch - <name>"); "native" is no resolution patch.
-inline constexpr std::array<std::string_view, 6> Resolutions = {"native", "480p", "720p",
-                                                                "1440p", "1800p", "4K"};
-/// Engine frame rate ceilings: 60 is the game's own, 120 and 240 are frame rate patches.
-inline constexpr std::array<int, 3> EngineFps = {60, 120, 240};
+/// Render resolutions: the game's 1920x1080 frame drawn larger (the probe's render scale
+/// patch for each game) and averaged down to the window.
+inline constexpr std::array<std::string_view, 4> Resolutions = {"native", "1440p", "1800p", "4K"};
 
 template <typename T, std::size_t N>
 constexpr int IndexOf(const std::array<T, N>& values, const T& value, int fallback) {
@@ -42,10 +40,6 @@ inline int ParseFpsLimit(int value) {
 /// Index into Resolutions; unknown text is native.
 inline int ParseResolution(std::string_view text) {
     return IndexOf(Resolutions, text, 0);
-}
-/// A listed ceiling, else 120 (the default patch).
-inline int ParseEngineFps(int value) {
-    return IndexOf(EngineFps, value, -1) >= 0 ? value : 120;
 }
 
 /// Frames the GPU command thread may queue ahead of the GPU; 0 = unbounded.
@@ -67,11 +61,6 @@ inline bool FsrPassRuns(bool fsr1, bool rcas, int in_w, int in_h, int out_w, int
     const bool upscale = in_w < out_w && in_h < out_h;
     const bool same = in_w == out_w && in_h == out_h;
     return (fsr1 && upscale) || (rcas && same);
-}
-
-/// What the present limit really allows: the engine ceiling caps it.
-inline int EffectiveFps(int limit, int engine_fps) {
-    return limit == 0 || limit > engine_fps ? engine_fps : limit;
 }
 
 } // namespace Gow3Graphics

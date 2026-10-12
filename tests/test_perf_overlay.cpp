@@ -31,7 +31,7 @@ int main() {
     P::Sample s;
     s.fps = 238.4f;
     s.frame_ms = 4.19f;
-    s.upscaler = "FSR 3.1";
+    s.resolution = "2560x1440";
     s.gpu_name = "RTX 4070";
     s.gpu_percent = 87.2f;
     s.cpu_percent = 34.0f;
@@ -39,23 +39,22 @@ int main() {
     s.ram_total_gb = 31.9;
     s.vram_used_gb = 5.4;
     s.vram_total_gb = 12.0;
-    assert(P::Format(s, P::DefaultItems, true) == "238 FPS   4.2 ms   FSR 3.1");
+    assert(P::Format(s, P::DefaultItems, true) == "238 FPS   4.2 ms   2560x1440");
     assert(P::Format(s, P::AllItems, false) ==
-           "238 FPS\n4.2 ms\nFSR 3.1\nRTX 4070 87%\nCPU 34%\nRAM 6.1 / 31.9 GB\nVRAM 5.4 / 12.0 GB");
+           "238 FPS\n4.2 ms\n2560x1440\nRTX 4070 87%\nCPU 34%\nRAM 6.1 / 31.9 GB\nVRAM 5.4 / 12.0 GB");
     assert(P::Format(s, P::Cpu | P::Vram, true) == "CPU 34%   VRAM 5.4 / 12.0 GB");
     assert(P::Format(s, 0, true).empty());
 
     P::Sample unknown;
-    unknown.upscaler = "";
-    assert(P::Format(unknown, P::Upscaler | P::Gpu | P::Cpu | P::Ram | P::Vram, false) ==
-           "Native\nGPU n/a\nCPU n/a\nRAM n/a\nVRAM n/a");
+    assert(P::Format(unknown, P::Resolution | P::Gpu | P::Cpu | P::Ram | P::Vram, false) ==
+           "n/a\nGPU n/a\nCPU n/a\nRAM n/a\nVRAM n/a");
     unknown.ram_used_gb = 2.0;
     assert(P::Format(unknown, P::Ram, true) == "RAM 2.0 GB");
 
     const char* path = "perf-overlay-test.ini";
     {
         std::ofstream out(path);
-        out << "show_fps=1\noverlay_fps=0\noverlay_frametime=1\noverlay_upscaler=0\noverlay_gpu=1\n"
+        out << "show_fps=1\noverlay_fps=0\noverlay_frametime=1\noverlay_resolution=0\noverlay_gpu=1\n"
                "overlay_cpu=1\noverlay_ram=0\noverlay_vram=1\noverlay_scale=400\noverlay_corner=2\n"
                "overlay_opacity=-5\noverlay_layout=1\nmenu_tab=2\n";
     }

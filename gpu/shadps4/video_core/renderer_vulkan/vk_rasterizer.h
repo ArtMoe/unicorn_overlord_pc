@@ -8,13 +8,9 @@
 #include "video_core/buffer_cache/buffer_cache.h"
 #include "video_core/page_manager.h"
 #include "video_core/renderer_vulkan/vk_bind_helper.h"
-#include "video_core/renderer_vulkan/vk_camera_motion.h"
 #include "video_core/renderer_vulkan/vk_constant_ring.h"
-#include "video_core/renderer_vulkan/vk_scene_resolution.h"
-#include "video_core/renderer_vulkan/vk_object_motion.h"
 #include "video_core/renderer_vulkan/vk_draw_pipe.h"
 #include "video_core/renderer_vulkan/vk_draw_prep.h"
-#include "video_core/renderer_vulkan/vk_temporal_upscaler.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/texture_cache/texture_cache.h"
@@ -44,10 +40,6 @@ public:
 
     [[nodiscard]] VideoCore::BufferCache& GetBufferCache() noexcept {
         return buffer_cache;
-    }
-
-    [[nodiscard]] TemporalUpscaler& GetUpscaler() noexcept {
-        return *upscaler;
     }
 
     [[nodiscard]] VideoCore::TextureCache& GetTextureCache() noexcept {
@@ -176,10 +168,6 @@ private:
         u32 mrt_mask = 0;
         u32 num_samples = 0;
         std::array<u8, AmdGpu::NUM_COLOR_BUFFERS> color_samples{};
-        bool motion = false;
-        bool scene_started = false;
-        bool raster_scaling = false;
-        u64 upscaler_state = 0;
         u64 generation = 0;
         u32 depth_control = 0;
         bool depth_valid = false;
@@ -191,8 +179,6 @@ private:
         bool valid = false;
         BeginSignature signature;
         RenderState state;
-        u32 scene_size = 0;
-        std::array<float, 2> target_scale{};
     } begin_memo;
     u64 begin_memo_hits = 0, begin_memo_misses = 0;
     void Resolve();
@@ -263,13 +249,11 @@ private:
         vk::ImageView view;
         const void* backing = nullptr;
         VideoCore::SubresourceRange range;
-        bool proxy = false; ///< sampled from the scene proxy (view: SampleProxy on each use)
     };
     struct TextureSet {
         u64 key = 0;
         const Shader::Info* stage = nullptr;
         u64 generation = ~0ull;
-        u64 scene_generation = 0; ///< SceneTargets::Generation of the proxy views
         u32 count = 0;
         static constexpr u32 MaxImages = 16; ///< larger sets are not memoized
         std::array<u64, MaxImages> hashes{};
@@ -292,8 +276,6 @@ private:
     static void RunTextureTask(void* rasterizer);
     static void JoinBindHelper(void* rasterizer);
 
-    /// Display pass: counts the frame (Gow3Stats::gpu_frames) and, with GOW3_BUFFER_STATS, the lag.
-    void NoteFrameStart();
     /// GOW3_GPU_PROFILE: a timestamp where a render pass starts (vk_gpu_profiler.h).
     void MarkPass(const GraphicsPipeline* pipeline, const RenderState& state);
     void BindVertexBuffers(const GraphicsPipeline* pipeline,
@@ -327,16 +309,6 @@ private:
     Common::SharedFirstMutex mapped_ranges_mutex;
     PipelineCache pipeline_cache;
     std::unique_ptr<DrawPreparation> draw_prep;
-    std::unique_ptr<CameraMotion> camera_motion; // gow3: motion vectors (docs/upscaler.md)
-    std::unique_ptr<SceneTargets> scene_targets;
-    bool scene_started = false;
-    std::unique_ptr<ObjectMotion> object_motion;
-    bool motion_draw = false;
-    u64 motion_geometry{};    ///< vertex-stream identity of the current direct draw
-    bool gbuffer_draw = false;
-    std::unique_ptr<TemporalUpscaler> upscaler; // gow3: FSR (docs/upscaler.md)
-    std::array<float, 2> draw_jitter{};         ///< viewport offset of the current draw, pixels
-    std::array<float, 2> target_scale{1.0f, 1.0f}; ///< pass drawn into the upscaler's output-size images
     const bool host_markers_enabled;
     const bool guest_markers_enabled;
 
@@ -490,9 +462,6 @@ private:
     std::vector<PendingWrite> pending_writes;
     VAddr pending_min = ~VAddr{0}, pending_max = 0; ///< bounds of pending_writes
     u32 pending_checks = 0;
-    u64 proxy_samples = 0; ///< texture bindings that read a scene proxy (statistics)
-    float sampler_lod_bias = 0.0f; ///< gow3: extra bias of this draw's samplers
-    bool scene_debug_frame = false; ///< GOW3_SCENE_DEBUG: this frame's passes are printed
     bool PendingWriteOverlaps(VAddr address, u64 size);
     /// Stage B: the ring bindings of the stages of the packet being recorded.
     struct RingStage {

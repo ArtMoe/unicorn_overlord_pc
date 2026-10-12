@@ -10,7 +10,7 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 # Frame pointers keep the loader's thread dumps (watchdog, SIGUSR2 sampling) walkable.
 add_compile_options(-fno-omit-frame-pointer)
-# MinGW + newer libc++ (clang 21+): vendored code (sirit, FFX 1.1.4 SDK, ...) relied on
+# MinGW + newer libc++ (clang 21+): vendored code (sirit, ...) relied on
 # transitive includes for std::abort, _countof, swprintf_s, log2 and placement new.
 if (MINGW)
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include cstdlib>"
@@ -91,11 +91,6 @@ find_program(GLSLANG_COMPILER NAMES glslang glslangValidator REQUIRED)
 set(SIRIT_USE_SYSTEM_SPIRV_HEADERS OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/sirit EXCLUDE_FROM_ALL)
 
-# gow3: FSR 3.1 temporal upscaling / frame generation, native Vulkan (MIT, FireBurn/FSR-Vulkan).
-set(FFX_VK_PORTABLE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(FFX_VK_PORTABLE_BUILD_PROBE OFF CACHE BOOL "" FORCE)
-add_subdirectory(third_party/fsr-vulkan EXCLUDE_FROM_ALL)
-
 # Host shaders -> headers (same scheme as shadPS4's host_shaders/CMakeLists.txt).
 set(SHADER_SRC ${CMAKE_CURRENT_SOURCE_DIR}/shadps4/video_core/host_shaders)
 set(SHADER_INCLUDE ${CMAKE_CURRENT_BINARY_DIR}/include)
@@ -121,17 +116,7 @@ add_host_shader(fs_tri.vert fs_tri_vert)
 add_host_shader(fsr.comp fsr_easu_comp SAMPLE_EASU=1)
 add_host_shader(fsr.comp fsr_rcas_comp SAMPLE_RCAS=1)
 add_host_shader(post_process.frag post_process_frag)
-add_host_shader(camera_motion.comp camera_motion_comp)
-add_host_shader(upscale_merge.comp upscale_merge_comp)
-add_host_shader(upscale_reactive.comp upscale_reactive_comp)
-add_host_shader(taa.comp taa_comp)
-add_host_shader(taa_sharpen.comp taa_sharpen_comp)
-add_host_shader(taa_sharpen.comp taa_sharpen_ldr_comp LDR_OUTPUT=1)
 add_host_shader(buffer_multi_copy.comp buffer_multi_copy_comp)
-add_host_shader(depth_resample.frag depth_resample_frag)
-add_host_shader(depth_resample.frag depth_stencil_resample_frag HAS_STENCIL=1)
-add_host_shader(depth_resample.frag depth_stencil_bits_frag STENCIL_BITS=1)
-add_host_shader(camera_motion.comp camera_motion_debug_comp DEBUG_OVERLAY=1)
 foreach(BPP IN ITEMS 8 16 32 64 96 128)
     add_host_shader(tiling.comp tiling_micro_${BPP}_comp BITS_PER_PIXEL=${BPP} IS_MACRO_TILED=0)
     add_host_shader(tiling.comp tiling_macro_${BPP}_comp BITS_PER_PIXEL=${BPP} IS_MACRO_TILED=1)
@@ -180,7 +165,6 @@ target_compile_options(gow3gpu PRIVATE -Wno-deprecated-declarations -Wno-missing
 if (NOT WIN32)
     target_link_options(gow3gpu PRIVATE -Wl,--allow-shlib-undefined)
 endif()
-target_link_libraries(gow3gpu PRIVATE ffx-vulkan::portable ffx-vulkan::fsr4-v07-vulkan)
 target_link_libraries(gow3gpu PUBLIC Vulkan::Headers fmt::fmt Boost::headers magic_enum::magic_enum
     tsl::robin_map GPUOpen::VulkanMemoryAllocator PkgConfig::XXHASH PkgConfig::SDL3 PkgConfig::FFMPEG miniz::miniz Zydis::Zydis sirit)
 target_include_directories(gow3gpu PRIVATE third_party/xbyak)
@@ -253,12 +237,6 @@ if (WIN32)
 endif()
 set_source_files_properties(../tests/test_pipeline_binary_cache.cpp PROPERTIES
     COMPILE_OPTIONS "-fvisibility=hidden;-fvisibility-inlines-hidden")
-add_executable(motion-history-test EXCLUDE_FROM_ALL ../tests/test_motion_history.cpp)
-target_compile_options(motion-history-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
-target_include_directories(motion-history-test PRIVATE ..)
-add_executable(motion-shader-test EXCLUDE_FROM_ALL ../tests/test_motion_shaders.cpp ../tests/test_gpu_runtime_stubs.cpp)
-target_include_directories(motion-shader-test PRIVATE shim shadps4 third_party/gcn/include)
-target_link_libraries(motion-shader-test PRIVATE gow3gpu)
 add_executable(png-decode-test EXCLUDE_FROM_ALL ../tests/test_png_decode.cpp shim/gow3_png.cpp)
 target_compile_options(png-decode-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 target_link_libraries(png-decode-test PRIVATE PkgConfig::FFMPEG)
@@ -292,37 +270,7 @@ target_link_libraries(async-fetch-snapshot-test PRIVATE Vulkan::Headers fmt::fmt
 target_compile_options(depth-stencil-state-test PRIVATE -UNDEBUG)
 target_include_directories(depth-stencil-state-test PRIVATE shim shadps4 third_party/gcn/include)
 target_link_libraries(depth-stencil-state-test PRIVATE Vulkan::Headers fmt::fmt Boost::headers magic_enum::magic_enum)
-add_executable(ui-composition-test EXCLUDE_FROM_ALL ../tests/test_ui_composition.cpp)
-target_compile_options(ui-composition-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
-target_include_directories(ui-composition-test PRIVATE ..)
 
-add_executable(scene-resolution-test EXCLUDE_FROM_ALL ../tests/test_scene_resolution.cpp ../tests/test_gpu_runtime_stubs.cpp)
-target_include_directories(scene-resolution-test PRIVATE shim shadps4 third_party/gcn/include)
-# The test's Vulkan-Hpp inline methods have a different set of platform extensions
-# from vk_platform.cpp. Keep them local and use an explicit dispatcher in the test.
-target_compile_options(scene-resolution-test PRIVATE -UNDEBUG -fPIC)
-set_source_files_properties(../tests/test_scene_resolution.cpp PROPERTIES
-    COMPILE_OPTIONS "-fvisibility=hidden;-fvisibility-inlines-hidden")
-target_link_libraries(scene-resolution-test PRIVATE gow3gpu)
-add_executable(taa-shader-test EXCLUDE_FROM_ALL ../tests/test_taa_shader.cpp ../tests/test_gpu_runtime_stubs.cpp)
-target_include_directories(taa-shader-test PRIVATE shim shadps4 ${SHADER_INCLUDE} third_party/gcn/include)
-target_compile_options(taa-shader-test PRIVATE -UNDEBUG -fPIC)
-set_source_files_properties(../tests/test_taa_shader.cpp PROPERTIES
-    COMPILE_OPTIONS "-fvisibility=hidden;-fvisibility-inlines-hidden")
-target_link_libraries(taa-shader-test PRIVATE gow3gpu)
-add_dependencies(taa-shader-test host_shaders)
-
-add_executable(camera-motion-test EXCLUDE_FROM_ALL ../tests/test_camera_motion.cpp ../tests/test_gpu_runtime_stubs.cpp)
-target_include_directories(camera-motion-test PRIVATE shim shadps4 ${SHADER_INCLUDE} third_party/gcn/include)
-target_compile_options(camera-motion-test PRIVATE -UNDEBUG -fPIC)
-target_link_libraries(camera-motion-test PRIVATE gow3gpu)
-add_dependencies(camera-motion-test host_shaders)
-
-# gow3: FSR 4 benchmark outside the game (tools/fsr4_bench.cpp): ninja -C out/gpu fsr4-bench.
-add_executable(upscaler-support-test EXCLUDE_FROM_ALL ../tests/test_upscaler_support.cpp
-    shim/gow3_settings.cpp)
-target_include_directories(upscaler-support-test PRIVATE shim)
-target_compile_options(upscaler-support-test PRIVATE -UNDEBUG)
 add_executable(perf-overlay-test EXCLUDE_FROM_ALL ../tests/test_perf_overlay.cpp
     shim/gow3_settings.cpp)
 target_include_directories(perf-overlay-test PRIVATE shim)
@@ -345,8 +293,4 @@ target_include_directories(page-state-test PRIVATE ../tests/stubs shim shadps4)
 target_link_libraries(page-state-test PRIVATE Boost::headers)
 target_compile_options(page-state-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 
-add_executable(fsr4-bench EXCLUDE_FROM_ALL tools/fsr4_bench.cpp
-    shadps4/video_core/renderer_vulkan/fsr411/fsr411.cpp)
-target_include_directories(fsr4-bench PRIVATE shadps4/video_core/renderer_vulkan/fsr411)
-target_link_libraries(fsr4-bench PRIVATE ffx-vulkan::fsr4-v07-vulkan ffx-vulkan::fsr4-v07-assets Vulkan::Vulkan)
 
