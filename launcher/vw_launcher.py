@@ -79,7 +79,18 @@ GAMES = {
         'colors': {'ink': '#f3e6c4', 'dim': '#b9a988', 'gold': '#d9b45f', 'gold_hi': '#f6d98b',
                    'bg': '#0d1226', 'panel': (14, 16, 34, 214), 'idle': '#5b4c2a', 'chosen': '#3a2e14',
                    'button': '#5a4416', 'field': '#141729', 'rule': '#6d5a2e', 'inner': '#8a6d2f',
-                   'hover': '#fff1c4', 'log_bg': '#0b0e1c', 'shade': (6, 8, 20)},
+                   'hover': '#fff1c4', 'log_bg': '#0b0e1c', 'shade': (6, 8, 20), 'disabled': '#2a2618'},
+    },
+    # The game's menus: navy panels in gold frames, cream text, a royal blue banner.
+    'unicorn': {
+        'title_id': 'CUSA36381', 'app_version': '01.04', 'version_hint': 'base game with update 1.04',
+        'name': 'Unicorn Overlord', 'title': 'Unicorn Overlord', 'subtitle': 'native PC port',
+        'run_dir': 'run_uo', 'backdrop': 'pic0.png',
+        'game_heading': 'THE REALM', 'play': 'Begin the Campaign', 'running': 'The campaign is under way…',
+        'colors': {'ink': '#ece3cf', 'dim': '#a9a28f', 'gold': '#c8a254', 'gold_hi': '#f0d48a',
+                   'bg': '#0a1222', 'panel': (12, 20, 38, 222), 'idle': '#4f5a6e', 'chosen': '#4a3a17',
+                   'button': '#1d3a66', 'field': '#121b2e', 'rule': '#5e6c86', 'inner': '#c8a254',
+                   'hover': '#fff3cc', 'log_bg': '#0a1020', 'shade': (5, 8, 16), 'disabled': '#1a2130'},
     },
 }
 
@@ -150,6 +161,8 @@ class Launcher:
                                   'Palatino Linotype', 'DejaVu Serif', 'Liberation Serif', 'Times New Roman')
                       if f in families), 'Times')
         self.f_title = tkfont.Font(family=serif, size=24, weight='bold')
+        while self.f_title.measure(game['title']) > 320 and self.f_title.cget('size') > 14:
+            self.f_title.configure(size=self.f_title.cget('size') - 1)
         self.f_sub = tkfont.Font(family=serif, size=12, slant='italic')
         self.f_head = tkfont.Font(family=serif, size=11, weight='bold')
         self.f_body = tkfont.Font(family=serif, size=12)
@@ -261,7 +274,7 @@ class Launcher:
         self.toggle(x, y, 'FSR 1 upscaling', 'fsr1')
         if self.options['rcas'] == '1':
             self.stepper(x + 330, y, 'rcas_strength')
-        c.create_text(x, y + 26, text='FSR 1 and sharpening: for a window larger than the render size.', font=self.f_small, fill=self.c['dim'], anchor='nw', width=W - 80 - x)
+        c.create_text(x, y + 26, text='FSR 1 and sharpening: for a window above the render size.', font=self.f_small, fill=self.c['dim'], anchor='nw', width=W - 80 - x)
 
         self.play_button(ok)
         fy = H - 64
@@ -331,7 +344,7 @@ class Launcher:
         x0, y0, x1, y1 = 414, H - 150, W - 70, H - 90
         running = self.process is not None
         label = self.game['running'] if running else self.game['play']
-        fill = self.c['button'] if ok and not running else '#2a2618'
+        fill = self.c['button'] if ok and not running else self.c['disabled']
         box = c.create_rectangle(x0, y0, x1, y1, fill=fill, outline=self.c['gold_hi'] if ok else self.c['idle'], width=2)
         c.create_rectangle(x0 + 5, y0 + 5, x1 - 5, y1 - 5, outline=self.c['inner'])
         text = c.create_text((x0 + x1) / 2, (y0 + y1) / 2, text=label, font=self.f_play,

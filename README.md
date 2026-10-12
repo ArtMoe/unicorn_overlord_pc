@@ -28,7 +28,7 @@ Packaged builds contain the launcher and the game executable. From the
 source tree:
 
 ```bash
-python launcher/odin_launcher.py
+python launcher/odin_launcher.py      # Unicorn Overlord: launcher/unicorn_launcher.py
 ```
 
 In game, **Insert** (R3+L2 on a controller) opens the port's menu. It has three tabs:
