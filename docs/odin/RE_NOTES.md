@@ -41,3 +41,14 @@ step per frame (Vanillaware games usually do) or the 0x1f0 delta.
 - Texel coordinates are divided by T# sizes read on the CPU: sprite batches (FUN_006b6aa0 @
   0x6b87b1, constant to the sprite VS), layer composites (0x6b9165, 0x6ba126: 1/w, 1/h).
 - FUN_006b9740: rectangle clear in 1080p units (VS divides by a constant 1920x1080).
+
+## Graphics options in the game code (2026-10-12)
+
+- No PS4 Pro path: no sceKernelIsNeoMode import; sceSystemServiceGetDisplaySafeAreaInfo only.
+- Render targets come only from Gnm RenderTarget::init (0x741ac0) through the MAIN BUFFERs
+  (0x6ac178) and the USER OFFSCREEN BUFFERs (0x6adbb8, FUN_006adaa0); every one is screen
+  sized, so the render scale covers all of them: no half/quarter-resolution effect buffers.
+- BLUR_ON/BLUR_OFF, FADE, SPOTLIGHT, SHOCKWAVE, CROSSFADE... are drama (cutscene) script
+  commands, not user options; there is no hidden graphics menu.
+- What is left for image quality outside the render scale: texture filtering of the 2D atlases
+  (BC3, sampled bilinear) and replacing the art itself (HD textures through mods).

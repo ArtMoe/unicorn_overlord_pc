@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Windows counterpart of run.sh: prepares the game image and starts gow3-probe.exe.
+"""Prepares the game image and starts gow3-probe (Windows and Linux; run.sh is the Linux
+development script).
 
 Same environment variables as run.sh (GOW3_GAME_DIR, GOW3_DATA_DIR, GOW3_PATCHES, GOW3_MODS_*,
 GOW3_USER_DIR, ...). Extra arguments go to gow3-probe.
@@ -22,7 +23,21 @@ def fail(message):
     sys.exit(1)
 
 
+WINDOWS = os.name == 'nt'
+
+
 def wait_for(pid):
+    if not WINDOWS:
+        import time
+        if pid == os.getpid():  # the restart exec'd this script in the game's own process
+            return
+        for _ in range(300):  # 30 s, as on Windows
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                return
+            time.sleep(0.1)
+        return
     kernel32 = ctypes.windll.kernel32
     SYNCHRONIZE = 0x00100000
     handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
@@ -33,6 +48,8 @@ def wait_for(pid):
 
 def no_console():
     """Started without a console (the launcher): console programs must not open their own."""
+    if not WINDOWS:
+        return 0
     return 0 if ctypes.windll.kernel32.GetConsoleWindow() else subprocess.CREATE_NO_WINDOW
 
 
@@ -88,11 +105,11 @@ def main():
     if not env.get('GOW3_FSR411_DIR') and not (PORT / 'fsr4_411').is_dir() and (data / 'fsr4_411').is_dir():
         env['GOW3_FSR411_DIR'] = str(data / 'fsr4_411')
 
-    probe = Path(env['GOW3_PROBE']) if env.get('GOW3_PROBE') else find_executable('gow3-probe.exe')
+    probe = Path(env['GOW3_PROBE']) if env.get('GOW3_PROBE') else find_executable('gow3-probe.exe' if WINDOWS else 'gow3-probe')
     if not probe or not probe.is_file():
-        fail('gow3-probe.exe not found: build it with build.sh (MSYS2 CLANG64) or use a packaged build.')
+        fail('gow3-probe not found: build it with build.sh or use a packaged build.')
     # Development builds run from the MSYS2 tree: its CLANG64 DLLs (SDL3, FFmpeg, ...).
-    if not (probe.parent / 'SDL3.dll').is_file():
+    if WINDOWS and not (probe.parent / 'SDL3.dll').is_file():
         clang64 = Path(env.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
         if clang64.is_dir():
             env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
@@ -134,6 +151,9 @@ def main():
         if game_title_id(game) == 'CUSA05083':
             env.setdefault('GOW3_DISABLED_OPTIMIZATIONS', str((1 << 35) | (1 << 36) | (1 << 37)))
         env['GOW3_TITLE_ID'] = game_title_id(game) or ''
+        if game_title_id(game) == 'CUSA05083':
+            # Tested without the readback shortcuts (run.sh does not enable them either).
+            env['GOW3_DEFERRED_READBACK'] = env['GOW3_STALE_READBACK'] = '0'
         if patched:
             # The patch notes give the direct memory and VBlank rate the selected patches need.
             names = selected_patches(profile[1], profile[2], env.get('GOW3_PATCHES', ''), env.get('GOW3_PATCHES_ONLY') == '1')
@@ -169,7 +189,11 @@ def main():
             print(f'Save backup failed, starting anyway: {error}', flush=True)
         this = ['--run'] if getattr(sys, 'frozen', False) else [str(Path(__file__).resolve())]
         restart = [sys.executable, *this, '--after', str(os.getpid()), *args]
-        env['GOW3_RESTART_COMMAND'] = subprocess.list2cmdline(restart)
+        if WINDOWS:
+            env['GOW3_RESTART_COMMAND'] = subprocess.list2cmdline(restart)
+        else:
+            import shlex
+            env['GOW3_RESTART_COMMAND'] = shlex.join(restart)
         command = [str(probe), str(out / 'boot-linked.bin'), '--content-profile', str(out / 'content.bin'),
                    '--patches', str(out / 'patches.bin'), '--app0', str(game),
                    '--user', str(user_dir),

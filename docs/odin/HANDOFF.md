@@ -146,6 +146,17 @@ Usage in `tools/odin_re/README.md` (paths there are the Windows ones; Ghidra 12.
 Key finding: frame limiter `FUN_006b3eb0` — waits `sceVideoOutWaitVblank`, then spins until
 1e6 / *(float *)(ctx + 0x54) µs have passed (target fps at ctx+0x54). See `RE_NOTES.md`.
 
+## Launcher and packages
+
+`launcher/odin_launcher.py`: Tkinter launcher (Windows and Linux) with the dump's own artwork
+(sce_sys/pic1.png, icon0.png), the game folder check (CUSA05083 01.01), render resolution,
+display mode, VSync, FPS counter and sharpening (gow3.ini), Play, log, saves folder.
+`python3 packaging/odin_package.py` (after build.sh) freezes it with PyInstaller into one
+executable that also runs run.py and the scripts, and writes `dist/Odin Sphere PC/`:
+the launcher, README.txt and runtime/ (16 files; data/ is created on first start), plus a
+.tar.gz (Linux) or .zip (Windows, from MSYS2 CLANG64 with a Windows Python; not tried yet).
+run.py now runs on Linux too; the in-game restart uses GOW3_RESTART_COMMAND on Linux as well.
+
 ## Next steps (Phase 2–4, see PLAN.md)
 
 1. Press past the title: New Game → first chapter; watch for missing files, CRI USM movie
