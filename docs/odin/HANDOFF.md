@@ -57,8 +57,8 @@ FSR 3.1 (the GPU default) rendered below 1080p and dropped translucent UI layers
 `GOW3_UPSCALER=none GOW3_READBACK_LINEAR=1` for CUSA05083 (as run.py).
 
 **Render scale (Phase 7, `src/odin_render_scale.h`, `install_odin_render_scale` in probe.c).**
-`render_resolution=` in gow3.ini (the in-game menu's "Render resolution": native, 480p, 720p,
-1440p, 1800p, 4K; `GOW3_RENDER_SCALE=<factor 0.4-3>` overrides) renders at 1920x1080 times the factor; the 2D layout stays in 1080p units. Verified at
+`render_resolution=` in gow3.ini (the in-game menu's "Render resolution": native, 1440p, 1800p,
+4K; 480p/720p fall back to native; `GOW3_RENDER_SCALE=<factor 1-3>` overrides) renders at 1920x1080 times the factor; the 2D layout stays in 1080p units. Verified at
 1440p and 4K from the title through the attic, the book intro, cutscenes and the first stage
 (HUD, minimap) at 60 fps. Patched: render target/offscreen buffer/viewport immediates, the
 RENDERBUFFER heap (scale^2), view viewports (FUN_006b5f80), clip scissors (FUN_006b4140), the
@@ -83,7 +83,7 @@ speed), so the "Frame Limiter - VBlank Only" patch (patches/, off) is not a usab
 needs render interpolation or frame generation.
 
 Debug aids: `GOW3_CAPTURE_FRAMES=<n>` records n display frames per capture;
-`GOW3_CAPTURE_VIEWPORTS=1` adds per-draw viewport/scissor state and texture sharps;
+`GOW3_CAPTURE_DETAIL=1` adds per-draw primitive, viewport/scissor state, texture sharps with memory hashes and the first vertices of each stream;
 `GOW3_DUMP_SHADERS=1` dumps newly compiled shaders to ~/.local/share/shadPS4/shader/dumps.
 
 Open: on the plain text prompts ("There is no save data", voice language) the guest display
@@ -145,6 +145,24 @@ Usage in `tools/odin_re/README.md` (paths there are the Windows ones; Ghidra 12.
 
 Key finding: frame limiter `FUN_006b3eb0` — waits `sceVideoOutWaitVblank`, then spins until
 1e6 / *(float *)(ctx + 0x54) µs have passed (target fps at ctx+0x54). See `RE_NOTES.md`.
+
+## Per-game settings, saves, GPU workarounds (review 2026-10-12)
+
+- `scripts/game_profiles.py`: one place for a game's launch settings, read by run.py and run.sh
+  (Odin Sphere: optimizations 35-37 off, no upscaler, linear readbacks, no readback shortcuts,
+  `GOW3_FIXED_TIMESTEP=1` for the menu, no God of War III resolution/frame rate patch names).
+- Saves (`/savedataN`) opened for writing go through a temporary copy (`<name>.<n>.gow3save`),
+  synced and renamed over the file on close: a crash mid-save keeps the old save (from bbport,
+  its #64; Windows: `_commit` + `MoveFileEx`). Leftover copies are removed when saves mount.
+  `tests/test_save_commit.c` (build.sh --test).
+- `RADV_DEBUG=nohiz` is set for GCN 3-5 GPUs under RADV (Polaris, Vega and their APUs: HiZ showed
+  black halos/missing geometry in bbport, its #54/#99), from `gow3-gpu-capabilities --device`;
+  `GOW3_AUTO_NOHIZ=0` or a user RADV_DEBUG keeps it off. This laptop runs the game on its
+  discrete RX 560X (Polaris 11); the Vega 8 iGPU is the second device.
+- Render scale: all hooks are checked for range before any is written (a partly scaled frame
+  draws in two coordinate systems); factors below 1 are refused for this game (a scaled target
+  size such as 1280x720 is also a texture asset size the texture size hooks would misreport).
+- Capture detail (`GOW3_CAPTURE_DETAIL=1`) lives in vk_frame_capture.cpp, not the draw path.
 
 ## Launcher and packages
 

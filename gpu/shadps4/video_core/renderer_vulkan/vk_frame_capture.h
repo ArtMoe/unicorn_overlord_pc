@@ -9,12 +9,20 @@
 #include <atomic>
 #include <cstdio>
 #include <string>
+#include <span>
 #include <vector>
 
 #include "common/types.h"
 
 namespace VideoCore {
 struct ImageInfo;
+}
+namespace AmdGpu {
+union Regs;
+struct Buffer;
+}
+namespace Shader {
+struct Info;
 }
 
 namespace Vulkan {
@@ -44,6 +52,11 @@ public:
     /// Contents of a bound buffer (first 1 KiB), kept for small passes and a pass's first draw.
     static void Buffer(u64 stage_hash, u32 slot, VAddr address, const void* data, u64 size);
     static void Note(const char* text);
+    /// GOW3_CAPTURE_DETAIL=1, per draw: primitive, viewport and scissors, the fragment
+    /// shader's textures (with a hash of their memory: textures rewritten in place) and the
+    /// first vertices of each vertex stream (with a hash of the whole stream).
+    static void NoteDraw(const AmdGpu::Regs& regs, u32 num_indices, const Shader::Info* ps);
+    static void NoteVertexStreams(std::span<const AmdGpu::Buffer> streams);
 
     /// In-game menu: records the next full frame (as the trigger file does).
     static void Request();
