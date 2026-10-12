@@ -3,8 +3,9 @@
 """Per-game launch settings for run.py.
 
 `defaults` apply unless the variable is already set; `forced` always apply (they are what the
-port was tested with). Render resolution is a code patch in the probe for each game
-(src/odin_render_scale.h).
+port was tested with). `native_modules` are the game's own sce_module libraries linked into the
+image after libc and Fios2 (link_modules.py). Render resolution is a code patch in the probe for
+each game (src/odin_render_scale.h, src/unicorn_render_scale.h).
 """
 
 PROFILES = {
@@ -20,6 +21,11 @@ PROFILES = {
             'VW_DEFERRED_READBACK': '0',
             'VW_STALE_READBACK': '0',
         },
+    },
+    'CUSA36381': {  # Unicorn Overlord
+        # The bundled PSN libraries run natively: their C++ toolkit then reaches the runtime only
+        # through the PSN C APIs, which answer as signed out.
+        'native_modules': ('libSceNpToolkit2.prx', 'libSceNpCppWebApi.prx', 'libSceJobManager.prx'),
     },
 }
 
