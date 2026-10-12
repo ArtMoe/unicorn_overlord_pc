@@ -7,11 +7,12 @@ artwork comes from the selected dump (sce_sys/); nothing of the game is shipped.
 data/vw.ini (shared with the in-game menu) and data/launcher.json. Each game has a two-line
 entry script (odin_launcher.py, ...) that calls main(<key>).
 
-Packaged (PyInstaller, packaging/package.py) the executable also runs run.py (`--run`) and
-the preparation scripts (`--script <file>`), so a packaged port needs no Python installation:
+Packaged (PyInstaller, packaging/package.py) the executable carries run.py, scripts/ and
+patches/ and also runs them (`--run`, `--script <file>`), so a packaged port needs no Python
+installation:
 
-    <Game>(.exe)        this launcher
-    runtime/            run.py, scripts/, patches/, bin/ (vwport and its GPU library)
+    <Game>(.exe)        this launcher, with the runtime scripts inside
+    vwport(.exe)        the game executable (GPU library linked in)
     data/               vw.ini, launcher.json, user/ (saves, caches), out/ (generated)
 """
 import json
@@ -24,8 +25,9 @@ import threading
 
 FROZEN = getattr(sys, 'frozen', False)
 HERE = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
-# Packaged: runtime/ beside the executable. From the source tree: the repository.
-RUNTIME = HERE / 'runtime' if (HERE / 'runtime' / 'run.py').is_file() else HERE.parent
+# Packaged: run.py, scripts/ and patches/ are inside the executable (PyInstaller's bundle
+# folder) and vwport is beside it. From the source tree: the repository.
+RUNTIME = Path(sys._MEIPASS) / 'runtime' if FROZEN else HERE.parent  # noqa: SLF001
 WINDOWS = os.name == 'nt'
 
 
@@ -362,6 +364,7 @@ class Launcher:
         env = dict(os.environ, VW_GAME_DIR=self.settings['game_dir'], VW_DATA_DIR=str(self.data),
                    VW_CONFIG=str(self.config))
         if FROZEN:
+            env['VW_PROBE'] = str(HERE / ('vwport.exe' if WINDOWS else 'vwport'))
             command = [sys.executable, '--run']
         else:
             command = [sys.executable, str(RUNTIME / 'run.py')]

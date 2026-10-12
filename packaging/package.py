@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Packages a port (Linux, or Windows from MSYS2 CLANG64): python3 packaging/package.py <game>
+
+<game> is a key of launcher/vw_launcher.py GAMES (odin, ...). On Linux this builds the static
+executable first (build.sh --static); on Windows build first (bash build.sh). Result:
+dist/<Title> PC/ and an archive of it (.tar.gz on Linux, .zip on Windows):
+
+    <Title>(.exe)   the launcher (PyInstaller, one file) with run.py, scripts/ and patches/
+                    inside; it also runs them, so no Python installation is needed
+    vwport(.exe)    the game executable (Linux: the GPU library and C++ runtime linked in)
+    *.dll           Windows only: the MSYS2 CLANG64 libraries vwport loads
+    README.txt, LICENSE
+    data/           created on first start: vw.ini, saves, generated files
+
+No game file is included: the launcher asks for the folder of the user's own dump.
+"""
+import ast
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tarfile
+import zipfile
+
+ROOT = Path(__file__).resolve().parent.parent
+WINDOWS = os.name == 'nt' or sys.platform == 'msys'
+OUT = ROOT / 'out'
+VENV = OUT / 'pyenv'
+
+
+def run(*command, **kwargs):
+    print('+', ' '.join(map(str, command)), flush=True)
+    subprocess.run([str(c) for c in command], check=True, **kwargs)
+
+
+def venv_python():
+    python = VENV / ('Scripts/python.exe' if WINDOWS else 'bin/python')
+    if not python.is_file():
+        run(sys.executable, '-m', 'venv', VENV)
+        run(python, '-m', 'pip', 'install', '-q', '--disable-pip-version-check', 'pyinstaller', 'pillow')
+    return python
+
+
+def stdlib_imports():
+    """Standard modules imported by run.py and the scripts (run inside the frozen launcher)."""
+    stdlib = set(sys.stdlib_module_names)
+    found = set()
+    for source in [ROOT / 'run.py', *sorted((ROOT / 'scripts').glob('*.py'))]:
+        for node in ast.walk(ast.parse(source.read_text(encoding='utf-8'))):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+                names = [node.module]
+            for name in names:
+                if name.split('.')[0] in stdlib and not (name.startswith('ctypes.wintypes') and not WINDOWS):
+                    found.add(name)
+    return sorted(found)
+
+
+ICON_CODE = """
+import sys
+from PIL import Image, ImageDraw, ImageColor
+size = 256
+bg, frame, star = (ImageColor.getrgb(c) for c in sys.argv[2:5])
+img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+draw = ImageDraw.Draw(img)
+draw.ellipse((8, 8, size - 8, size - 8), fill=bg, outline=frame, width=10)
+c, r, w = size / 2, 92, 22
+draw.polygon([(c, c - r), (c + w, c - w), (c + r, c), (c + w, c + w), (c, c + r), (c - w, c + w),
+              (c - r, c), (c - w, c - w)], fill=star)
+draw.ellipse((c - 14, c - 14, c + 14, c + 14), fill=bg)
+img.save(sys.argv[1], sizes=[(256, 256), (64, 64), (32, 32), (16, 16)])
+"""
+
+
+def make_icon(python, game):
+    """A four-pointed star in the game's colors (the game's own art is not shipped)."""
+    path = OUT / ('icon.ico' if WINDOWS else 'icon.png')
+    colors = game['colors']
+    run(python, '-c', ICON_CODE, path, colors['bg'], colors['gold'], colors['gold_hi'])
+    return path
+
+
+def freeze(python, key, game):
+    # PIL._tkinter_finder: loaded by ImageTk at run time, not seen by PyInstaller's analysis.
+    hidden = [arg for module in [*stdlib_imports(), 'PIL._tkinter_finder'] for arg in ('--hidden-import', module)]
+    data = [arg for source, target in ((ROOT / 'run.py', 'runtime'), (ROOT / 'scripts', 'runtime/scripts'),
+                                       (ROOT / 'patches', 'runtime/patches'))
+            for arg in ('--add-data', f'{source}{os.pathsep}{target}')]
+    run(python, '-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN', '--onefile',
+        '--windowed', '--name', game['title'], '--icon', make_icon(python, game), '--distpath', OUT / 'pyi-dist',
+        '--workpath', OUT / 'pyi-work', '--specpath', OUT / 'pyi-work', '--paths', ROOT / 'scripts',
+        '--exclude-module', '__pycache__', *data, *hidden, ROOT / 'launcher' / f'{key}_launcher.py', cwd=ROOT)
+    return OUT / 'pyi-dist' / (game['title'] + ('.exe' if WINDOWS else ''))
+
+
+def copy_binaries(dist):
+    if WINDOWS:
+        probe = OUT / 'vwport.exe'
+        shutil.copy2(probe, dist)
+        # The CLANG64 DLLs the probe loads (ldd lists them with their MSYS2 paths).
+        listing = subprocess.run(['ldd', str(probe)], capture_output=True, text=True, check=True).stdout
+        for line in listing.splitlines():
+            parts = line.split('=>')
+            if len(parts) == 2 and '/clang64/bin/' in parts[1]:
+                dll = parts[1].split('(')[0].strip()
+                shutil.copy2(subprocess.run(['cygpath', '-w', dll], capture_output=True, text=True,
+                                            check=True).stdout.strip(), dist)
+    else:
+        shutil.copy2(OUT / 'static' / 'vwport', dist)
+        subprocess.run(['strip', '--strip-unneeded', str(dist / 'vwport')], check=False)
+
+
+README = """{name} - native PC port
+{underline}
+
+1. Start "{exe}".
+2. Click "Choose..." and select the folder of your own dump of the game:
+   {title_id} version {app_version} (the folder that holds eboot.bin and sce_sys).
+3. Pick the resolution and display options, then "{play}".
+
+In game: the settings menu opens with Insert (keyboard) or R3+L2 (controller).
+Saves, settings and generated files live in the "data" folder next to the launcher.
+Nothing of the game is included in this package.
+{requirements}"""
+
+LINUX_REQUIREMENTS = """
+Linux needs these system packages (most desktops have them already):
+  Arch:          sudo pacman -S sdl3 ffmpeg vulkan-icd-loader fmt zydis xxhash
+  Debian/Ubuntu: sudo apt install libsdl3-0 ffmpeg libvulkan1 libfmt-dev libzydis-dev libxxhash0
+  plus your GPU's Vulkan driver (Mesa radv/anv, or NVIDIA).
+"""
+
+
+def main():
+    key = sys.argv[1] if len(sys.argv) > 1 else 'odin'
+    sys.path.insert(0, str(ROOT / 'launcher'))
+    from vw_launcher import GAMES
+    game = GAMES[key]
+    if WINDOWS:
+        if not (OUT / 'vwport.exe').is_file():
+            sys.exit('Build first: bash build.sh')
+    else:
+        run('bash', ROOT / 'build.sh', '--static', cwd=ROOT)
+    name = f"{game['title']} PC"
+    dist = ROOT / 'dist' / name
+    python = venv_python()
+    launcher = freeze(python, key, game)
+    if dist.exists():
+        shutil.rmtree(dist)
+    dist.mkdir(parents=True)
+    shutil.copy2(launcher, dist)
+    shutil.copy2(ROOT / 'LICENSE', dist)
+    copy_binaries(dist)
+    (dist / 'README.txt').write_text(README.format(
+        name=game['name'], underline='=' * (len(game['name']) + 17), exe=launcher.name,
+        title_id=game['title_id'], app_version=game['app_version'], play=game['play'],
+        requirements='' if WINDOWS else LINUX_REQUIREMENTS), encoding='utf-8')
+    archive = dist.parent / (name.replace(' ', '-') + ('-windows.zip' if WINDOWS else '-linux.tar.gz'))
+    if WINDOWS:
+        with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
+            for path in dist.rglob('*'):
+                z.write(path, Path(name) / path.relative_to(dist))
+    else:
+        with tarfile.open(archive, 'w:gz') as t:
+            t.add(dist, arcname=name)
+    files = sorted(p.name for p in dist.rglob('*') if p.is_file())
+    print(f'{dist}: {len(files)} files ({", ".join(files)}); archive {archive} '
+          f'({archive.stat().st_size >> 20} MiB)')
+
+
+if __name__ == '__main__':
+    main()

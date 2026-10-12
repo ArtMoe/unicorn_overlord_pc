@@ -24,7 +24,7 @@ shadPS4 video core translates the graphics to Vulkan. It is not a general emulat
 ## Playing
 
 Start the launcher, pick the game folder, choose the graphics options and press **Play**.
-Packaged builds contain the launcher, the game executable and the default `vw.ini`. From the
+Packaged builds contain the launcher and the game executable. From the
 source tree:
 
 ```bash
@@ -88,7 +88,9 @@ folder).
 On Windows, build in an MSYS2 CLANG64 shell. See
 [packaging/windows/README.md](packaging/windows/README.md).
 
-To package a release, run `python packaging/odin_package.py`.
+To package a release, run `python packaging/package.py odin`. On Linux it builds a static
+`vwport` (`build.sh --static`, the GPU library linked in) and writes four files: the launcher
+(with the runtime scripts inside), `vwport`, `README.txt` and `LICENSE`.
 
 ### Tests
 
