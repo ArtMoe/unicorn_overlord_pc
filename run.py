@@ -129,6 +129,10 @@ def main():
         # image readbacks fix its corrupted textures.
         env.setdefault('GOW3_UPSCALER', 'none')
         env.setdefault('GOW3_READBACK_LINEAR', '1')
+        # Odin Sphere Leifthrasir: the draw pipeline (bit 37) presents black/partial frames and
+        # early draw inputs / the constant ring (bits 35, 36) flicker; all three stay off.
+        if game_title_id(game) == 'CUSA05083':
+            env.setdefault('GOW3_DISABLED_OPTIMIZATIONS', str((1 << 35) | (1 << 36) | (1 << 37)))
         if patched:
             # The patch notes give the direct memory and VBlank rate the selected patches need.
             names = selected_patches(profile[1], profile[2], env.get('GOW3_PATCHES', ''), env.get('GOW3_PATCHES_ONLY') == '1')

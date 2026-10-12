@@ -10,6 +10,14 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 # Frame pointers keep the loader's thread dumps (watchdog, SIGUSR2 sampling) walkable.
 add_compile_options(-fno-omit-frame-pointer)
+# MinGW + newer libc++ (clang 21+): vendored code (sirit, FFX 1.1.4 SDK, ...) relied on
+# transitive includes for std::abort, _countof, swprintf_s, log2 and placement new.
+if (MINGW)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include cstdlib>"
+                        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include cmath>"
+                        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include new>"
+                        "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include wchar.h>")
+endif()
 
 # gow3: link-time optimization (GOW3_LTO, default on) and profile-guided optimization
 # (GOW3_PGO: off, generate = instrumented build writing into GOW3_PGO_DIR, use = build with that
@@ -198,7 +206,9 @@ if (WIN32)
     add_executable(gow3-probe ../src/probe.c ${GOW3_RUNTIME} ../src/compat_win.c ../src/vulkan_smoke.c
         ../packaging/windows/gow3-probe.rc)
     set_target_properties(gow3-probe PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
-    target_compile_options(gow3-probe PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror>)
+    # clang 23 added -Wunused-but-set-global (must follow -Wall to stay off).
+    target_compile_options(gow3-probe PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror
+        -Wno-unknown-warning-option -Wno-unused-but-set-global>)
     target_include_directories(gow3-probe PRIVATE .. ../src)
     target_link_libraries(gow3-probe PRIVATE gow3gpu atrac9 onecore bcrypt ws2_32 -pthread)
     # The PS4 range (64 GiB - 1 TiB) must stay free: no high-entropy ASLR for heaps and stacks.

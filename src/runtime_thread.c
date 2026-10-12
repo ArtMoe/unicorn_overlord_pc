@@ -389,6 +389,47 @@ uintptr_t runtime_thread_resolve(const char *name) {
         if (!strcmp(name,table[i].nid)) return (uintptr_t)table[i].fn;
     return 0;
 }
+#ifdef _WIN32
+/* GOW3_HANG_DUMP: where every live guest thread is (rip + frame-pointer chain). */
+void runtime_thread_dump(void) {
+    pthread_mutex_lock(&lock);
+    fputs("Thread dump:\n",stderr);
+    for (GuestThread *t=threads;t;t=t->next) {
+        if (t->finished || pthread_equal(t->host,pthread_self())) continue;
+        HANDLE h=pthread_gethandle(t->host);
+        if (!h || SuspendThread(h)==(DWORD)-1) continue;
+        CONTEXT c={.ContextFlags=CONTEXT_FULL};
+        char where[MAX_PATH+64];
+        if (GetThreadContext(h,&c)) {
+            runtime_describe_address(where,sizeof(where),(uintptr_t)c.Rip);
+            fprintf(stderr,"  [%s] %s\n",t->name,where);
+            /* Host frames (ntdll, winpthreads, runtime) have unwind data; guest frames do
+             * not, so the walk continues along the frame-pointer chain from there. */
+            for (int depth=0;depth<16;++depth) {
+                DWORD64 base=0;
+                PRUNTIME_FUNCTION entry=RtlLookupFunctionEntry(c.Rip,&base,NULL);
+                if (!entry) break;
+                void *data=NULL; DWORD64 frame=0;
+                RtlVirtualUnwind(UNW_FLAG_NHANDLER,base,c.Rip,entry,&c,&data,&frame,NULL);
+                if (!c.Rip) break;
+                runtime_describe_address(where,sizeof(where),(uintptr_t)c.Rip);
+                fprintf(stderr,"      ~%d %s\n",depth,where);
+            }
+            uintptr_t rbp=(uintptr_t)c.Rbp;
+            for (int depth=0;depth<12 && rbp;++depth) {
+                uintptr_t frame[2]; SIZE_T got=0;
+                if (!ReadProcessMemory(GetCurrentProcess(),(void *)rbp,frame,sizeof(frame),&got) || got!=sizeof(frame) || frame[0]<=rbp) break;
+                runtime_describe_address(where,sizeof(where),frame[1]);
+                fprintf(stderr,"      #%d %s\n",depth,where);
+                rbp=frame[0];
+            }
+        }
+        ResumeThread(h);
+    }
+    pthread_mutex_unlock(&lock);
+    fflush(stderr);
+}
+#endif
 void runtime_thread_report(void) {
     pthread_mutex_lock(&lock);
     printf("Runtime: guest threads created=%zu, exited=%zu, joined=%zu\n",created,exited,joined_count);

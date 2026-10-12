@@ -23,3 +23,7 @@ perf.data
 mods.json
 patches.json
 !launcher/gow3.png
+
+# Odin Sphere: prepared files derived from the game dump (never commit)
+out_odin/
+run/

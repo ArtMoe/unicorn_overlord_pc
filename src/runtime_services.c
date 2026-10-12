@@ -545,6 +545,25 @@ static ABI int32_t mouse_read(int32_t handle,unsigned char *data,int32_t count) 
 static ABI int32_t mouse_close(int32_t handle) { (void)handle; return 0; }
 static ABI int32_t audio_in_open(void) { return AUDIO_IN_NOT_OPENED; }
 
+/* ---- Odin Sphere: touchpad gestures, TUS online storage, error dialog, crash dumps,
+ * live streaming. Gesture recognizers open but never report touches (the game reads the
+ * touchpad button through the pad); TUS requests fail as signed out. ---- */
+static ABI int32_t gesture_open(int32_t input,const void *param) { (void)input; (void)param; return new_id(); }
+static ABI int32_t tus_get_data(void) { return NP_SIGNED_OUT; }
+static ABI int32_t common_dialog_is_used(void) { return 0; }
+/* Network/PSN errors only: the dialog closes at once as if dismissed. */
+typedef struct { uint64_t size; int32_t error_code, user; } ErrorDialogParam;
+static int32_t error_dialog_status;
+static ABI int32_t error_dialog_init(void) { error_dialog_status=1; return 0; }
+static ABI int32_t error_dialog_open(const ErrorDialogParam *param) {
+    if (param) printf("Runtime: error dialog for %#x skipped\n",(unsigned)param->error_code);
+    error_dialog_status=3; return 0;
+}
+static ABI int32_t error_dialog_update(void) { return error_dialog_status; }
+static ABI int32_t error_dialog_term(void) { error_dialog_status=0; return 0; }
+static ABI int32_t coredump_register(void *handler,uint64_t stack,void *arg) { (void)handler; (void)stack; (void)arg; return 0; }
+static ABI int32_t coredump_write(const void *data,uint64_t size) { (void)data; return (int32_t)size; }
+
 
 static const RuntimeExport exports[]={
     {"sceUserServiceInitialize",user_initialize}, {"sceUserServiceTerminate",user_terminate},
@@ -670,5 +689,17 @@ static const RuntimeExport exports[]={
     {"sceAudioInOpen",audio_in_open},
     {"sceDiscMapIsRequestOnHDD",discmap_on_hdd}, {"sceDiscMap_8A828CAEE7EDD5E9",discmap_8a82},
     {"sceVoiceInit",ok_void}, {"sceVoiceEnd",ok_void},
+    {"sceSystemGestureInitializePrimitiveTouchRecognizer",ok_void},
+    {"sceSystemGestureFinalizePrimitiveTouchRecognizer",ok_void},
+    {"sceSystemGestureOpen",gesture_open}, {"sceSystemGestureClose",ok_void},
+    {"sceSystemGestureCreateTouchRecognizer",ok_void},
+    {"sceNpTusCreateNpTitleCtx",np_request_ctx}, {"sceNpTusDeleteNpTitleCtx",ok_void},
+    {"sceNpTusCreateRequest",np_request}, {"sceNpTusDeleteRequest",ok_void},
+    {"sceNpTusGetData",tus_get_data}, {"sceNpTusSetData",tus_get_data},
+    {"sceCommonDialogIsUsed",common_dialog_is_used},
+    {"sceErrorDialogInitialize",error_dialog_init}, {"sceErrorDialogOpen",error_dialog_open},
+    {"sceErrorDialogUpdateStatus",error_dialog_update}, {"sceErrorDialogTerminate",error_dialog_term},
+    {"sceCoredumpRegisterCoredumpHandler",coredump_register}, {"sceCoredumpWriteUserData",coredump_write},
+    {"sceGameLiveStreamingInitialize",ok_void}, {"sceGameLiveStreamingTerminate",ok_void},
 };
 uintptr_t runtime_services_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }

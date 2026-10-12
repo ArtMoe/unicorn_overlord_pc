@@ -707,6 +707,15 @@ void *runtime_low_map(size_t size, int prot) {
  * 1073741824 the lock-free UpdateImage path for clean, tracked images. */
 /* Bits 32 and up: the draw pipeline and related GPU thread work (gpu/shim/gow3_toggles.h). */
 uint64_t runtime_disabled_optimizations;
+/* GOW3_DISABLED_OPTIMIZATIONS: the same bits, off for the whole run (per-game defaults set by
+ * run.py); GOW3_TOGGLE_FILE adds to them. Read before any GPU thread starts. */
+static uint64_t disabled_at_start;
+__attribute__((constructor)) static void read_disabled_optimizations(void) {
+    const char *mask=getenv("GOW3_DISABLED_OPTIMIZATIONS");
+    if (!mask || !*mask) return;
+    disabled_at_start=strtoull(mask,NULL,0);
+    runtime_disabled_optimizations=disabled_at_start;
+}
 /* Speculative readers of guest memory (GPU draw-preparation workers) register a recovery
  * point: a fault on that thread jumps back to it instead of terminating (probe.c). */
 __thread sigjmp_buf *runtime_fault_recover;
@@ -715,6 +724,7 @@ static void *toggle_watcher(void *path) {
         FILE *f=fopen(path,"r");
         unsigned long long value=0;
         if (f) { if (fscanf(f,"%llu",&value)!=1) value=0; fclose(f); }
+        value|=disabled_at_start;
         if (value!=last) {
             __atomic_store_n(&runtime_disabled_optimizations,(uint64_t)value,__ATOMIC_RELEASE);
             printf("Runtime: disabled optimizations mask=%llu\n",value);

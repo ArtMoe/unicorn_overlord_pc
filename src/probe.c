@@ -114,6 +114,11 @@ static void describe_address(char *out, size_t size, uintptr_t address) {
     }
     snprintf(out,size,"%p",(void *)address);
 }
+void runtime_describe_address(char *out, size_t size, uintptr_t address) { describe_address(out,size,address); }
+static DWORD WINAPI hang_dump(void *seconds) {
+    for (;;) { Sleep((DWORD)(uintptr_t)seconds*1000); runtime_thread_dump(); runtime_report(); }
+    return 0;
+}
 static int fatal_reported;
 static LONG fatal_exception(EXCEPTION_POINTERS *info) {
     if (__atomic_exchange_n(&fatal_reported,1,__ATOMIC_ACQ_REL)) { Sleep(INFINITE); }
@@ -615,6 +620,9 @@ int main(int argc, char **argv) {
             fprintf(stderr,"GOW3_STRICT_HANDLES: policy not set (%lu)\n",GetLastError());
     }
     (void)timeout_seconds; /* no watchdog on Windows */
+    /* GOW3_HANG_DUMP=<seconds>: print every guest thread's location at that interval. */
+    if (getenv("GOW3_HANG_DUMP") && atoi(getenv("GOW3_HANG_DUMP"))>0)
+        CloseHandle(CreateThread(NULL,0,hang_dump,(void *)(uintptr_t)atoi(getenv("GOW3_HANG_DUMP")),0,NULL));
 #else
     page_size = (size_t)sysconf(_SC_PAGESIZE);
     struct sigaction sa = {0}; sa.sa_sigaction = fault; sa.sa_flags = SA_SIGINFO;

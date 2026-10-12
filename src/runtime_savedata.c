@@ -183,6 +183,17 @@ static int slot_of(const MountPoint *point) {
     int slot=atoi(point->data+9);
     return slot>=0 && slot<SLOTS && slots[slot].used ? slot : -1;
 }
+/* Same fixed sizes as the directory search (32768 blocks of 32 KiB, half free). */
+static ABI int32_t save_mount_info(const MountPoint *point,SearchInfo *info) {
+    if (!initialized) return ERR_NOT_INITIALIZED;
+    if (!info) return ERR_PARAMETER;
+    pthread_mutex_lock(&lock);
+    int slot=slot_of(point);
+    pthread_mutex_unlock(&lock);
+    if (slot<0) return ERR_NOT_FOUND;
+    memset(info,0,sizeof(*info)); info->blocks=32768; info->free_blocks=16384;
+    return 0;
+}
 static ABI int32_t save_umount(const MountPoint *point) {
     if (!initialized) return ERR_NOT_INITIALIZED;
     pthread_mutex_lock(&lock);
@@ -336,7 +347,7 @@ static const RuntimeExport exports[]={
     {"sceSaveDataInitialize3",save_initialize}, {"sceSaveDataTerminate",save_terminate},
     {"sceSaveDataMount",save_mount}, {"sceSaveDataMount2",save_mount2}, {"sceSaveDataUmount",save_umount},
     {"sceSaveDataSetParam",save_set_param}, {"sceSaveDataSaveIcon",save_icon}, {"sceSaveDataDelete",save_delete},
-    {"sceSaveDataDirNameSearch",save_search},
+    {"sceSaveDataDirNameSearch",save_search}, {"sceSaveDataGetMountInfo",save_mount_info},
     {"sceSaveDataSetupSaveDataMemory",memory_setup}, {"sceSaveDataGetSaveDataMemory",memory_get},
     {"sceSaveDataSetSaveDataMemory",memory_set},
 };

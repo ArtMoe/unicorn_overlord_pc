@@ -1,0 +1,23 @@
+# NID	name  -- matched by hashing candidate names (not in the port's import_names.inc)
+BIkMmUfNKWM	sceNpTusCreateNpTitleCtx
+3bh2aBvvmvM	sceNpTusCreateRequest
+XOzszO4ONWU	sceNpTusGetData
+CcIH40dYS88	sceNpTusDeleteRequest
+4NrufkNCkiE	sceNpTusSetData
+Ga6r7H6Y0RI	sceGnmSubmitAndFlipCommandBuffersForWorkload
+8zLSfEfW5AU	sceCoredumpRegisterCoredumpHandler
+Dbbkj6YHWdo	sceCoredumpWriteUserData
+kvYEw2lBndk	sceGameLiveStreamingInitialize
+9yK6Fk8mKOQ	sceGameLiveStreamingTerminate
+Xru92wHJRmg	sceVideoOutAddVblankEvent
+j6RaAUlaLv0	sceVideoOutWaitVblank
+3pcAvmwKCvM	sceSystemGestureInitializePrimitiveTouchRecognizer
+qpo-mEOwje0	sceSystemGestureOpen
+FWF8zkhr854	sceSystemGestureCreateTouchRecognizer
+j4yXIA2jJ68	sceSystemGestureClose
+WWiGuh9XfgQ	sceErrorDialogUpdateStatus
+I88KChlynSs	sceErrorDialogInitialize
+M2ZF-ClLhgY	sceErrorDialogOpen
+9XAxK2PMwk8	sceErrorDialogTerminate
+65VH0Qaaz6s	sceSaveDataGetMountInfo
+BQ3tey0JmQM	sceCommonDialogIsUsed

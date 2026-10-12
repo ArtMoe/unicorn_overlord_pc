@@ -317,6 +317,47 @@ void runtime_thread_keys_cleanup(void) {
         if (!any) break;
     }
 }
+/* Local-time conversion: the host zone stands in for the console's. */
+typedef struct { int64_t t; uint32_t west_sec, dst_sec; } GuestTimesec;
+static long utc_offset(time_t t) {
+#ifdef _WIN32
+    return compat_utc_offset(t);
+#else
+    struct tm local; localtime_r(&t,&local); return local.tm_gmtoff;
+#endif
+}
+static long dst_seconds(time_t t) {
+    struct tm local;
+    return localtime_r(&t,&local) && local.tm_isdst>0 ? 3600 : 0;
+}
+static ABI int32_t utc_to_local(int64_t utc,int64_t *local,GuestTimesec *st,uint64_t *dst) {
+    if (!local) return ERR(22);
+    long offset=utc_offset((time_t)utc), save=dst_seconds((time_t)utc);
+    *local=utc+offset;
+    if (st) { st->t=utc; st->west_sec=(uint32_t)(offset-save); st->dst_sec=(uint32_t)save; }
+    if (dst) *dst=(uint64_t)save;
+    return 0;
+}
+static ABI int32_t local_to_utc(int64_t local,int64_t has_dst,int64_t *utc,GuestTimesec *st,int32_t *dst) {
+    (void)has_dst;
+    if (!utc) return ERR(22);
+    long offset=utc_offset((time_t)local), save=dst_seconds((time_t)local);
+    *utc=local-offset;
+    if (st) { st->t=*utc; st->west_sec=(uint32_t)(offset-save); st->dst_sec=(uint32_t)save; }
+    if (dst) *dst=(int32_t)save;
+    return 0;
+}
+/* libc's unwinder asks for a module's .eh_frame; the runtime keeps no module records and the
+ * game does not throw (no __cxa_throw import). */
+static ABI int32_t module_info_for_unwind(uint64_t address,int32_t flags,void *info) {
+    (void)address; (void)flags;
+    return info ? ERR(3) : ERR(14);
+}
+/* Odin Sphere cancels worker threads only on shutdown paths; nothing is torn down. */
+static ABI int32_t pthread_cancel_stub(void *thread) {
+    printf("Runtime: scePthreadCancel(%p) ignored\n",thread);
+    return 0;
+}
 static ABI int32_t posix_key_create(uint32_t *k,KeyDestructor d) { int32_t r=key_create(k,d); return r ? r&0xffff : 0; }
 static ABI int32_t posix_key_delete(uint32_t k) { int32_t r=key_delete(k); return r ? r&0xffff : 0; }
 static ABI int32_t posix_key_set(uint32_t k,void *v) { int32_t r=key_set(k,v); return r ? r&0xffff : 0; }
@@ -350,5 +391,7 @@ static const RuntimeExport exports[]={
     {"scePthreadSetspecific",key_set}, {"scePthreadGetspecific",key_get},
     {"pthread_key_create",posix_key_create}, {"pthread_key_delete",posix_key_delete},
     {"pthread_setspecific",posix_key_set}, {"pthread_getspecific",key_get},
+    {"sceKernelConvertUtcToLocaltime",utc_to_local}, {"sceKernelConvertLocaltimeToUtc",local_to_utc},
+    {"sceKernelGetModuleInfoForUnwind",module_info_for_unwind}, {"scePthreadCancel",pthread_cancel_stub},
 };
 uintptr_t runtime_kernel_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }
