@@ -82,6 +82,7 @@ float base_scale = 1.0f;
 
 // Present rate for the FPS counter.
 std::chrono::steady_clock::time_point last_present{};
+float last_frame_ms = 0.0f;
 float frame_ms_avg = 0.0f;
 
 void SetOpen(bool value) {
@@ -947,14 +948,35 @@ void SetTextEntry(bool active, const std::string& prompt, const std::string& tex
     text_entry_text = text;
 }
 
-void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
-    // Present interval for the FPS readout (measured also while nothing is drawn).
+void NotePresent() {
     const auto now = std::chrono::steady_clock::now();
     const float ms = std::chrono::duration<float, std::milli>(now - last_present).count();
     last_present = now;
+    last_frame_ms = ms;
     if (ms > 0.0f && ms < 1000.0f) {
         frame_ms_avg = frame_ms_avg == 0.0f ? ms : frame_ms_avg * 0.95f + ms * 0.05f;
     }
+    // VW_FPS_LOG=1: one line per second with the frames presented and the mean interval.
+    static const bool fps_log = [] {
+        const char* v = std::getenv("VW_FPS_LOG");
+        return v && v[0] && v[0] != '0';
+    }();
+    if (fps_log) {
+        static auto window_start = now;
+        static int window_frames = 0;
+        ++window_frames;
+        const float window_s = std::chrono::duration<float>(now - window_start).count();
+        if (window_s >= 1.0f) {
+            std::fprintf(stderr, "[fps] %.1f (%.2f ms)\n", window_frames / window_s,
+                         window_s * 1000.0f / window_frames);
+            window_start = now;
+            window_frames = 0;
+        }
+    }
+}
+
+void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
+    const float ms = last_frame_ms;
     ConfirmRestart();
     if (!Visible()) {
         return;
