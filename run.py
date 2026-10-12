@@ -109,6 +109,10 @@ def main():
     if not probe or not probe.is_file():
         fail('gow3-probe not found: build it with build.sh or use a packaged build.')
     # Development builds run from the MSYS2 tree: its CLANG64 DLLs (SDL3, FFmpeg, ...).
+    import game_profiles
+    capabilities = probe.parent / ('gow3-gpu-capabilities.exe' if WINDOWS else 'gow3-gpu-capabilities')
+    if capabilities.is_file() and game_profiles.radv_nohiz(env, game_profiles.device_name(capabilities)):
+        print('RADV: RADV_DEBUG=nohiz for this GPU (GOW3_AUTO_NOHIZ=0: off)', flush=True)
     if WINDOWS and not (probe.parent / 'SDL3.dll').is_file():
         clang64 = Path(env.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
         if clang64.is_dir():
@@ -146,20 +150,13 @@ def main():
         # image readbacks fix its corrupted textures.
         env.setdefault('GOW3_UPSCALER', 'none')
         env.setdefault('GOW3_READBACK_LINEAR', '1')
-        # Odin Sphere Leifthrasir: the draw pipeline (bit 37) presents black/partial frames and
-        # early draw inputs / the constant ring (bits 35, 36) flicker; all three stay off.
-        if game_title_id(game) == 'CUSA05083':
-            env.setdefault('GOW3_DISABLED_OPTIMIZATIONS', str((1 << 35) | (1 << 36) | (1 << 37)))
-        env['GOW3_TITLE_ID'] = game_title_id(game) or ''
-        if game_title_id(game) == 'CUSA05083':
-            # Tested without the readback shortcuts (run.sh does not enable them either).
-            env['GOW3_DEFERRED_READBACK'] = env['GOW3_STALE_READBACK'] = '0'
+        # Per-game settings (scripts/game_profiles.py, shared with run.sh).
+        game_profiles.apply(game_title_id(game), env)
         if patched:
             # The patch notes give the direct memory and VBlank rate the selected patches need.
             names = selected_patches(profile[1], profile[2], env.get('GOW3_PATCHES', ''), env.get('GOW3_PATCHES_ONLY') == '1')
             # gow3.ini decides the resolution and frame rate patches (in-game menu, launcher).
-            # Odin Sphere's render resolution is a code patch in the probe (render_resolution).
-            if game_title_id(game) != 'CUSA05083':
+            if game_profiles.graphics_patches(game_title_id(game)):
                 names = graphics_options.patch_names(names, graphics)
             env['GOW3_PATCHES'] = ';'.join(names)
             env['GOW3_PATCHES_ONLY'] = '1'

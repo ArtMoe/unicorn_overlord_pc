@@ -429,9 +429,12 @@ void PerformanceTab() {
         ChoiceRow("Render resolution", s.render_resolution, resolution_labels, nullptr, int(G::Resolutions.size()),
                   "The resolution the game draws at. Higher is sharper and slower.");
         static const char* const engine_labels[] = {"60 (original)", "120", "240"};
-        // Odin Sphere advances its logic once per frame: a higher engine rate speeds the game up.
-        const char* title = std::getenv("GOW3_TITLE_ID");
-        const bool fixed_step = title && std::strcmp(title, "CUSA05083") == 0;
+        // GOW3_FIXED_TIMESTEP (scripts/game_profiles.py): the game advances its logic once per
+        // frame, so a higher engine rate would speed it up.
+        static const bool fixed_step = [] {
+            const char* env = std::getenv("GOW3_FIXED_TIMESTEP");
+            return env && env[0] == '1';
+        }();
         ImGui::BeginDisabled(fixed_step);
         ChoiceRow("Engine frame rate", s.engine_fps, engine_labels, G::EngineFps.data(), int(G::EngineFps.size()),
                   fixed_step ? "Not available: this game runs its logic once per frame (60 FPS)."

@@ -98,7 +98,9 @@ static inline unsigned odin_layer_build_stub(unsigned char *out, uint32_t width,
 /* FUN_006b6aa0 (sprite batch execution): the texture size constant the sprite shaders divide
  * their texel coordinates by, from the T# width/height fields. Game texel coordinates into
  * render targets are in 1920x1080 units, so a scaled target (exactly 1920s x 1080s) reports
- * 1920x1080; its T# keeps the full size. `and ebx,0x3fff; inc ebx; inc r15d` replaced. */
+ * 1920x1080; its T# keeps the full size. `and ebx,0x3fff; inc ebx; inc r15d` replaced.
+ * A texture asset of exactly the scaled size would be misreported: the game's are at most
+ * 2048 wide, so none matches for the supported factors (1440p and up); below 1080p some would. */
 enum { ODIN_TEXSIZE_HOOK_OFFSET = 0x6b87cf, ODIN_TEXSIZE_HOOK_LENGTH = 11 };
 static const unsigned char odin_texsize_original[ODIN_TEXSIZE_HOOK_LENGTH] = {
     0x81,0xe3,0xff,0x3f,0x00,0x00, 0xff,0xc3, 0x41,0xff,0xc7,
@@ -151,8 +153,11 @@ static inline unsigned odin_uvscale_build_stub(unsigned char *out, uint32_t widt
     return sizeof(body) + 8;
 }
 
+/* The highest byte any part reads or patches (the second layer composite hook). */
+enum { ODIN_RENDER_SCALE_END = 0x6ba130 + ODIN_UVSCALE_HOOK_LENGTH };
+
 static inline int odin_render_scale_signature_match(const unsigned char *image, uint64_t size) {
-    if (ODIN_VIEWPORT_HOOK_OFFSET + ODIN_VIEWPORT_HOOK_LENGTH > size ||
+    if (size < ODIN_RENDER_SCALE_END ||
         memcmp(image + ODIN_VIEWPORT_HOOK_OFFSET, odin_viewport_original, ODIN_VIEWPORT_HOOK_LENGTH))
         return 0;
     for (unsigned i = 0; i < sizeof(odin_scale_width_imm) / sizeof(*odin_scale_width_imm); ++i) {

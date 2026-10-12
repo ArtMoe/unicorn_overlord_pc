@@ -115,6 +115,15 @@ int main(int argc, char **argv) {
         vkDestroyInstance(instance, NULL);
         return 0;
     }
+    if (argc > 1 && !strcmp(argv[1], "--device")) {
+        /* The game's GPU, for launch choices: "<vendor id>\t<name>". */
+        VkPhysicalDeviceProperties device;
+        vkGetPhysicalDeviceProperties(selected, &device);
+        printf("0x%04x\t%s\n", device.vendorID, device.deviceName);
+        free(devices);
+        vkDestroyInstance(instance, NULL);
+        return 0;
+    }
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(selected, &props);
     const struct { VkFormat format; const char *name; } formats[] = {

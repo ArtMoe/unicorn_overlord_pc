@@ -65,7 +65,7 @@ GOLD_HI = '#f6d98b'
 NAVY = '#0d1226'
 RED = '#e0806a'
 GREEN = '#9fd18b'
-RESOLUTIONS = (('720p', '720p'), ('native', '1080p'), ('1440p', '1440p'), ('4K', '4K'))
+RESOLUTIONS = (('native', '1080p'), ('1440p', '1440p'), ('1800p', '1800p'), ('4K', '4K'))
 DISPLAY_MODES = (('windowed', 'Windowed'), ('borderless', 'Borderless'), ('fullscreen', 'Fullscreen'))
 
 

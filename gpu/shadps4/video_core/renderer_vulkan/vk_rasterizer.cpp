@@ -1138,40 +1138,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     if (FrameCapture::Active()) {
         const auto* ps = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
         FrameCapture::Draw(vs_info.pgm_hash, ps ? ps->pgm_hash : 0, num_indices, num_instances);
-        if (std::getenv("GOW3_CAPTURE_VIEWPORTS")) {
-            const auto& vp = regs.viewports[0];
-            const auto& ss = regs.screen_scissor;
-            const auto& gs = regs.generic_scissor;
-            const auto& vs0 = regs.viewport_scissors[0];
-            const auto& ws = regs.window_scissor;
-            char note[256];
-            std::snprintf(note, sizeof(note),
-                          "\n  draw prim %u idx %u ps %08x vp scale %.1f,%.1f off %.1f,%.1f screen %d,%d-%d,%d "
-                          "generic %u,%u-%u,%u vpsc %u,%u-%u,%u window %u,%u-%u,%u",
-                          u32(regs.primitive_type), num_indices, u32(ps ? ps->pgm_hash : 0), vp.xscale, vp.yscale, vp.xoffset,
-                          vp.yoffset, ss.top_left_x, ss.top_left_y, ss.bottom_right_x,
-                          ss.bottom_right_y, u32(gs.top_left_x), u32(gs.top_left_y),
-                          u32(gs.bottom_right_x), u32(gs.bottom_right_y), u32(vs0.top_left_x),
-                          u32(vs0.top_left_y), u32(vs0.bottom_right_x), u32(vs0.bottom_right_y),
-                          u32(ws.top_left_x), u32(ws.top_left_y), u32(ws.bottom_right_x),
-                          u32(ws.bottom_right_y));
-            FrameCapture::Note(note);
-            if (ps) {
-                for (const auto& desc : ps->images) {
-                    const auto t = desc.GetSharp(*ps);
-                    // Content hash (BC3: one byte per texel): animated textures rewritten in place.
-                    const u64 bytes = std::min<u64>(u64(t.width + 1) * (t.height + 1), 16u << 20);
-                    const u64 hash = t.Address() && memory->IsValidGpuMapping(t.Address(), 0)
-                                         ? XXH3_64bits(reinterpret_cast<const void*>(t.Address()), bytes)
-                                         : 0;
-                    std::snprintf(note, sizeof(note), "\n    tex %#llx %ux%u pitch %u fmt %u/%u tile %u hash %016llx",
-                                  (unsigned long long)t.Address(), t.width + 1, t.height + 1,
-                                  t.pitch + 1, u32(t.data_format), u32(t.num_format),
-                                  u32(t.tiling_index), (unsigned long long)hash);
-                    FrameCapture::Note(note);
-                }
-            }
-        }
+        FrameCapture::NoteDraw(regs, num_indices, ps);
         if (const auto& bc = regs.blend_control[0]; bc.enable && regs.color_buffers[0]) {
             char note[128];
             std::snprintf(note, sizeof(note), "\n  blend ps %08x idx %u: src %u dst %u func %u z %u%u",
@@ -1801,26 +1768,8 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
                                 : XXH3_64bits(guest_buffers.data(),
                                               guest_buffers.size() * sizeof(AmdGpu::Buffer));
     }
-    // GOW3_CAPTURE_VIEWPORTS: the first vertices of every stream (sprite positions and UVs).
-    if (FrameCapture::Active() && std::getenv("GOW3_CAPTURE_VIEWPORTS")) {
-        for (const auto& vb : guest_buffers) {
-            if (!vb.base_address || !memory->IsValidGpuMapping(vb.base_address, 0)) continue;
-            const u32 stride = u32(vb.GetStride());
-            const u32 count = std::min(4u, stride ? u32(vb.GetSize()) / stride : 0u);
-            const auto* bytes = reinterpret_cast<const u8*>(vb.base_address);
-            const u32 bytes_total = std::min(u32(vb.GetSize()), 1u << 20);
-            std::string note = std::format("\n    vb stride {} size {} hash {:016x}:", stride,
-                                           u32(vb.GetSize()), XXH3_64bits(bytes_total ? reinterpret_cast<const void*>(vb.base_address) : "", bytes_total));
-            for (u32 i = 0; i < count; ++i) {
-                note += " |";
-                for (u32 w = 0; w + 4 <= std::min(stride, 32u); w += 4) {
-                    float f;
-                    std::memcpy(&f, bytes + i * stride + w, 4);
-                    note += std::format(" {:.4g}", f);
-                }
-            }
-            FrameCapture::Note(note.c_str());
-        }
+    if (FrameCapture::Active()) {
+        FrameCapture::NoteVertexStreams(guest_buffers);
     }
     // Object motion research: vertex streams of G-buffer draws.
     if (FrameCapture::Active() && gbuffer_draw) {

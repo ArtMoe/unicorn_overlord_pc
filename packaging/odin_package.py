@@ -97,6 +97,7 @@ def copy_binaries(bin_dir):
     if WINDOWS:
         probe = OUT / 'gow3-probe.exe'
         shutil.copy2(probe, bin_dir)
+        shutil.copy2(OUT / 'gow3-gpu-capabilities.exe', bin_dir)
         # The CLANG64 DLLs the probe loads (ldd lists them with their MSYS2 paths).
         listing = subprocess.run(['ldd', str(probe)], capture_output=True, text=True, check=True).stdout
         for line in listing.splitlines():
@@ -107,9 +108,10 @@ def copy_binaries(bin_dir):
                                             check=True).stdout.strip(), bin_dir)
     else:
         shutil.copy2(OUT / 'gow3-probe', bin_dir)
+        shutil.copy2(OUT / 'gow3-gpu-capabilities', bin_dir)  # the game's GPU, for launch choices
         (bin_dir / 'gpu').mkdir()
         shutil.copy2(OUT / 'gpu' / 'libgow3gpu.so', bin_dir / 'gpu')  # RUNPATH $ORIGIN/gpu
-        for binary in (bin_dir / 'gow3-probe', bin_dir / 'gpu' / 'libgow3gpu.so'):
+        for binary in (bin_dir / 'gow3-probe', bin_dir / 'gow3-gpu-capabilities', bin_dir / 'gpu' / 'libgow3gpu.so'):
             subprocess.run(['strip', '--strip-unneeded', str(binary)], check=False)
 
 

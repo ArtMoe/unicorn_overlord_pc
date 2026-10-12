@@ -47,24 +47,54 @@ typedef struct {
 _Static_assert(sizeof(GuestStat)==120,"FreeBSD stat layout");
 
 typedef struct { char *names; size_t count, *offsets; unsigned char *types; } Listing;
-typedef struct { int used, host; Listing *dir; size_t position; char path[512]; } File;
+/* commit: a save file opened for writing is written to a temporary copy (temp), which replaces
+ * the file (commit) in one rename when closed: a crash or a kill mid-save leaves the old file
+ * (from bbport). */
+typedef struct { int used, host, dirty; Listing *dir; size_t position; char path[512]; char *commit, *temp; } File;
 typedef struct { char guest[64]; char host[512]; } Mount;
 static File files[MAX_FILES];
 static Mount mounts[MAX_MOUNTS];
 static size_t mount_count, opens, reads, writes, missing;
 static uint64_t bytes_read;
 static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+
+static int save_path(const char *p) { return p && !strncmp(p,"/savedata",9); }
+static int temp_name(const char *name) {
+    size_t n=strlen(name);
+    return n>9 && !strcmp(name+n-9,".gow3save");
+}
+/* Copies left by a crash (none of them open): removed when their directory is mounted. */
+static void remove_stale_temps(const char *dir,int depth) {
+    DIR *d=opendir(dir);
+    if (!d) return;
+    for (struct dirent *e; (e=readdir(d));) {
+        if (e->d_name[0]=='.') continue;
+        char path[1024]; HostStat st;
+        if ((size_t)snprintf(path,sizeof(path),"%s/%s",dir,e->d_name)>=sizeof(path)) continue;
+        if (temp_name(e->d_name)) {
+            int open_now=0;
+            for (int i=3;i<MAX_FILES;++i) if (files[i].used && files[i].temp && !strcmp(files[i].temp,path)) open_now=1;
+            if (!open_now && !unlink(path)) printf("Runtime: removed %s (a save interrupted earlier; the file it would have replaced is intact)\n",path);
+        } else if (depth<4 && !host_stat(path,&st) && S_ISDIR(st.st_mode)) remove_stale_temps(path,depth+1);
+    }
+    closedir(d);
+}
 
 int runtime_file_mount(const char *guest,const char *host) {
     pthread_mutex_lock(&lock);
     for (size_t i=0;i<mount_count;++i) if (!strcmp(mounts[i].guest,guest)) {
         snprintf(mounts[i].host,sizeof(mounts[i].host),"%s",host);
+        if (save_path(guest)) remove_stale_temps(host,0);
         pthread_mutex_unlock(&lock); return 0;
     }
     if (mount_count==MAX_MOUNTS || strlen(guest)>=64 || strlen(host)>=512) { pthread_mutex_unlock(&lock); return -1; }
     snprintf(mounts[mount_count].guest,64,"%s",guest);
     snprintf(mounts[mount_count].host,512,"%s",host);
     ++mount_count;
+    if (save_path(guest)) remove_stale_temps(host,0);
     pthread_mutex_unlock(&lock);
     return 0;
 }
@@ -135,6 +165,7 @@ static Listing *list_directory(const char *path) {
     size_t capacity=0,bytes=0,cap_names=0;
     struct dirent *e;
     while (l && (e=readdir(d))) {
+        if (temp_name(e->d_name)) continue;
         size_t n=strlen(e->d_name)+1;
         if (l->count==capacity) {
             capacity=capacity ? capacity*2 : 64;
@@ -198,12 +229,115 @@ static int game_path(const char *p) {
     return (!strncmp(p,"/app0",5) && (!p[5] || p[5]=='/')) ||
            (!strncmp(p,"/hostapp",8) && (!p[8] || p[8]=='/'));
 }
+/* Saves (/savedataN): see File. The copy starts as the old file unless the open truncates. */
+static unsigned temp_serial;
+static int copy_contents(int from,int to) {
+    char buffer[65536];
+    for (;;) {
+        ssize_t n=read(from,buffer,sizeof(buffer));
+        if (n<0 && errno==EINTR) continue;
+        if (n<=0) return n<0 ? -1 : 0;
+        for (ssize_t done=0; done<n;) {
+            ssize_t w=write(to,buffer+done,(unsigned)(n-done));
+            if (w<0 && errno==EINTR) continue;
+            if (w<0) return -1;
+            done+=w;
+        }
+    }
+}
+/* A save file open for writing is its copy to the operations by path too (a game may stat the
+ * file it is writing, which may not exist yet: it can rename the old one to a backup first). */
+static void current_copy(char *path,size_t size,int write) {
+    pthread_mutex_lock(&lock);
+    for (int i=3;i<MAX_FILES;++i)
+        if (files[i].used && files[i].commit && !strcmp(files[i].commit,path)) { snprintf(path,size,"%s",files[i].temp); files[i].dirty|=write; break; }
+    pthread_mutex_unlock(&lock);
+}
+/* Returns the descriptor of the copy, or -(errno). */
+static int open_for_commit(const char *path,const char *source,int flags,int mode,char **commit,char **temp) {
+    int hf=host_flags(flags);
+    HostStat s;
+    int exists=!host_stat(source,&s);
+    if (exists && !S_ISREG(s.st_mode)) { int h=open(path,hf,mode ? mode : 0644); return h<0 ? -errno : h; }
+    if (exists && (hf&O_CREAT) && (hf&O_EXCL)) return -EEXIST;
+    if (!exists && !(hf&O_CREAT)) return -ENOENT;
+    size_t n=strlen(path)+32;
+    char *t=malloc(n), *c=strdup(path);
+    if (!t || !c) { free(t); free(c); return -ENOMEM; }
+    snprintf(t,n,"%s.%u.gow3save",path,__atomic_add_fetch(&temp_serial,1,__ATOMIC_RELAXED));
+    int out=open(t,O_WRONLY|O_CREAT|O_TRUNC|O_BINARY,0644);
+    int e=out<0 ? errno : 0;
+    if (!e && exists && !(hf&O_TRUNC)) {
+        int in=open(source,O_RDONLY|O_BINARY);
+        if (in<0 || copy_contents(in,out)) e=errno ? errno : EIO;
+        if (in>=0) close(in);
+    }
+    if (out>=0) close(out);
+    int host=e ? -1 : open(t,hf&~(O_CREAT|O_EXCL|O_TRUNC));
+    if (host<0) {
+        if (!e) e=errno;
+        unlink(t); free(t); free(c);
+        return -e;
+    }
+    *commit=c; *temp=t;
+    return host;
+}
+/* The copy on disk, then in place of the file in one step. */
+static int commit_file(const File *f) {
+    if (!f->dirty) { close(f->host); unlink(f->temp); return 0; } /* opened for writing, not written */
+#ifdef _WIN32
+    int e=_commit(f->host) ? errno : 0;
+    close(f->host);
+    if (!e && !MoveFileExA(f->temp,f->commit,MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
+        e=compat_errno_from_win32(GetLastError());
+#else
+    int e=fsync(f->host) ? errno : 0;
+    close(f->host);
+    if (!e && rename(f->temp,f->commit)) e=errno;
+#endif
+    if (e) {
+        fprintf(stderr,"Runtime: save file %s not replaced (%s); the old one is kept\n",f->path,strerror(e));
+        unlink(f->temp);
+        return -e;
+    }
+#ifndef _WIN32
+    char dir[1024];
+    snprintf(dir,sizeof(dir),"%s",f->commit);
+    char *slash=strrchr(dir,'/');
+    if (slash) {
+        *slash=0;
+        int d=open(dir,O_RDONLY|O_DIRECTORY|O_CLOEXEC);
+        if (d>=0) { fsync(d); close(d); }
+    }
+#endif
+    return 0;
+}
 /* All operations return >=0 or -(host errno); wrappers adapt the convention. */
 static int64_t do_open(const char *guest,int flags,int mode) {
     if (game_path(guest) && (flags & (3|0x8|0x200|0x400|0x800))) return -EROFS;
-    char path[1024];
-    int e=translate(guest,path,sizeof(path));
+    char target[1024], path[1024];
+    int e=translate(guest,target,sizeof(target));
     if (e) return -e;
+    snprintf(path,sizeof(path),"%s",target);
+    if (save_path(guest)) current_copy(path,sizeof(path),0);
+    char *commit=NULL, *temp=NULL;
+    if (save_path(guest) && (flags&3)) {
+        int host=open_for_commit(target,path,flags,mode,&commit,&temp);
+        if (host<0) return host;
+        pthread_mutex_lock(&lock);
+        int fd=-1;
+        for (int i=3;i<MAX_FILES;++i) if (!files[i].used) { fd=i; break; }
+        if (fd<0) {
+            pthread_mutex_unlock(&lock); close(host);
+            if (temp) unlink(temp);
+            free(commit); free(temp); return -EMFILE;
+        }
+        files[fd]=(File){.used=1,.host=host,.commit=commit,.temp=temp};
+        snprintf(files[fd].path,sizeof(files[fd].path),"%s",guest);
+        ++opens;
+        pthread_mutex_unlock(&lock);
+        return fd;
+    }
 #ifdef _WIN32
     /* Windows cannot open a directory as a CRT descriptor: directories are listings only. */
     (void)mode;
@@ -264,11 +398,20 @@ static int64_t do_close(int fd) {
     pthread_mutex_lock(&lock);
     File *f=get(fd);
     if (!f) { pthread_mutex_unlock(&lock); return -EBADF; }
-    if (f->host>=0) close(f->host);
-    free_listing(f->dir);
+    File closed=*f;
     *f=(File){0};
     pthread_mutex_unlock(&lock);
-    return 0;
+    free_listing(closed.dir);
+    int result=0;
+    if (closed.temp) result=commit_file(&closed);
+    else if (closed.host>=0) close(closed.host);
+    free(closed.commit); free(closed.temp);
+    return result;
+}
+/* A write to a save copy: it replaces the file when closed. */
+static void mark_dirty(int fd) {
+    File *f=get(fd);
+    if (f && f->temp) f->dirty=1;
 }
 static int host_fd(int fd) {
     if (fd>=0 && fd<3) return fd;
@@ -315,6 +458,7 @@ static int64_t do_pread(int fd,void *buffer,uint64_t size,int64_t offset) {
 static int64_t do_write(int fd,const void *buffer,uint64_t size) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
+    mark_dirty(fd);
     ssize_t n=host_write(h,buffer,size);
     if (n<0) return -errno;
     __atomic_add_fetch(&writes,1,__ATOMIC_RELAXED);
@@ -323,6 +467,7 @@ static int64_t do_write(int fd,const void *buffer,uint64_t size) {
 static int64_t do_pwrite(int fd,const void *buffer,uint64_t size,int64_t offset) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
+    mark_dirty(fd);
     ssize_t n=pwrite(h,buffer,size,offset);
     return n<0 ? -errno : n;
 }
@@ -360,6 +505,7 @@ static int64_t do_stat(const char *guest,GuestStat *out) {
     char path[1024]; HostStat s;
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
+    if (save_path(guest)) current_copy(path,sizeof(path),0);
     if (!out) return -EFAULT;
     if (host_stat(path,&s)) return -errno;
     convert_stat(&s,out); return 0;
@@ -417,6 +563,7 @@ static int64_t do_rename(const char *from,const char *to) {
 static int64_t do_ftruncate(int fd,int64_t length) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
+    mark_dirty(fd);
 #ifdef _WIN32
     return _chsize_s(h,length) ? -errno : 0;
 #else
@@ -428,6 +575,7 @@ static int64_t do_truncate(const char *guest,int64_t length) {
     char path[1024];
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
+    if (save_path(guest)) current_copy(path,sizeof(path),1);
 #ifdef _WIN32
     int h=open(path,O_RDWR|O_BINARY);
     if (h<0) return -errno;
@@ -443,6 +591,7 @@ static int64_t do_access(const char *guest,int mode) {
     char path[1024];
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
+    if (save_path(guest)) current_copy(path,sizeof(path),0);
 #ifdef _WIN32
     return access(path,mode&6) ? -errno : 0; /* X_OK is invalid for the CRT */
 #else

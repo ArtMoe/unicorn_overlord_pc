@@ -239,14 +239,17 @@ void Scheduler::KickRecording(bool force) {
     if (full_chunks.empty() && record_chunk->Empty()) {
         return;
     }
+    // The current chunk's replacement is taken before it leaves (AcquireChunk locks
+    // recorder_mutex): record_chunk is never null (from bbport).
+    std::unique_ptr<RecordChunk> next = record_chunk->Empty() ? nullptr : AcquireChunk();
     bool wake;
     {
         std::scoped_lock lk{recorder_mutex};
         for (auto& chunk : full_chunks) {
             recorder_queue.push_back(std::move(chunk));
         }
-        if (!record_chunk->Empty()) {
-            recorder_queue.push_back(std::move(record_chunk));
+        if (next) {
+            recorder_queue.push_back(std::exchange(record_chunk, std::move(next)));
         }
         wake = recorder_sleeping;
         queued_chunks.store(recorder_queue.size(), std::memory_order_release);
@@ -255,9 +258,6 @@ void Scheduler::KickRecording(bool force) {
     // A busy recorder picks the new chunks up by itself: waking it is a syscall per draw.
     if (wake) {
         recorder_cv.notify_one();
-    }
-    if (!record_chunk) {
-        record_chunk = AcquireChunk();
     }
 }
 

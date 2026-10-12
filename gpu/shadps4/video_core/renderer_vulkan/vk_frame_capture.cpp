@@ -3,11 +3,17 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <format>
 #include <mutex>
 
+#include <xxhash.h>
+
+#include "core/memory.h"
+#include "shader_recompiler/info.h"
+#include "video_core/amdgpu/regs.h"
 #include "video_core/renderer_vulkan/vk_common.h"
 #include "video_core/texture_cache/image_info.h"
 
@@ -241,13 +247,13 @@ void FrameCapture::BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_
             state.store(Idle, std::memory_order_release);
             return;
         } else {
-        entries.clear();
-        pending_sampled.clear();
-        pending_buffers.clear();
-        pass_open = false;
-        const char* frames = std::getenv("GOW3_CAPTURE_FRAMES");
-        frames_left = frames ? std::max(1, std::atoi(frames)) : 1;
-        state.store(Recording, std::memory_order_release);
+            entries.clear();
+            pending_sampled.clear();
+            pending_buffers.clear();
+            pass_open = false;
+            const char* frames = std::getenv("GOW3_CAPTURE_FRAMES");
+            frames_left = frames ? std::max(1, std::atoi(frames)) : 1;
+            state.store(Recording, std::memory_order_release);
         }
     }
     if (state.load(std::memory_order_relaxed) != Recording) {
@@ -319,6 +325,82 @@ void FrameCapture::Sampled(const VideoCore::ImageInfo& info, bool storage) {
 void FrameCapture::Note(const char* text) {
     if (!entries.empty()) {
         entries.back().note += text;
+    }
+}
+
+namespace {
+bool Detail() {
+    static const bool detail = [] {
+        const char* env = std::getenv("GOW3_CAPTURE_DETAIL");
+        return env && env[0] == '1';
+    }();
+    return detail;
+}
+/// A hash of guest memory, 0 when the range is not mapped.
+u64 MemoryHash(VAddr address, u64 size) {
+    if (!address || !size || !Core::Memory::Instance()->IsValidGpuMapping(address, 0)) {
+        return 0;
+    }
+    return XXH3_64bits(reinterpret_cast<const void*>(address), size);
+}
+} // namespace
+
+void FrameCapture::NoteDraw(const AmdGpu::Regs& regs, u32 num_indices, const Shader::Info* ps) {
+    if (!Detail()) {
+        return;
+    }
+    const auto& vp = regs.viewports[0];
+    const auto& ss = regs.screen_scissor;
+    const auto& gs = regs.generic_scissor;
+    const auto& vs0 = regs.viewport_scissors[0];
+    const auto& ws = regs.window_scissor;
+    Note(std::format("\n  draw prim {} idx {} ps {:08x} vp scale {:.1f},{:.1f} off {:.1f},{:.1f} "
+                     "screen {},{}-{},{} generic {},{}-{},{} vpsc {},{}-{},{} window {},{}-{},{}",
+                     u32(regs.primitive_type), num_indices, u32(ps ? ps->pgm_hash : 0), vp.xscale,
+                     vp.yscale, vp.xoffset, vp.yoffset, s32(ss.top_left_x), s32(ss.top_left_y),
+                     s32(ss.bottom_right_x), s32(ss.bottom_right_y), u32(gs.top_left_x),
+                     u32(gs.top_left_y), u32(gs.bottom_right_x), u32(gs.bottom_right_y),
+                     u32(vs0.top_left_x), u32(vs0.top_left_y), u32(vs0.bottom_right_x),
+                     u32(vs0.bottom_right_y), u32(ws.top_left_x), u32(ws.top_left_y),
+                     u32(ws.bottom_right_x), u32(ws.bottom_right_y))
+             .c_str());
+    if (!ps) {
+        return;
+    }
+    for (const auto& desc : ps->images) {
+        const auto t = desc.GetSharp(*ps);
+        // Up to one byte per texel (BC3), at most 16 MiB.
+        const u64 bytes = std::min<u64>(u64(t.width + 1) * (t.height + 1), 16u << 20);
+        Note(std::format("\n    tex {:#x} {}x{} pitch {} fmt {}/{} tile {} hash {:016x}", t.Address(),
+                         t.width + 1, t.height + 1, t.pitch + 1, u32(t.data_format),
+                         u32(t.num_format), u32(t.tiling_index), MemoryHash(t.Address(), bytes))
+                 .c_str());
+    }
+}
+
+void FrameCapture::NoteVertexStreams(std::span<const AmdGpu::Buffer> streams) {
+    if (!Detail()) {
+        return;
+    }
+    for (const auto& vb : streams) {
+        const u64 hash = MemoryHash(vb.base_address, std::min<u64>(vb.GetSize(), 1u << 20));
+        if (!hash) {
+            continue;
+        }
+        const u32 stride = u32(vb.GetStride());
+        const u32 count = std::min(4u, stride ? u32(vb.GetSize()) / stride : 0u);
+        const auto* bytes = reinterpret_cast<const u8*>(vb.base_address);
+        std::string note = std::format("\n    vb stride {} size {} hash {:016x}:", stride,
+                                       u32(vb.GetSize()), hash);
+        for (u32 i = 0; i < count; ++i) {
+            note += " |";
+            for (u32 w = 0; w + 4 <= std::min(stride, 32u); w += 4) {
+                float f;
+                std::memcpy(&f, bytes + i * stride + w, 4);
+                note += std::format(" {:.4g}", f);
+            }
+        }
+        Note(note.c_str());
     }
 }
 

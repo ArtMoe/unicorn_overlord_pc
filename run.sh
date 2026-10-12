@@ -39,14 +39,8 @@ if [[ -z ${PYTHON:-} ]]; then echo 'Install Python 3 or set PYTHON.' >&2; exit 1
 # GOW3_GAME_DIR: the game's folder (eboot.bin, sce_module, ...); default next to this directory.
 game=${GOW3_GAME_DIR:-../CUSA01623}
 if [[ ! -f $game/eboot.bin ]]; then echo "No eboot.bin in $game (set GOW3_GAME_DIR)." >&2; exit 1; fi
-# Odin Sphere Leifthrasir: GPU optimizations 35-37 off, no temporal upscaler (its FSR 3 default
-# renders below 1080p and drops translucent UI layers), linear readbacks (as run.py;
-# docs/odin/HANDOFF.md).
-if grep -qa 'CUSA05083' "$game/sce_sys/param.sfo" 2>/dev/null; then
-    export GOW3_DISABLED_OPTIMIZATIONS=${GOW3_DISABLED_OPTIMIZATIONS:-$(( (1<<35) | (1<<36) | (1<<37) ))}
-    export GOW3_UPSCALER=${GOW3_UPSCALER:-none} GOW3_READBACK_LINEAR=${GOW3_READBACK_LINEAR:-1}
-    export GOW3_TITLE_ID=CUSA05083
-fi
+# Per-game settings (scripts/game_profiles.py, shared with run.py).
+eval "$("$PYTHON" scripts/game_profiles.py "$game")"
 original_game=$game
 game=$("$PYTHON" scripts/mods.py "$game" --out "$out" \
     --mods-dir "${GOW3_MODS_DIR:-$data/mods}" --config "${GOW3_MODS_CONFIG:-$data/mods.json}" \
@@ -72,6 +66,10 @@ if [[ -n ${GOW3_PREBUILT:-} ]]; then
 else
     bash build.sh
     probe=out/gow3-probe
+fi
+# GCN 3-5 under RADV: no HiZ (scripts/game_profiles.py radv_nohiz).
+if [[ -x ${probe%/*}/gow3-gpu-capabilities ]]; then
+    eval "$("$PYTHON" scripts/game_profiles.py --nohiz "${probe%/*}/gow3-gpu-capabilities")"
 fi
 probe_args=("$out/boot-linked.bin" --content-profile "$out/content.bin" --patches "$out/patches.bin" --app0 "$game" --user "${GOW3_USER_DIR:-$data/user}" --timeout "${GOW3_TIMEOUT:-0}" "$@")
 if [[ -n ${mod_game:-} ]]; then
