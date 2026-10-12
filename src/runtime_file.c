@@ -64,7 +64,7 @@ static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
 static int save_path(const char *p) { return p && !strncmp(p,"/savedata",9); }
 static int temp_name(const char *name) {
     size_t n=strlen(name);
-    return n>9 && !strcmp(name+n-9,".vwsave");
+    return n>7 && !strcmp(name+n-7,".vwsave");
 }
 /* Copies left by a crash (none of them open): removed when their directory is mounted. */
 static void remove_stale_temps(const char *dir,int depth) {
