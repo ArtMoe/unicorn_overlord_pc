@@ -8,23 +8,23 @@ from patches import (compile_patches, external_patches, external_selection, comp
                      game_profile, selected_patches, patch_requirements)
 
 ODIN = ROOT / 'patches/Odin_Sphere_Leifthrasir.xml'
-IDS = {'CUSA01623'}
+IDS = {'CUSA00000'}
 SEGMENTS = [(0, 0x6000000)]
 
 
 EXTERNAL = """<?xml version="1.0"?>
 <Patch>
-  <TitleID><ID>CUSA01623</ID></TitleID>
-  <Metadata Title="God of War III" Name="On" Author="x" PatchVer="1.0" AppVer="01.02" AppElf="eboot.bin" isEnabled="true">
+  <TitleID><ID>CUSA00000</ID></TitleID>
+  <Metadata Title="Test Game" Name="On" Author="x" PatchVer="1.0" AppVer="01.02" AppElf="eboot.bin" isEnabled="true">
     <PatchList><Line Type="bytes" Address="0x00401000" Value="9090"/></PatchList>
   </Metadata>
-  <Metadata Title="God of War III" Name="Off" Author="x" PatchVer="1.0" AppVer="01.02" AppElf="eboot.bin">
+  <Metadata Title="Test Game" Name="Off" Author="x" PatchVer="1.0" AppVer="01.02" AppElf="eboot.bin">
     <PatchList><Line Type="bytes32" Address="0x00402000" Value="0x12345678"/></PatchList>
   </Metadata>
-  <Metadata Title="God of War III" Name="Mask" Author="x" PatchVer="1.0" AppVer="01.02" AppElf="eboot.bin" isEnabled="true">
+  <Metadata Title="Test Game" Name="Mask" Author="x" PatchVer="1.0" AppVer="01.02" AppElf="eboot.bin" isEnabled="true">
     <PatchList><Line Type="mask" Value="90 ?? 90" Offset="0"/></PatchList>
   </Metadata>
-  <Metadata Title="God of War III" Name="Old" Author="x" PatchVer="1.0" AppVer="01.00" AppElf="eboot.bin" isEnabled="true">
+  <Metadata Title="Test Game" Name="Old" Author="x" PatchVer="1.0" AppVer="01.00" AppElf="eboot.bin" isEnabled="true">
     <PatchList><Line Type="bytes" Address="0x00403000" Value="90"/></PatchList>
   </Metadata>
 </Patch>"""
@@ -35,7 +35,7 @@ class ExternalPatchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
             (folder / 'extra.xml').write_text(EXTERNAL)
-            (folder / 'other.xml').write_text(EXTERNAL.replace('CUSA01623', 'CUSA99999'))
+            (folder / 'other.xml').write_text(EXTERNAL.replace('CUSA00000', 'CUSA99999'))
             (folder / 'broken.xml').write_text('<Patch>')
             found = external_patches(folder, '01.02', ODIN, IDS)
             self.assertEqual([key for key, _, _ in found],
@@ -54,7 +54,7 @@ class ExternalPatchTests(unittest.TestCase):
 
 REQUIREMENTS = """<?xml version="1.0"?>
 <Patch>
-  <TitleID><ID>CUSA01623</ID></TitleID>
+  <TitleID><ID>CUSA00000</ID></TitleID>
   <Metadata Name="Big" AppVer="01.02" Note="Requires setting DMEM to 6144 MB" isEnabled="true">
     <PatchList><Line Type="bytes" Address="0x00401000" Value="90"/></PatchList>
   </Metadata>

@@ -526,7 +526,7 @@ static void apply_patches(const char *path, Segment *segments, uint64_t ns, cons
     fclose(f);
     printf("Patches: %" PRIu64 " writes, %" PRIu64 " bytes applied, %" PRIu64 " pointers rebased\n",count,bytes,rebased);
 }
-/* Restarts the game through run.sh (the settings menu: a new render resolution is a patch
+/* Restarts the game through run.py (the settings menu: a new render resolution is a patch
  * applied at start). Descriptors are closed first so the old GPU device and its memory are
  * released before the new process opens its own. */
 void runtime_restart(void) {
@@ -549,12 +549,12 @@ void runtime_restart(void) {
     /* The new launch waits for this process's GPU device to go away (run.py --after). */
     TerminateProcess(GetCurrentProcess(),0);
 #else
-    /* run.py (the launcher, packaged builds) sets VW_RESTART_COMMAND; run.sh does not. */
+    /* run.py sets VW_RESTART_COMMAND: the launch command line, started again (new patches). */
     const char *command=getenv("VW_RESTART_COMMAND");
-    puts(command && *command ? "Runtime: restarting through run.py" : "Runtime: restarting through run.sh");
+    puts("Runtime: restarting through run.py");
+    if (!command || !*command) { fputs("runtime_restart: VW_RESTART_COMMAND is not set\n",stderr); _exit(1); }
     syscall(SYS_close_range, 3u, ~0u, 0u);
-    if (command && *command) execl("/bin/sh", "sh", "-c", command, (char *)NULL);
-    else execlp("bash", "bash", "run.sh", (char *)NULL);
+    execl("/bin/sh", "sh", "-c", command, (char *)NULL);
     perror("runtime_restart: exec");
     _exit(1);
 #endif

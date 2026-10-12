@@ -19,38 +19,45 @@ def child(folder, name):
     return folder / name
 
 
-def content_root(folder):
-    """(root, prefix): where a mod's files are and the game path they go to, or None.
+# The game's own executable and system folders: mods may not replace them.
+SYSTEM = ('eboot.bin', 'sce_module', 'sce_sys')
 
-    Accepted layouts: <mod>/dvdroot_ps4, <mod>/app0/dvdroot_ps4 and one wrapper folder around
-    either (an archive extracted into a folder of its name)."""
+
+def game_names(game):
+    """Case-folded names of the game folder's top-level content (CPK archives, data folders,
+    ...): the paths a mod may replace or add under."""
+    return {e.name.casefold() for e in Path(game).iterdir()} - set(SYSTEM)
+
+
+def content_root(folder, names):
+    """Where a mod's files are: the folder (or its app0/) when it holds some of the game's
+    top-level `names`, else the same inside its only subfolder (an archive extracted into a
+    folder of its name); None when there is no such layout."""
     folder = Path(folder)
     if not folder.is_dir():
         return None
-    for wrapper in ('', 'app0'):
-        base = child(folder, wrapper) if wrapper else folder
-        dvdroot = child(base, 'dvdroot_ps4')
-        if dvdroot.is_dir():
-            return base, ''
+    for base in (folder, child(folder, 'app0')):
+        if base.is_dir() and any(e.name.casefold() in names for e in base.iterdir()):
+            return base
     entries = [e for e in folder.iterdir() if not e.name.startswith('.')]
     folders = [e for e in entries if e.is_dir()]
     if len(folders) == 1 and not [e for e in entries if e.is_file() and
                                   e.suffix.casefold() not in ('.txt', '.md', '.jpg', '.png', '.ini')]:
-        return content_root(folders[0])
+        return content_root(folders[0], names)
     return None
 
 
-def discover(root):
+def discover(root, names):
     """Named mods: folders of `root` with an accepted layout (content_root)."""
     root = Path(root)
     if not root.is_dir():
         return []
-    return sorted((p.name for p in root.iterdir() if p.is_dir() and content_root(p)),
+    return sorted((p.name for p in root.iterdir() if p.is_dir() and content_root(p, names)),
                   key=lambda name: (name.casefold(), name))
 
 
-def selected(root, config):
-    available = discover(root)
+def selected(root, config, names):
+    available = discover(root, names)
     if not config or not Path(config).is_file():
         return available
     settings = json.loads(Path(config).read_text())
@@ -66,12 +73,12 @@ def selected(root, config):
                              if n in available and n not in disabled))
 
 
-def mod_files(folder):
-    """(game path, source) of every file a mod replaces or adds under dvdroot_ps4."""
-    layout = content_root(folder)
-    if not layout:
-        raise ValueError(f'{folder}: expected dvdroot_ps4 (or chr/, parts/, ...) inside the mod folder')
-    root, prefix = layout
+def mod_files(folder, names):
+    """(game path, source) of every file a mod replaces or adds under the game's top-level
+    `names`."""
+    root = content_root(folder, names)
+    if not root:
+        raise ValueError(f'{folder}: expected some of the game folder\'s files or folders inside the mod')
     root = root.resolve()
     for directory, folders, files in os.walk(root, followlinks=False):
         directory = Path(directory)
@@ -80,40 +87,17 @@ def mod_files(folder):
                 raise ValueError(f'Mod symlinks are unsupported: {directory / name}')
         for name in sorted(files):
             source = directory / name
-            relative = Path(prefix) / source.relative_to(root) if prefix else source.relative_to(root)
-            # Readme/metadata stay outside the mounted game. This loader handles assets;
-            # executable patches use the existing patch compiler, with address validation.
-            if relative.parts[0].casefold() != 'dvdroot_ps4':
-                if relative.parts[0].casefold() in ('eboot.bin', 'sce_module', 'sce_sys'):
-                    raise ValueError(f'Executable/system replacement is unsupported: {source}')
+            relative = source.relative_to(root)
+            # Readme/metadata stay outside the mounted game. Executable patches use the patch
+            # compiler (patches.py), with address validation.
+            top = relative.parts[0].casefold()
+            if top in SYSTEM:
+                raise ValueError(f'Executable/system replacement is unsupported: {source}')
+            if top not in names:
                 continue
             if not source.is_file():
                 raise ValueError(f'Not a regular mod file: {source}')
             yield relative, source
-
-
-def conflicts(root, names):
-    """Files more than one of `names` (in load order) replaces: [(game path, [mods])], the last
-    mod of each list wins. Paths match case-insensitively, as in build_overlay; unreadable mods
-    are skipped."""
-    owners = {}
-    for name in names:
-        try:
-            for relative, _source in mod_files(Path(root) / name):
-                key = relative.as_posix().casefold()
-                owners.setdefault(key, (relative.as_posix(), []))[1].append(name)
-        except (OSError, ValueError):
-            continue
-    return sorted((path, mods) for path, mods in owners.values() if len(mods) > 1)
-
-
-def apply_preset(preset, available):
-    """(order, disabled) of a saved preset for the mods present now: missing ones are dropped,
-    new ones go last and enabled."""
-    order = preset.get('order') if isinstance(preset.get('order'), list) else []
-    disabled = preset.get('disabled') if isinstance(preset.get('disabled'), list) else []
-    order = list(dict.fromkeys(n for n in [*order, *available] if n in available))
-    return order, [n for n in disabled if n in available]
 
 
 # Windows without the symlink privilege (Developer Mode off): directories become junctions,
@@ -185,11 +169,12 @@ def expand(directory):
 
 def build_overlay(game, out, mods):
     game = Path(game).resolve(strict=True)
+    names = game_names(game)
     replacements = []
     owners = {}
     for name, root in mods:
         count = 0
-        for relative, source in mod_files(root):
+        for relative, source in mod_files(root, names):
             key = relative.as_posix().casefold()
             if key in owners:
                 print(f'Mods: {relative}: {owners[key]} -> {name}', file=sys.stderr)
@@ -246,10 +231,11 @@ def main():
         if legacy.is_dir():
             layers.append((legacy.name, legacy))
         # A directly selected loose overlay is also accepted.
-        if child(args.mods_dir, 'dvdroot_ps4').is_dir():
+        names = game_names(args.game)
+        if args.mods_dir.is_dir() and any(e.name.casefold() in names for e in args.mods_dir.iterdir()):
             layers.append((args.mods_dir.name, args.mods_dir))
         else:
-            for name in selected(args.mods_dir, args.config):
+            for name in selected(args.mods_dir, args.config, names):
                 layers.append((name, args.mods_dir / name))
     print(build_overlay(args.game, args.out, layers))
 

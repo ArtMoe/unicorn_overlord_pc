@@ -185,7 +185,7 @@ def main():
     p.add_argument('--patches-config',type=Path,help='patches.json: enabled/disabled external patches')
     p.add_argument('--extra',default='',help='additional patch names, separated by ";"')
     p.add_argument('--out',type=Path,default=Path(__file__).resolve().parent.parent/'out')
-    p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('VW_GAME_DIR','../CUSA01623')))
+    p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('VW_GAME_DIR','../CUSA05083')))
     a=p.parse_args()
     title=game_title_id(a.game_dir)
     profile=game_profile(title)

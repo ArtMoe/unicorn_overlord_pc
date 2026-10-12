@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Prepares the game image and starts vwport (Windows and Linux; run.sh is the Linux
-development script).
+"""Prepares the game image and starts vwport (Windows and Linux; run.sh builds first on Linux).
 
-Same environment variables as run.sh (VW_GAME_DIR, VW_DATA_DIR, VW_PATCHES, VW_MODS_*,
-VW_USER_DIR, ...). Extra arguments go to vwport.
+Environment: VW_GAME_DIR (the game folder), VW_DATA_DIR (out/, user/, vw.ini; default this
+directory), VW_PATCHES, VW_MODS_*, VW_USER_DIR, ... Extra arguments go to vwport.
 The in-game "Apply and restart" runs this script again through VW_RESTART_COMMAND;
 `--after PID` waits for the previous game process to end first (its GPU device and memory).
 """
@@ -84,7 +83,7 @@ def main():
     if len(args) >= 2 and args[0] == '--after':
         wait_for(int(args[1]))
         args = args[2:]
-    # As run.sh: relative paths (VW_GAME_DIR, VW_DATA_DIR) are from the port.
+    # Relative paths (VW_GAME_DIR, VW_DATA_DIR) are from the port.
     os.chdir(PORT)
     env = os.environ
     data = Path(env.get('VW_DATA_DIR', PORT))
@@ -146,7 +145,7 @@ def main():
             env.setdefault('VW_WINDOW_ICON', str(out / 'window_icon.bmp'))
         except (ImportError, OSError):
             pass
-        # Per-game settings (scripts/game_profiles.py, shared with run.sh).
+        # Per-game settings (scripts/game_profiles.py).
         game_profiles.apply(game_title_id(game), env)
         if patched:
             # The patch notes give the direct memory and VBlank rate the selected patches need.

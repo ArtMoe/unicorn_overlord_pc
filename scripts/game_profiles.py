@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Per-game launch settings, one place for run.py and run.sh.
+"""Per-game launch settings for run.py.
 
 `defaults` apply unless the variable is already set; `forced` always apply (they are what the
 port was tested with). Render resolution is a code patch in the probe for each game
 (src/odin_render_scale.h).
-
-Shell use (run.sh): python3 scripts/game_profiles.py GAME_DIR prints `export` lines;
-`--nohiz CAPABILITIES` the RADV workaround for the game's GPU (radv_nohiz).
 """
-from pathlib import Path
-import shlex
-import sys
 
 PROFILES = {
     'CUSA05083': {  # Odin Sphere Leifthrasir
@@ -22,8 +16,6 @@ PROFILES = {
             'VW_READBACK_LINEAR': '1',
         },
         'forced': {
-            # Logic advances once per frame: the menu disables the engine frame rate option.
-            'VW_FIXED_TIMESTEP': '1',
             # Tested without the readback shortcuts.
             'VW_DEFERRED_READBACK': '0',
             'VW_STALE_READBACK': '0',
@@ -69,23 +61,3 @@ def device_name(capabilities):
     except (OSError, subprocess.SubprocessError):
         return ''
     return out.strip().partition('\t')[2]
-
-
-def main():
-    if sys.argv[1] == '--nohiz':  # run.sh: python3 game_profiles.py --nohiz CAPABILITIES
-        env = {k: v for k, v in __import__('os').environ.items() if k in ('RADV_DEBUG', 'VW_AUTO_NOHIZ')}
-        name = device_name(sys.argv[2])
-        if radv_nohiz(env, name):
-            print(f'export RADV_DEBUG=nohiz; echo {shlex.quote(f"RADV: {name}: RADV_DEBUG=nohiz (VW_AUTO_NOHIZ=0: off)")}')
-        return
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from patches import game_title_id
-    p = profile(game_title_id(Path(sys.argv[1])))
-    for key, value in p.get('defaults', {}).items():
-        print(f'export {key}="${{{key}:-{value}}}"')
-    for key, value in p.get('forced', {}).items():
-        print(f'export {key}={shlex.quote(value)}')
-
-
-if __name__ == '__main__':
-    main()

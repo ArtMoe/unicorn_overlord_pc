@@ -3131,4 +3131,11 @@ void Rasterizer::MarkPass(const GraphicsPipeline* pipeline, const RenderState& s
     });
 }
 
+void Rasterizer::NoteFrameStart() {
+    if (auto* profiler = GpuProfiler::Get()) {
+        profiler->BeginFrame();
+    }
+    VwStats::gpu_frames.fetch_add(1, std::memory_order_relaxed);
+}
+
 } // namespace Vulkan

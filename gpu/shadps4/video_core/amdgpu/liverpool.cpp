@@ -319,6 +319,7 @@ void RunDmaData(Vulkan::Rasterizer& rasterizer, const u8* data) {
 
 void SignalFlip(Vulkan::Rasterizer& rasterizer, const u8*) {
     rasterizer.WaitDeferredSignals();
+    rasterizer.NoteFrameStart();
     Platform::IrqC::Instance()->Signal(Platform::InterruptId::GfxFlip);
 }
 
@@ -911,7 +912,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break; // registers: ApplyGraphicsRegisterPacket
             }
             case PM4ItOpcode::SetPredication: {
-                // vw: once; God of War III sets it around most draws (~1000 lines a frame).
+                // vw: once; a game may set it around most draws (~1000 lines a frame).
                 static std::once_flag predication_logged;
                 std::call_once(predication_logged,
                                [] { LOG_WARNING(Render, "Unimplemented IT_SET_PREDICATION"); });
