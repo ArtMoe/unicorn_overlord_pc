@@ -7,7 +7,7 @@
 #include <inttypes.h>
 #include "runtime.h"
 #include "odin_render_scale.h"
-#include "gpu/gow3gpu.h"
+#include "gpu/vwgpu.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
 #error This prototype requires x86-64 GCC or Clang (including MinGW).
 #endif
@@ -131,7 +131,7 @@ static LONG fatal_exception(EXCEPTION_POINTERS *info) {
         fprintf(stderr,"Fault: exception 0x%08lx at %s (thread %lu)\n",record->ExceptionCode,where,GetCurrentThreadId());
     fprintf(stderr,"  rax=%016llx rbx=%016llx rcx=%016llx rdx=%016llx\n  rsi=%016llx rdi=%016llx rbp=%016llx rsp=%016llx\n",
             c->Rax,c->Rbx,c->Rcx,c->Rdx,c->Rsi,c->Rdi,c->Rbp,c->Rsp);
-    if (gpu_enabled) gow3gpu_dump_guest_writes(info);
+    if (gpu_enabled) vwgpu_dump_guest_writes(info);
     /* rbp chain (guest and host code keep frame pointers). */
     uintptr_t rbp=(uintptr_t)c->Rbp;
     for (int depth=0; depth<24 && rbp; ++depth) {
@@ -151,17 +151,17 @@ static LONG CALLBACK vectored_fault(EXCEPTION_POINTERS *info) {
     DWORD code=record->ExceptionCode;
     if (code==EXCEPTION_ACCESS_VIOLATION && record->NumberParameters>=2) {
         /* GPU page tracking (write-protected guest pages) is resolved first. */
-        if (gpu_enabled && gow3gpu_handle_fault(info,(void *)record->ExceptionInformation[1])) return EXCEPTION_CONTINUE_EXECUTION;
+        if (gpu_enabled && vwgpu_handle_fault(info,(void *)record->ExceptionInformation[1])) return EXCEPTION_CONTINUE_EXECUTION;
         if (runtime_fault_recover) {
             /* A speculative guest memory read (GPU draw preparation) faulted: the thread resumes
-             * in gow3_longjmp, outside the exception dispatcher, back at its recovery point. */
+             * in vw_longjmp, outside the exception dispatcher, back at its recovery point. */
             unsigned long long *buffer=*runtime_fault_recover;
             runtime_fault_recover=NULL;
             CONTEXT *c=info->ContextRecord;
             c->Rsp=((c->Rsp-128)&~(DWORD64)15)-40;
             c->Rcx=(DWORD64)(uintptr_t)buffer;
             c->Rdx=1;
-            c->Rip=(DWORD64)(uintptr_t)gow3_longjmp;
+            c->Rip=(DWORD64)(uintptr_t)vw_longjmp;
             return EXCEPTION_CONTINUE_EXECUTION;
         }
     }
@@ -176,7 +176,7 @@ static LONG CALLBACK vectored_fault(EXCEPTION_POINTERS *info) {
                  !module;
         if (ours) return fatal_exception(info);
     }
-    /* GOW3_STRICT_HANDLES=1: a closed or invalid handle used anywhere is reported (diagnostics). */
+    /* VW_STRICT_HANDLES=1: a closed or invalid handle used anywhere is reported (diagnostics). */
     if (code==0xC0000008 /* STATUS_INVALID_HANDLE */) return fatal_exception(info);
     return EXCEPTION_CONTINUE_SEARCH;
 }
@@ -200,7 +200,7 @@ static uint64_t patch_tcb_loads(const Segment *segments, uint64_t count) {
 #ifndef _WIN32
 static void fault(int sig, siginfo_t *info, void *context) {
     /* GPU page tracking (write-protected guest pages) is resolved first. */
-    if (gpu_enabled && sig == SIGSEGV && gow3gpu_handle_fault(context, info->si_addr)) return;
+    if (gpu_enabled && sig == SIGSEGV && vwgpu_handle_fault(context, info->si_addr)) return;
     /* A speculative guest memory read (runtime_memory.c) failed: resume its recovery point. */
     if ((sig == SIGSEGV || sig == SIGBUS) && runtime_fault_recover) {
         sigjmp_buf *recover = runtime_fault_recover;
@@ -225,7 +225,7 @@ static void fault(int sig, siginfo_t *info, void *context) {
     else
         snprintf(line, sizeof(line), "Fault (signal %d) at RIP %p, address %p\n", sig, (void *)rip, info->si_addr);
     { ssize_t written_=write(2, line, strlen(line)); (void)written_; }
-    if (gpu_enabled) gow3gpu_dump_guest_writes(context);
+    if (gpu_enabled) vwgpu_dump_guest_writes(context);
     /* Host call chain (frames with unwind info; guest frames end it). */
     void *frames[32];
     int depth = backtrace(frames, 32);
@@ -332,7 +332,7 @@ static int install_jump(uint64_t at, unsigned length, unsigned char *stub) {
     return 1;
 }
 
-/* Odin Sphere Leifthrasir: GOW3_RENDER_SCALE=<factor> (1 to 3) renders at
+/* Odin Sphere Leifthrasir: VW_RENDER_SCALE=<factor> (1 to 3) renders at
  * 1920x1080 times the factor (src/odin_render_scale.h); the presenter scales to the window. */
 static int odin_prefix(const char *text, const char *prefix) {
     for (; *prefix; ++text, ++prefix)
@@ -340,7 +340,7 @@ static int odin_prefix(const char *text, const char *prefix) {
     return 1;
 }
 
-/* A resolution name of the in-game menu (gow3_graphics.h Resolutions) or a factor. */
+/* A resolution name of the in-game menu (vw_graphics.h Resolutions) or a factor. */
 static float odin_render_scale_value(const char *text) {
     while (*text == ' ' || *text == '\t') ++text;
     if (odin_prefix(text, "native") || odin_prefix(text, "1080p")) return 1.0f;
@@ -352,12 +352,12 @@ static float odin_render_scale_value(const char *text) {
     return strtof(text, NULL);
 }
 
-/* GOW3_RENDER_SCALE, else render_resolution= in gow3.ini (GOW3_CONFIG; the menu's "Render
+/* VW_RENDER_SCALE, else render_resolution= in vw.ini (VW_CONFIG; the menu's "Render
  * resolution", applied on restart). */
 static float odin_render_scale_setting(void) {
-    const char *env = getenv("GOW3_RENDER_SCALE");
+    const char *env = getenv("VW_RENDER_SCALE");
     if (env && *env) return odin_render_scale_value(env);
-    const char *config = getenv("GOW3_CONFIG");
+    const char *config = getenv("VW_CONFIG");
     FILE *f = config ? fopen(config, "r") : NULL;
     float scale = 1.0f;
     char line[256];
@@ -385,9 +385,9 @@ static void install_odin_render_scale(const char *app0, Segment *segments, uint6
         printf("Render scale: unavailable (game version, code signature or factor %.2f)\n", scale);
         return;
     }
-    /* Debug: GOW3_RENDER_SCALE_PARTS bits 1 targets/viewport immediates, 2 view viewports, 4 heap,
+    /* Debug: VW_RENDER_SCALE_PARTS bits 1 targets/viewport immediates, 2 view viewports, 4 heap,
      * 8 clip scissors, 16 layer buffers, 32 texture sizes (sprites, layer composites). */
-    const char *parts_env = getenv("GOW3_RENDER_SCALE_PARTS");
+    const char *parts_env = getenv("VW_RENDER_SCALE_PARTS");
     const unsigned parts = parts_env ? (unsigned)strtoul(parts_env, NULL, 0) : 63;
     const uint32_t width = (uint32_t)(1920.0f * scale + 0.5f) & ~1u;
     const uint32_t height = (uint32_t)(1080.0f * scale + 0.5f) & ~1u;
@@ -477,10 +477,10 @@ static void apply_patches(const char *path, Segment *segments, uint64_t ns, cons
 void runtime_restart(void) {
     fflush(NULL);
 #ifdef _WIN32
-    /* run.py sets GOW3_RESTART_COMMAND: the launch command line, started again (new patches). */
-    const char *command=getenv("GOW3_RESTART_COMMAND");
+    /* run.py sets VW_RESTART_COMMAND: the launch command line, started again (new patches). */
+    const char *command=getenv("VW_RESTART_COMMAND");
     puts("Runtime: restarting through run.py");
-    if (!command || !*command) { fputs("runtime_restart: GOW3_RESTART_COMMAND is not set\n",stderr); _exit(1); }
+    if (!command || !*command) { fputs("runtime_restart: VW_RESTART_COMMAND is not set\n",stderr); _exit(1); }
     char *line=_strdup(command);
     /* Same output handles: a launcher reading the game's log keeps reading the new launch. */
     STARTUPINFOA startup={.cb=sizeof(startup),.dwFlags=STARTF_USESTDHANDLES,
@@ -494,8 +494,8 @@ void runtime_restart(void) {
     /* The new launch waits for this process's GPU device to go away (run.py --after). */
     TerminateProcess(GetCurrentProcess(),0);
 #else
-    /* run.py (the launcher, packaged builds) sets GOW3_RESTART_COMMAND; run.sh does not. */
-    const char *command=getenv("GOW3_RESTART_COMMAND");
+    /* run.py (the launcher, packaged builds) sets VW_RESTART_COMMAND; run.sh does not. */
+    const char *command=getenv("VW_RESTART_COMMAND");
     puts(command && *command ? "Runtime: restarting through run.py" : "Runtime: restarting through run.sh");
     syscall(SYS_close_range, 3u, ~0u, 0u);
     if (command && *command) execl("/bin/sh", "sh", "-c", command, (char *)NULL);
@@ -558,22 +558,22 @@ int main(int argc, char **argv) {
         if (sfo_value(sfo,"INSTALL_DIR_SAVEDATA",id,sizeof(id),NULL) || sfo_value(sfo,"TITLE_ID",id,sizeof(id),NULL))
             runtime_savedata_configure(id);
     }
-    gow3gpu_register_kernel();
+    vwgpu_register_kernel();
 #ifdef _WIN32
     SYSTEM_INFO system_info; GetSystemInfo(&system_info); page_size = system_info.dwPageSize;
     AddVectoredExceptionHandler(1, vectored_fault);
     SetUnhandledExceptionFilter(unhandled_fault);
-    if (getenv("GOW3_STRICT_HANDLES")) {
+    if (getenv("VW_STRICT_HANDLES")) {
         PROCESS_MITIGATION_STRICT_HANDLE_CHECK_POLICY strict={0};
         strict.RaiseExceptionOnInvalidHandleReference=1;
         strict.HandleExceptionsPermanentlyEnabled=1;
         if (!SetProcessMitigationPolicy(ProcessStrictHandleCheckPolicy,&strict,sizeof(strict)))
-            fprintf(stderr,"GOW3_STRICT_HANDLES: policy not set (%lu)\n",GetLastError());
+            fprintf(stderr,"VW_STRICT_HANDLES: policy not set (%lu)\n",GetLastError());
     }
     (void)timeout_seconds; /* no watchdog on Windows */
-    /* GOW3_HANG_DUMP=<seconds>: print every guest thread's location at that interval. */
-    if (getenv("GOW3_HANG_DUMP") && atoi(getenv("GOW3_HANG_DUMP"))>0)
-        CloseHandle(CreateThread(NULL,0,hang_dump,(void *)(uintptr_t)atoi(getenv("GOW3_HANG_DUMP")),0,NULL));
+    /* VW_HANG_DUMP=<seconds>: print every guest thread's location at that interval. */
+    if (getenv("VW_HANG_DUMP") && atoi(getenv("VW_HANG_DUMP"))>0)
+        CloseHandle(CreateThread(NULL,0,hang_dump,(void *)(uintptr_t)atoi(getenv("VW_HANG_DUMP")),0,NULL));
 #else
     page_size = (size_t)sysconf(_SC_PAGESIZE);
     struct sigaction sa = {0}; sa.sa_sigaction = fault; sa.sa_flags = SA_SIGINFO;
@@ -697,10 +697,10 @@ int main(int argc, char **argv) {
         sfo_value(sfo,"ATTRIBUTE",NULL,0,&attributes);
         uint64_t sdk=0;
         if (procparam) memcpy(&sdk,image+procparam+16,8); /* procparam: size, magic, count, sdk_version */
-        Gow3GpuConfig gpu={title,serial,user_dir ? user_dir : "user",(uint32_t)sdk,attributes,1920,1080};
+        VwGpuConfig gpu={title,serial,user_dir ? user_dir : "user",(uint32_t)sdk,attributes,1920,1080};
         gpu_enabled=1; /* page tracking starts while the rasterizer registers guest memory */
-        if (gow3gpu_init(&gpu)) fail("GPU initialization failed");
-        printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,gow3gpu_symbol_count());
+        if (vwgpu_init(&gpu)) fail("GPU initialization failed");
+        printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,vwgpu_symbol_count());
     }
     unsigned char *traps = allocate(round_page((import_count + 1) * 32));
     unsigned char *data_traps = allocate((import_count + 1) * page_size);

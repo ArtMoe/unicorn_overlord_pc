@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// gow3: graphics options of the in-game menu (Insert / R3+L2), kept in gow3.ini. The live ones
+// vw: graphics options of the in-game menu (Insert / R3+L2), kept in vw.ini. The live ones
 // apply on the next frame; the startup ones (render resolution, GPU readback modes) are read at
 // launch and apply through "Apply and restart". The launcher reads and writes the same keys.
 #pragma once
@@ -7,7 +7,7 @@
 #include <array>
 #include <string_view>
 
-namespace Gow3Graphics {
+namespace VwGraphics {
 
 enum DisplayMode : int { Windowed = 0, Borderless = 1, Fullscreen = 2, DisplayModeCount };
 inline constexpr std::array<std::string_view, DisplayModeCount> DisplayModeKeys = {
@@ -63,4 +63,4 @@ inline bool FsrPassRuns(bool fsr1, bool rcas, int in_w, int in_h, int out_w, int
     return (fsr1 && upscale) || (rcas && same);
 }
 
-} // namespace Gow3Graphics
+} // namespace VwGraphics

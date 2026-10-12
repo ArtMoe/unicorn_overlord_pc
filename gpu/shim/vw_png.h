@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// gow3: PNG pictures for the overlay (save list icons), decoded by FFmpeg to RGBA8.
+// vw: PNG pictures for the overlay (save list icons), decoded by FFmpeg to RGBA8.
 
 #pragma once
 
 #include <cstddef>
 #include <vector>
 
-namespace Gow3Png {
+namespace VwPng {
 
 struct Image {
     int width = 0, height = 0;
@@ -18,4 +18,4 @@ bool DecodeRgba(const unsigned char* data, size_t size, Image& out);
 /// Reads the file and decodes it; false when it is missing or bad.
 bool LoadRgba(const char* path, Image& out);
 
-} // namespace Gow3Png
+} // namespace VwPng

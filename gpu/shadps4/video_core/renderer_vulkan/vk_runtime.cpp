@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <boost/container/small_vector.hpp>
-#include "gow3_toggles.h"
+#include "vw_toggles.h"
 #include "video_core/buffer_cache/buffer.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
@@ -114,7 +114,7 @@ void Runtime::CopyBuffer(const VideoCore::Buffer* src, const VideoCore::Buffer* 
                          std::span<const vk::BufferCopy> copies) {
     scheduler.EndRendering();
 
-    // gow3: many regions (HLE copy shaders) are tracked as one bounding range per buffer:
+    // vw: many regions (HLE copy shaders) are tracked as one bounding range per buffer:
     // conservative for barriers, and two tree lookups instead of two per region.
     const bool bounded = copies.size() > 4;
     u64 src_min = ~0ULL, src_max = 0, dst_min = ~0ULL, dst_max = 0;
@@ -816,16 +816,16 @@ void Runtime::AccessBuffer(const VideoCore::Buffer* handle, u64 offset, u64 size
         vk::AccessFlagBits2::eDepthStencilAttachmentWrite | vk::AccessFlagBits2::eTransferWrite |
         vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eTransformFeedbackWriteEXT;
 
-    // gow3: reads are tracked at 4 KiB granularity. Constant data comes from ring allocations
+    // vw: reads are tracked at 4 KiB granularity. Constant data comes from ring allocations
     // at a new offset every draw; rounded, they land in ranges already present and the
     // insert returns early instead of growing the tree until the next barrier flush.
     // Wider read ranges only add barriers, never drop one.
-    if (!(src_access & WRITE_MASK) && !Gow3Toggle::Disabled(Gow3Toggle::CoarseReadTracking)) {
+    if (!(src_access & WRITE_MASK) && !VwToggle::Disabled(VwToggle::CoarseReadTracking)) {
         range.range_start &= ~u64{0xFFF};
         range.range_end |= 0xFFF;
     }
     const auto insert = [&](Access access) {
-        if (Gow3Toggle::Disabled(Gow3Toggle::AccessMemo)) {
+        if (VwToggle::Disabled(VwToggle::AccessMemo)) {
             barrier_tracker.InsertRange(range, access);
             return;
         }

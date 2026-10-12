@@ -1,7 +1,7 @@
-# gow3 GPU library: shadPS4 video core + shader recompiler + Gnm/VideoOut
+# vw GPU library: shadPS4 video core + shader recompiler + Gnm/VideoOut
 # drivers, adapted to the native_probe runtime through shims in shim/.
 cmake_minimum_required(VERSION 3.24)
-project(gow3gpu LANGUAGES C CXX)
+project(vwgpu LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -19,39 +19,39 @@ if (MINGW)
                         "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include wchar.h>")
 endif()
 
-# gow3: link-time optimization (GOW3_LTO, default on) and profile-guided optimization
-# (GOW3_PGO: off, generate = instrumented build writing into GOW3_PGO_DIR, use = build with that
-# profile). Covers gow3gpu and the static libraries linked into it. No -march: the same build
+# vw: link-time optimization (VW_LTO, default on) and profile-guided optimization
+# (VW_PGO: off, generate = instrumented build writing into VW_PGO_DIR, use = build with that
+# profile). Covers vwgpu and the static libraries linked into it. No -march: the same build
 # runs on the Steam Deck.
-option(GOW3_LTO "Link-time optimization of gow3gpu" ON)
-set(GOW3_PGO "off" CACHE STRING "Profile-guided optimization: off, generate, use")
-set(GOW3_PGO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../pgo" CACHE PATH "Profile directory")
-if (GOW3_LTO)
+option(VW_LTO "Link-time optimization of vwgpu" ON)
+set(VW_PGO "off" CACHE STRING "Profile-guided optimization: off, generate, use")
+set(VW_PGO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../pgo" CACHE PATH "Profile directory")
+if (VW_LTO)
     include(CheckIPOSupported)
-    check_ipo_supported(RESULT gow3_ipo_ok OUTPUT gow3_ipo_error)
-    if (gow3_ipo_ok)
+    check_ipo_supported(RESULT vw_ipo_ok OUTPUT vw_ipo_error)
+    if (vw_ipo_ok)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
     else()
-        message(WARNING "LTO unavailable: ${gow3_ipo_error}")
+        message(WARNING "LTO unavailable: ${vw_ipo_error}")
     endif()
 endif()
-if (GOW3_PGO STREQUAL "generate")
+if (VW_PGO STREQUAL "generate")
     # Atomic counters: the GPU, recording, preparation and copy threads run the same code.
-    add_compile_options(-fprofile-generate=${GOW3_PGO_DIR} -fprofile-update=atomic)
-    add_link_options(-fprofile-generate=${GOW3_PGO_DIR})
-    add_compile_definitions(GOW3_PGO_GENERATE)
-elseif (GOW3_PGO STREQUAL "use")
+    add_compile_options(-fprofile-generate=${VW_PGO_DIR} -fprofile-update=atomic)
+    add_link_options(-fprofile-generate=${VW_PGO_DIR})
+    add_compile_definitions(VW_PGO_GENERATE)
+elseif (VW_PGO STREQUAL "use")
     # Partial training keeps unprofiled code optimized normally; counters from concurrent
     # threads can be slightly inconsistent (correction). Functions changed since the profile
-    # (or built differently for it, gow3gpu_init) are compiled without it.
-    add_compile_options(-fprofile-use=${GOW3_PGO_DIR} -fprofile-partial-training
+    # (or built differently for it, vwgpu_init) are compiled without it.
+    add_compile_options(-fprofile-use=${VW_PGO_DIR} -fprofile-partial-training
                         -fprofile-correction -Wno-missing-profile -Wno-coverage-mismatch)
 endif()
 
 find_package(Vulkan REQUIRED)
 find_package(fmt REQUIRED)
 find_package(Boost REQUIRED)
-# gow3 (Windows): MSYS2 has no magic_enum/miniz packages; the submodules are used instead.
+# vw (Windows): MSYS2 has no magic_enum/miniz packages; the submodules are used instead.
 find_package(magic_enum QUIET)
 if (NOT magic_enum_FOUND)
     add_library(magic_enum INTERFACE)
@@ -135,70 +135,70 @@ set(COMMON
 file(GLOB AVPLAYER CONFIGURE_DEPENDS shadps4/core/libraries/avplayer/*.cpp)
 pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavformat libavcodec libavutil libswscale libswresample)
 file(GLOB SHIM_SOURCES CONFIGURE_DEPENDS shim/*.cpp shim/*/*.cpp)
-# Windows: a DLL cannot leave the runtime_* symbols for gow3-probe.exe to resolve, so the
+# Windows: a DLL cannot leave the runtime_* symbols for vwport.exe to resolve, so the
 # library is static there and linked into the executable.
 if (WIN32)
-    set(GOW3GPU_KIND STATIC)
+    set(VWGPU_KIND STATIC)
 else()
-    set(GOW3GPU_KIND SHARED)
+    set(VWGPU_KIND SHARED)
 endif()
-add_library(gow3gpu ${GOW3GPU_KIND} ${VIDEO_CORE} ${RECOMPILER} ${COMMON} ${SHIM_SOURCES}
+add_library(vwgpu ${VWGPU_KIND} ${VIDEO_CORE} ${RECOMPILER} ${COMMON} ${SHIM_SOURCES}
     shadps4/core/libraries/gnmdriver/gnmdriver.cpp
     shadps4/core/libraries/videoout/driver.cpp shadps4/core/libraries/videoout/video_out.cpp
     shadps4/core/libraries/kernel/equeue.cpp ${AVPLAYER}
     shadps4/core/libraries/videodec/video_utils.cpp)
-add_dependencies(gow3gpu host_shaders)
+add_dependencies(vwgpu host_shaders)
 # In-game settings menu: Dear ImGui (third_party/imgui, MIT) with its Vulkan backend, and an
 # embedded Cyrillic font (third_party/fonts).
-target_sources(gow3gpu PRIVATE third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp
+target_sources(vwgpu PRIVATE third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp
     third_party/imgui/imgui_tables.cpp third_party/imgui/imgui_widgets.cpp
     third_party/imgui/backends/imgui_impl_vulkan.cpp)
-target_include_directories(gow3gpu PRIVATE third_party/imgui third_party/imgui/backends)
-target_compile_definitions(gow3gpu PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES
-    GOW3_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf")
-set_source_files_properties(shim/gow3_overlay.cpp PROPERTIES
+target_include_directories(vwgpu PRIVATE third_party/imgui third_party/imgui/backends)
+target_compile_definitions(vwgpu PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES
+    VW_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf")
+set_source_files_properties(shim/vw_overlay.cpp PROPERTIES
     OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf)
-target_include_directories(gow3gpu PRIVATE shim shadps4 ${SHADER_INCLUDE} third_party/gcn/include third_party/half/include)
-target_compile_definitions(gow3gpu PRIVATE BOOST_ASIO_STANDALONE NDEBUG)
-target_compile_options(gow3gpu PRIVATE -Wno-deprecated-declarations -Wno-missing-field-initializers)
-# Runtime symbols (runtime_memory_*, runtime_process_*) resolve against gow3-probe.
+target_include_directories(vwgpu PRIVATE shim shadps4 ${SHADER_INCLUDE} third_party/gcn/include third_party/half/include)
+target_compile_definitions(vwgpu PRIVATE BOOST_ASIO_STANDALONE NDEBUG)
+target_compile_options(vwgpu PRIVATE -Wno-deprecated-declarations -Wno-missing-field-initializers)
+# Runtime symbols (runtime_memory_*, runtime_process_*) resolve against vwport.
 if (NOT WIN32)
-    target_link_options(gow3gpu PRIVATE -Wl,--allow-shlib-undefined)
+    target_link_options(vwgpu PRIVATE -Wl,--allow-shlib-undefined)
 endif()
-target_link_libraries(gow3gpu PUBLIC Vulkan::Headers fmt::fmt Boost::headers magic_enum::magic_enum
+target_link_libraries(vwgpu PUBLIC Vulkan::Headers fmt::fmt Boost::headers magic_enum::magic_enum
     tsl::robin_map GPUOpen::VulkanMemoryAllocator PkgConfig::XXHASH PkgConfig::SDL3 PkgConfig::FFMPEG miniz::miniz Zydis::Zydis sirit)
-target_include_directories(gow3gpu PRIVATE third_party/xbyak)
+target_include_directories(vwgpu PRIVATE third_party/xbyak)
 if (WIN32)
     # Guest code is entered with the System V ABI; NOMINMAX/WIN32_LEAN_AND_MEAN keep
     # <windows.h> out of the way of std::min/max and the Vulkan/SDL headers.
-    target_compile_definitions(gow3gpu PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_compile_options(gow3gpu PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/shim/gow3_win_compat.h)
-    target_link_libraries(gow3gpu PUBLIC Vulkan::Vulkan ws2_32 bcrypt ntdll synchronization winmm pdh)
+    target_compile_definitions(vwgpu PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_compile_options(vwgpu PRIVATE -include ${CMAKE_CURRENT_SOURCE_DIR}/shim/vw_win_compat.h)
+    target_link_libraries(vwgpu PUBLIC Vulkan::Vulkan ws2_32 bcrypt ntdll synchronization winmm pdh)
 else()
-    target_link_libraries(gow3gpu PUBLIC PkgConfig::X11)
+    target_link_libraries(vwgpu PUBLIC PkgConfig::X11)
 endif()
 
-# gow3 (Windows): gow3gpu is a static library there, so the loader and the HLE runtime are
+# vw (Windows): vwgpu is a static library there, so the loader and the HLE runtime are
 # linked here, where CMake knows its dependencies (build.sh builds them with ninja).
 if (WIN32)
     enable_language(RC)
-    file(GLOB GOW3_RUNTIME CONFIGURE_DEPENDS ../src/runtime*.c)
-    file(GLOB GOW3_ATRAC9 CONFIGURE_DEPENDS ../third_party/LibAtrac9/C/src/*.c)
-    add_library(atrac9 STATIC ${GOW3_ATRAC9})
+    file(GLOB VW_RUNTIME CONFIGURE_DEPENDS ../src/runtime*.c)
+    file(GLOB VW_ATRAC9 CONFIGURE_DEPENDS ../third_party/LibAtrac9/C/src/*.c)
+    add_library(atrac9 STATIC ${VW_ATRAC9})
     target_compile_options(atrac9 PRIVATE -w)
     set_target_properties(atrac9 PROPERTIES C_STANDARD 99 INTERPROCEDURAL_OPTIMIZATION OFF)
-    add_executable(gow3-probe ../src/probe.c ${GOW3_RUNTIME} ../src/compat_win.c ../src/vulkan_smoke.c
-        ../packaging/windows/gow3-probe.rc)
-    set_target_properties(gow3-probe PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
+    add_executable(vwport ../src/probe.c ${VW_RUNTIME} ../src/compat_win.c ../src/vulkan_smoke.c
+        ../packaging/windows/vwport.rc)
+    set_target_properties(vwport PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
     # clang 23 added -Wunused-but-set-global (must follow -Wall to stay off).
-    target_compile_options(gow3-probe PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror
+    target_compile_options(vwport PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror
         -Wno-unknown-warning-option -Wno-unused-but-set-global>)
-    target_include_directories(gow3-probe PRIVATE .. ../src)
-    target_link_libraries(gow3-probe PRIVATE gow3gpu atrac9 onecore bcrypt ws2_32 -pthread)
+    target_include_directories(vwport PRIVATE .. ../src)
+    target_link_libraries(vwport PRIVATE vwgpu atrac9 onecore bcrypt ws2_32 -pthread)
     # The PS4 range (64 GiB - 1 TiB) must stay free: no high-entropy ASLR for heaps and stacks.
     # The guest main thread runs on the process stack: 16 MiB, committed (no stack probes).
-    target_link_options(gow3-probe PRIVATE -Wl,--disable-high-entropy-va "SHELL:-Xlinker --stack -Xlinker 16777216,16777216")
-    # gow3: runtime unit tests (ninja -C out/gpu mp3-test videodec-test services-test).
+    target_link_options(vwport PRIVATE -Wl,--disable-high-entropy-va "SHELL:-Xlinker --stack -Xlinker 16777216,16777216")
+    # vw: runtime unit tests (ninja -C out/gpu mp3-test videodec-test services-test).
     add_executable(mp3-test EXCLUDE_FROM_ALL ../tests/test_mp3.c ../src/runtime_mp3.c ../src/compat_win.c)
     add_executable(videodec-test EXCLUDE_FROM_ALL ../tests/test_videodec.c ../src/compat_win.c)
     add_executable(services-test EXCLUDE_FROM_ALL ../tests/test_services.c ../src/compat_win.c)
@@ -213,8 +213,8 @@ if (WIN32)
     target_compile_options(pad-map-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
     target_include_directories(pad-map-test PRIVATE .. ../src)
     target_link_libraries(pad-map-test PRIVATE PkgConfig::SDL3 bcrypt -pthread)
-    add_executable(gow3-gpu-capabilities ../tools/gpu_capabilities.c ../packaging/windows/gow3-gpu-capabilities.rc)
-    target_link_libraries(gow3-gpu-capabilities PRIVATE Vulkan::Vulkan)
+    add_executable(vw-gpu-capabilities ../tools/gpu_capabilities.c ../packaging/windows/vw-gpu-capabilities.rc)
+    target_link_libraries(vw-gpu-capabilities PRIVATE Vulkan::Vulkan)
 endif()
 
 # Explicit test targets; neither launches the game nor needs a Vulkan device.
@@ -222,18 +222,18 @@ add_executable(pipeline-binary-cache-test EXCLUDE_FROM_ALL ../tests/test_pipelin
     ../tests/test_gpu_runtime_stubs.cpp)
 target_compile_definitions(pipeline-binary-cache-test PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_include_directories(pipeline-binary-cache-test PRIVATE shim shadps4 third_party/gcn/include)
-target_link_libraries(pipeline-binary-cache-test PRIVATE gow3gpu)
+target_link_libraries(pipeline-binary-cache-test PRIVATE vwgpu)
 target_compile_options(pipeline-binary-cache-test PRIVATE -fPIC)
 if (WIN32)
     target_sources(pipeline-binary-cache-test PRIVATE ../src/compat_win.c)
-    target_compile_definitions(pipeline-binary-cache-test PRIVATE sigjmp_buf=gow3_jmp_buf)
+    target_compile_definitions(pipeline-binary-cache-test PRIVATE sigjmp_buf=vw_jmp_buf)
     target_compile_options(pipeline-binary-cache-test PRIVATE
         -include ${CMAKE_CURRENT_SOURCE_DIR}/../src/compat_win.h)
     target_link_libraries(pipeline-binary-cache-test PRIVATE onecore)
 endif()
 set_source_files_properties(../tests/test_pipeline_binary_cache.cpp PROPERTIES
     COMPILE_OPTIONS "-fvisibility=hidden;-fvisibility-inlines-hidden")
-add_executable(png-decode-test EXCLUDE_FROM_ALL ../tests/test_png_decode.cpp shim/gow3_png.cpp)
+add_executable(png-decode-test EXCLUDE_FROM_ALL ../tests/test_png_decode.cpp shim/vw_png.cpp)
 target_compile_options(png-decode-test PRIVATE -UNDEBUG -Wall -Wextra -Werror)
 target_link_libraries(png-decode-test PRIVATE PkgConfig::FFMPEG)
 add_executable(aliasing-test EXCLUDE_FROM_ALL ../tests/test_aliasing.cpp
@@ -268,7 +268,7 @@ target_include_directories(depth-stencil-state-test PRIVATE shim shadps4 third_p
 target_link_libraries(depth-stencil-state-test PRIVATE Vulkan::Headers fmt::fmt Boost::headers magic_enum::magic_enum)
 
 add_executable(perf-overlay-test EXCLUDE_FROM_ALL ../tests/test_perf_overlay.cpp
-    shim/gow3_settings.cpp)
+    shim/vw_settings.cpp)
 target_include_directories(perf-overlay-test PRIVATE shim)
 target_compile_options(perf-overlay-test PRIVATE -UNDEBUG)
 add_executable(readback-queue-test EXCLUDE_FROM_ALL ../tests/test_readback_queue.cpp)
@@ -278,7 +278,7 @@ add_executable(wait-diagnostics-test EXCLUDE_FROM_ALL ../tests/test_wait_diagnos
 target_include_directories(wait-diagnostics-test PRIVATE shadps4)
 target_compile_options(wait-diagnostics-test PRIVATE -UNDEBUG)
 add_executable(graphics-settings-test EXCLUDE_FROM_ALL ../tests/test_graphics_settings.cpp
-    shim/gow3_settings.cpp)
+    shim/vw_settings.cpp)
 target_include_directories(graphics-settings-test PRIVATE shim)
 target_compile_options(graphics-settings-test PRIVATE -UNDEBUG)
 add_executable(readback-sources-test EXCLUDE_FROM_ALL ../tests/test_readback_sources.cpp)

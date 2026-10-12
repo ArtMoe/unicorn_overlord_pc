@@ -18,15 +18,15 @@ PROFILES = {
         'defaults': {
             # The draw pipeline (bit 37) presents black/partial frames; early draw inputs and
             # the constant ring (bits 35, 36) flicker.
-            'GOW3_DISABLED_OPTIMIZATIONS': str((1 << 35) | (1 << 36) | (1 << 37)),
-            'GOW3_READBACK_LINEAR': '1',
+            'VW_DISABLED_OPTIMIZATIONS': str((1 << 35) | (1 << 36) | (1 << 37)),
+            'VW_READBACK_LINEAR': '1',
         },
         'forced': {
             # Logic advances once per frame: the menu disables the engine frame rate option.
-            'GOW3_FIXED_TIMESTEP': '1',
+            'VW_FIXED_TIMESTEP': '1',
             # Tested without the readback shortcuts.
-            'GOW3_DEFERRED_READBACK': '0',
-            'GOW3_STALE_READBACK': '0',
+            'VW_DEFERRED_READBACK': '0',
+            'VW_STALE_READBACK': '0',
         },
     },
 }
@@ -51,8 +51,8 @@ NOHIZ_CHIPS = ('TONGA', 'ICELAND', 'CARRIZO', 'FIJI', 'STONEY', 'POLARIS', 'VEGA
 
 def radv_nohiz(env, device_name):
     """RADV_DEBUG=nohiz for the game's GPU when it needs it, unless RADV_DEBUG is the user's or
-    GOW3_AUTO_NOHIZ=0. Returns whether it was set."""
-    if env.get('GOW3_AUTO_NOHIZ', '1') == '0' or env.get('RADV_DEBUG'):
+    VW_AUTO_NOHIZ=0. Returns whether it was set."""
+    if env.get('VW_AUTO_NOHIZ', '1') == '0' or env.get('RADV_DEBUG'):
         return False
     if any(f'(RADV {chip}' in (device_name or '') for chip in NOHIZ_CHIPS):
         env['RADV_DEBUG'] = 'nohiz'
@@ -61,7 +61,7 @@ def radv_nohiz(env, device_name):
 
 
 def device_name(capabilities):
-    """The game's GPU name from gow3-gpu-capabilities --device, or ''."""
+    """The game's GPU name from vw-gpu-capabilities --device, or ''."""
     import subprocess
     try:
         out = subprocess.run([str(capabilities), '--device'], capture_output=True, text=True,
@@ -73,10 +73,10 @@ def device_name(capabilities):
 
 def main():
     if sys.argv[1] == '--nohiz':  # run.sh: python3 game_profiles.py --nohiz CAPABILITIES
-        env = {k: v for k, v in __import__('os').environ.items() if k in ('RADV_DEBUG', 'GOW3_AUTO_NOHIZ')}
+        env = {k: v for k, v in __import__('os').environ.items() if k in ('RADV_DEBUG', 'VW_AUTO_NOHIZ')}
         name = device_name(sys.argv[2])
         if radv_nohiz(env, name):
-            print(f'export RADV_DEBUG=nohiz; echo {shlex.quote(f"RADV: {name}: RADV_DEBUG=nohiz (GOW3_AUTO_NOHIZ=0: off)")}')
+            print(f'export RADV_DEBUG=nohiz; echo {shlex.quote(f"RADV: {name}: RADV_DEBUG=nohiz (VW_AUTO_NOHIZ=0: off)")}')
         return
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from patches import game_title_id

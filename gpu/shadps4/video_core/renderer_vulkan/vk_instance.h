@@ -42,7 +42,7 @@ public:
     }
 
     /// Returns the current physical device
-    /// gow3: device features the temporal upscaler reports as enabled.
+    /// vw: device features the temporal upscaler reports as enabled.
     bool IsStorageImageWriteWithoutFormatEnabled() const {
         return features.shaderStorageImageWriteWithoutFormat;
     }
@@ -471,7 +471,7 @@ public:
     /// Returns the amount of memory used.
     [[nodiscard]] u64 GetDeviceMemoryUsage() const;
 
-    /// gow3: the driver's current budget of the heaps GetDeviceMemoryUsage counts
+    /// vw: the driver's current budget of the heaps GetDeviceMemoryUsage counts
     /// (VK_EXT_memory_budget: what this process can use now, other processes included).
     [[nodiscard]] u64 GetDeviceMemoryBudgetNow() const;
 

@@ -2,16 +2,16 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Odin Sphere Leifthrasir launcher (Windows and Linux, Tkinter).
 
-One window: the game folder (a CUSA05083 dump), the graphics options of gow3.ini and Play.
+One window: the game folder (a CUSA05083 dump), the graphics options of vw.ini and Play.
 The artwork comes from the selected dump (sce_sys/pic1.png, icon0.png); nothing of the game is
-shipped. Settings: data/gow3.ini (shared with the in-game menu) and data/launcher.json.
+shipped. Settings: data/vw.ini (shared with the in-game menu) and data/launcher.json.
 
 Packaged (PyInstaller, packaging/odin_package.py) the executable also runs run.py (`--run`) and
 the preparation scripts (`--script <file>`), so a packaged port needs no Python installation:
 
     Odin Sphere(.exe)   this launcher
-    runtime/            run.py, scripts/, patches/, bin/ (gow3-probe and its GPU library)
-    data/               gow3.ini, launcher.json, user/ (saves, caches), out/ (generated)
+    runtime/            run.py, scripts/, patches/, bin/ (vwport and its GPU library)
+    data/               vw.ini, launcher.json, user/ (saves, caches), out/ (generated)
 """
 import json
 import os
@@ -25,7 +25,7 @@ FROZEN = getattr(sys, 'frozen', False)
 HERE = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
 # Packaged: runtime/ beside the executable. From the source tree: the repository.
 RUNTIME = HERE / 'runtime' if (HERE / 'runtime' / 'run.py').is_file() else HERE.parent
-DATA = Path(os.environ.get('GOW3_DATA_DIR', HERE / 'data' if FROZEN else RUNTIME / 'run'))
+DATA = Path(os.environ.get('VW_DATA_DIR', HERE / 'data' if FROZEN else RUNTIME / 'run'))
 TITLE_ID, APP_VERSION = 'CUSA05083', '01.01'
 WINDOWS = os.name == 'nt'
 
@@ -108,7 +108,7 @@ class Launcher:
     def __init__(self, root):
         self.root = root
         self.settings = load_settings()
-        self.config = DATA / 'gow3.ini'
+        self.config = DATA / 'vw.ini'
         ini = graphics_options.read_ini(self.config)
         self.options = {
             'render_resolution': ini.get('render_resolution', 'native'),
@@ -339,8 +339,8 @@ class Launcher:
             self.redraw()
 
     def play(self):
-        env = dict(os.environ, GOW3_GAME_DIR=self.settings['game_dir'], GOW3_DATA_DIR=str(DATA),
-                   GOW3_CONFIG=str(self.config))
+        env = dict(os.environ, VW_GAME_DIR=self.settings['game_dir'], VW_DATA_DIR=str(DATA),
+                   VW_CONFIG=str(self.config))
         if FROZEN:
             command = [sys.executable, '--run']
         else:

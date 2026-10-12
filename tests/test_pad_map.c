@@ -1,9 +1,9 @@
-/* GOW3_PAD_MAP / GOW3_KEY_MAP parsing (src/runtime_pad.c). */
+/* VW_PAD_MAP / VW_KEY_MAP parsing (src/runtime_pad.c). */
 #define _GNU_SOURCE
 #include <assert.h>
 #include "../src/runtime_pad.c"
 
-int gow3gpu_overlay_captures_input(void) { return 0; }
+int vwgpu_overlay_captures_input(void) { return 0; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;

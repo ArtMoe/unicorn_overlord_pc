@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Prepares the game image and starts gow3-probe (Windows and Linux; run.sh is the Linux
+"""Prepares the game image and starts vwport (Windows and Linux; run.sh is the Linux
 development script).
 
-Same environment variables as run.sh (GOW3_GAME_DIR, GOW3_DATA_DIR, GOW3_PATCHES, GOW3_MODS_*,
-GOW3_USER_DIR, ...). Extra arguments go to gow3-probe.
-The in-game "Apply and restart" runs this script again through GOW3_RESTART_COMMAND;
+Same environment variables as run.sh (VW_GAME_DIR, VW_DATA_DIR, VW_PATCHES, VW_MODS_*,
+VW_USER_DIR, ...). Extra arguments go to vwport.
+The in-game "Apply and restart" runs this script again through VW_RESTART_COMMAND;
 `--after PID` waits for the previous game process to end first (its GPU device and memory).
 """
 import ctypes
@@ -84,93 +84,93 @@ def main():
     if len(args) >= 2 and args[0] == '--after':
         wait_for(int(args[1]))
         args = args[2:]
-    # As run.sh: relative paths (GOW3_GAME_DIR, GOW3_DATA_DIR) are from the port.
+    # As run.sh: relative paths (VW_GAME_DIR, VW_DATA_DIR) are from the port.
     os.chdir(PORT)
     env = os.environ
-    data = Path(env.get('GOW3_DATA_DIR', PORT))
+    data = Path(env.get('VW_DATA_DIR', PORT))
     out = data / 'out'
     out.mkdir(parents=True, exist_ok=True)
-    env.setdefault('GOW3_CONFIG', str(data / 'gow3.ini'))
+    env.setdefault('VW_CONFIG', str(data / 'vw.ini'))
     # Values this script derived on the previous start ("Apply and restart" inherits them) are
     # derived again from the new options.
-    for key in env.pop('GOW3_DERIVED', '').split(','):
+    for key in env.pop('VW_DERIVED', '').split(','):
         env.pop(key, None)
     derived = []
     sys.path.insert(0, str(PORT / 'scripts'))
     import graphics_options
-    graphics, reverted = graphics_options.prepare(env['GOW3_CONFIG'], out / 'graphics_state.json')
+    graphics, reverted = graphics_options.prepare(env['VW_CONFIG'], out / 'graphics_state.json')
     if reverted:
         print('Graphics: the last restart never reached the game; previous options restored', flush=True)
     env.update(graphics_options.environment(graphics))
 
-    probe = Path(env['GOW3_PROBE']) if env.get('GOW3_PROBE') else find_executable('gow3-probe.exe' if WINDOWS else 'gow3-probe')
+    probe = Path(env['VW_PROBE']) if env.get('VW_PROBE') else find_executable('vwport.exe' if WINDOWS else 'vwport')
     if not probe or not probe.is_file():
-        fail('gow3-probe not found: build it with build.sh or use a packaged build.')
+        fail('vwport not found: build it with build.sh or use a packaged build.')
     # Development builds run from the MSYS2 tree: its CLANG64 DLLs (SDL3, FFmpeg, ...).
     import game_profiles
-    capabilities = probe.parent / ('gow3-gpu-capabilities.exe' if WINDOWS else 'gow3-gpu-capabilities')
+    capabilities = probe.parent / ('vw-gpu-capabilities.exe' if WINDOWS else 'vw-gpu-capabilities')
     if capabilities.is_file() and game_profiles.radv_nohiz(env, game_profiles.device_name(capabilities)):
-        print('RADV: RADV_DEBUG=nohiz for this GPU (GOW3_AUTO_NOHIZ=0: off)', flush=True)
+        print('RADV: RADV_DEBUG=nohiz for this GPU (VW_AUTO_NOHIZ=0: off)', flush=True)
     if WINDOWS and not (probe.parent / 'SDL3.dll').is_file():
         clang64 = Path(env.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
         if clang64.is_dir():
             env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
 
-    if not env.get('GOW3_GAME_DIR'):
-        fail('Set GOW3_GAME_DIR to the game folder (eboot.bin, sce_module, ...).')
-    game = Path(env['GOW3_GAME_DIR'])
+    if not env.get('VW_GAME_DIR'):
+        fail('Set VW_GAME_DIR to the game folder (eboot.bin, sce_module, ...).')
+    game = Path(env['VW_GAME_DIR'])
     if not (game / 'eboot.bin').is_file():
-        fail(f'No eboot.bin in {game} (set GOW3_GAME_DIR).')
+        fail(f'No eboot.bin in {game} (set VW_GAME_DIR).')
     original_game = game.resolve()
     game = Path(run_script('mods.py', game, '--out', out,
-                           '--mods-dir', env.get('GOW3_MODS_DIR', data / 'mods'),
-                           '--config', env.get('GOW3_MODS_CONFIG', data / 'mods.json'),
-                           '--enabled', env.get('GOW3_MODS_ENABLED', '1'), capture=True).strip())
+                           '--mods-dir', env.get('VW_MODS_DIR', data / 'mods'),
+                           '--config', env.get('VW_MODS_CONFIG', data / 'mods.json'),
+                           '--enabled', env.get('VW_MODS_ENABLED', '1'), capture=True).strip())
     mod_view = game if game.resolve() != original_game else None
     try:
         run_script('prepare.py', game, '--out', out)
         run_script('link_libc.py', game, '--out', out)
         run_script('link_modules.py', game, '--out', out)
-        run_script('content_profile.py', game, '--out', out, '--sku', env.get('GOW3_CONTENT_SKU', 'full'))
+        run_script('content_profile.py', game, '--out', out, '--sku', env.get('VW_CONTENT_SKU', 'full'))
 
         from patches import (eboot_matches, game_app_version, game_profile, game_title_id,
                              patch_requirements, selected_patches)
         profile = game_profile(game_title_id(game))
         patched = bool(profile) and ((game_app_version(game) == profile[2] and eboot_matches(game, profile))
-                                     or bool(env.get('GOW3_FORCE_PATCHES')))
+                                     or bool(env.get('VW_FORCE_PATCHES')))
         # The window shows the game's icon (BMP: the format SDL loads without extra libraries).
         try:
             from PIL import Image
             with Image.open(game / 'sce_sys' / 'icon0.png') as icon:
                 icon.convert('RGBA').resize((64, 64), Image.LANCZOS).save(out / 'window_icon.bmp')
-            env.setdefault('GOW3_WINDOW_ICON', str(out / 'window_icon.bmp'))
+            env.setdefault('VW_WINDOW_ICON', str(out / 'window_icon.bmp'))
         except (ImportError, OSError):
             pass
         # Per-game settings (scripts/game_profiles.py, shared with run.sh).
         game_profiles.apply(game_title_id(game), env)
         if patched:
             # The patch notes give the direct memory and VBlank rate the selected patches need.
-            names = selected_patches(profile[1], profile[2], env.get('GOW3_PATCHES', ''), env.get('GOW3_PATCHES_ONLY') == '1')
-            env['GOW3_PATCHES'] = ';'.join(names)
-            env['GOW3_PATCHES_ONLY'] = '1'
+            names = selected_patches(profile[1], profile[2], env.get('VW_PATCHES', ''), env.get('VW_PATCHES_ONLY') == '1')
+            env['VW_PATCHES'] = ';'.join(names)
+            env['VW_PATCHES_ONLY'] = '1'
             dmem, vblank = patch_requirements(profile[1], names, profile[2])
-            for key, value in (('GOW3_DMEM_MB', dmem), ('GOW3_VBLANK_HZ', vblank)):
+            for key, value in (('VW_DMEM_MB', dmem), ('VW_VBLANK_HZ', vblank)):
                 if value and key not in env:
                     env[key] = str(value)
                     derived.append(key)
-        run_script('patches.py', '--out', out, '--extra', env.get('GOW3_PATCHES', ''), '--game-dir', game,
-                   '--patches-dir', env.get('GOW3_PATCHES_DIR', data / 'patches'),
-                   '--patches-config', env.get('GOW3_PATCHES_CONFIG', data / 'patches.json'))
-        if 'GOW3_VBLANK_HZ' not in env:
-            env['GOW3_VBLANK_HZ'] = '60'
-            derived.append('GOW3_VBLANK_HZ')
-        env['GOW3_DERIVED'] = ','.join(derived)
+        run_script('patches.py', '--out', out, '--extra', env.get('VW_PATCHES', ''), '--game-dir', game,
+                   '--patches-dir', env.get('VW_PATCHES_DIR', data / 'patches'),
+                   '--patches-config', env.get('VW_PATCHES_CONFIG', data / 'patches.json'))
+        if 'VW_VBLANK_HZ' not in env:
+            env['VW_VBLANK_HZ'] = '60'
+            derived.append('VW_VBLANK_HZ')
+        env['VW_DERIVED'] = ','.join(derived)
 
         # The in-game restart starts this script again once this process is gone.
         # GPU caches (shaders, pipelines) beside the saves; read before main(), so set here.
-        user_dir = Path(env.get('GOW3_USER_DIR', data / 'user')).resolve()
+        user_dir = Path(env.get('VW_USER_DIR', data / 'user')).resolve()
         user_dir.mkdir(parents=True, exist_ok=True)
-        env.setdefault('GOW3_GPU_USER_DIR', str(user_dir))
+        env.setdefault('VW_GPU_USER_DIR', str(user_dir))
         from save_backup import backup
         try:
             if made := backup(user_dir):
@@ -180,14 +180,14 @@ def main():
         this = ['--run'] if getattr(sys, 'frozen', False) else [str(Path(__file__).resolve())]
         restart = [sys.executable, *this, '--after', str(os.getpid()), *args]
         if WINDOWS:
-            env['GOW3_RESTART_COMMAND'] = subprocess.list2cmdline(restart)
+            env['VW_RESTART_COMMAND'] = subprocess.list2cmdline(restart)
         else:
             import shlex
-            env['GOW3_RESTART_COMMAND'] = shlex.join(restart)
+            env['VW_RESTART_COMMAND'] = shlex.join(restart)
         command = [str(probe), str(out / 'boot-linked.bin'), '--content-profile', str(out / 'content.bin'),
                    '--patches', str(out / 'patches.bin'), '--app0', str(game),
                    '--user', str(user_dir),
-                   '--timeout', env.get('GOW3_TIMEOUT', '0'), *args]
+                   '--timeout', env.get('VW_TIMEOUT', '0'), *args]
         # No stdin: an inherited pipe (shells such as Git Bash) cost the game its console output.
         return subprocess.run(command, stdin=subprocess.DEVNULL, creationflags=no_console()).returncode
     finally:

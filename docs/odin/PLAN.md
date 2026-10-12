@@ -2,7 +2,7 @@
 
 Target: CUSA05083 (US) app 01.01. Base: gow3_pc (PS4 eboot runs natively on x86-64,
 runtime replaces PS4 system libraries, shadPS4 video core translates GPU work to Vulkan).
-gow3-specific hooks are gated on CUSA01623 01.02 and stay inert for this game.
+vw-specific hooks are gated on CUSA01623 01.02 and stay inert for this game.
 RE workspace: `../re` (Ghidra project, notes, import tables).
 
 ## Phase 0 — Groundwork (done)
@@ -11,11 +11,11 @@ on the dump (`out_odin/`), Ghidra project with relocations applied and 202/215 i
 
 ## Phase 1 — First boot (loader + runtime gaps)
 Goal: eboot reaches its main loop without crashing.
-- Run `gow3-probe` against CUSA05083; log every unresolved import and the first crash.
-- Implement/stub the 35 imports gow3 never needed: NpTus, SystemGesture, ErrorDialog,
+- Run `vwport` against CUSA05083; log every unresolved import and the first crash.
+- Implement/stub the 35 imports vw never needed: NpTus, SystemGesture, ErrorDialog,
   Coredump, GameLiveStreaming, CommonDialog → safe stubs; libkernel (7), libc (2),
   SaveData GetMountInfo → real implementations.
-- Fix assumptions in memory/threads/TLS that only held for gow3.
+- Fix assumptions in memory/threads/TLS that only held for vw.
 Done when: the game thread loop runs and the frame function (FUN_006b3eb0) is reached.
 
 ## Phase 2 — Files, data and saves

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// gow3: frame analyzer. Creating the file named by GOW3_CAPTURE_TRIGGER records the next full
+// vw: frame analyzer. Creating the file named by VW_CAPTURE_TRIGGER records the next full
 // frame: every render pass (targets, depth, draw count, shaders, sampled textures) and compute
 // dispatch, in order, plus the buffer that was presented. Input for placing a temporal
 // upscaler (scene color, depth, motion vectors, UI) in the game's frame.
@@ -52,7 +52,7 @@ public:
     /// Contents of a bound buffer (first 1 KiB), kept for small passes and a pass's first draw.
     static void Buffer(u64 stage_hash, u32 slot, VAddr address, const void* data, u64 size);
     static void Note(const char* text);
-    /// GOW3_CAPTURE_DETAIL=1, per draw: primitive, viewport and scissors, the fragment
+    /// VW_CAPTURE_DETAIL=1, per draw: primitive, viewport and scissors, the fragment
     /// shader's textures (with a hash of their memory: textures rewritten in place) and the
     /// first vertices of each vertex stream (with a hash of the whole stream).
     static void NoteDraw(const AmdGpu::Regs& regs, u32 num_indices, const Shader::Info* ps);

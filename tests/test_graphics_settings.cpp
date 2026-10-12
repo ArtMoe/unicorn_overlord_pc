@@ -1,19 +1,19 @@
-// gow3.ini graphics keys (gow3_settings.cpp, gow3_graphics.h).
+// vw.ini graphics keys (vw_settings.cpp, vw_graphics.h).
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include "gow3_graphics.h"
-#include "gow3_settings.h"
+#include "vw_graphics.h"
+#include "vw_settings.h"
 #ifndef _WIN32
 static int _putenv_s(const char* name, const char* value) {
     return value[0] ? setenv(name, value, 1) : unsetenv(name);
 }
 #endif
 
-namespace G = Gow3Graphics;
+namespace G = VwGraphics;
 
 static std::string Read(const char* path) {
     std::ifstream in(path);
@@ -40,21 +40,21 @@ int main() {
                "render_resolution=1440p\ndeferred_readback=0\nstale_readback=1\n"
                "fsr1=1\nrcas=0\nrcas_strength=40\nframes_queued=2\n";
     }
-    _putenv_s("GOW3_CONFIG", path);
-    _putenv_s("GOW3_ASYNC_SHADERS", "");
-    auto& v = Gow3Settings::Get();
-    Gow3Settings::Load();
+    _putenv_s("VW_CONFIG", path);
+    _putenv_s("VW_ASYNC_SHADERS", "");
+    auto& v = VwSettings::Get();
+    VwSettings::Load();
     assert(v.display_mode == G::Borderless && !v.vsync && v.fps_limit == 240 && !v.async_shaders);
     assert(v.render_resolution == 1 && !v.deferred_readback && v.stale_readback);
     assert(v.fsr1 && !v.rcas && v.rcas_strength == 40 && v.frames_queued == 2);
-    assert(!Gow3Settings::GraphicsNeedRestart());
+    assert(!VwSettings::GraphicsNeedRestart());
     v.render_resolution = 3;
-    assert(Gow3Settings::GraphicsNeedRestart());
+    assert(VwSettings::GraphicsNeedRestart());
     v.fps_limit = 60;  // live: no restart because of it
     v.render_resolution = 1;
-    assert(!Gow3Settings::GraphicsNeedRestart());
+    assert(!VwSettings::GraphicsNeedRestart());
 
-    Gow3Settings::Save();
+    VwSettings::Save();
     const std::string saved = Read(path);
     for (const char* line : {"display_mode=borderless\n", "vsync=0\n", "fps_limit=60\n", "async_shaders=0\n",
                              "render_resolution=1440p\n", "deferred_readback=0\n",
@@ -68,9 +68,9 @@ int main() {
         out << "display_mode=huge\nfps_limit=7\nrender_resolution=8K\n"
                "rcas_strength=250\nframes_queued=9\n";
     }
-    _putenv_s("GOW3_ASYNC_SHADERS", "1");  // the environment still wins at start
+    _putenv_s("VW_ASYNC_SHADERS", "1");  // the environment still wins at start
     v.async_shaders = false;
-    Gow3Settings::Load();
+    VwSettings::Load();
     assert(v.display_mode == G::Windowed && v.fps_limit == 0 && v.render_resolution == 0);
     assert(v.rcas_strength == 75 && v.frames_queued == 1);
     assert(v.async_shaders);

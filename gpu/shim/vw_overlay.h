@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// gow3: in-game settings menu (Dear ImGui), drawn by the presenter into the swapchain image
+// vw: in-game settings menu (Dear ImGui), drawn by the presenter into the swapchain image
 // after the game frame, at display resolution. Insert (keyboard) or R3+L2 (gamepad) opens it;
-// while it is open the game gets no pad/keyboard input. Settings live in gow3_settings.h.
+// while it is open the game gets no pad/keyboard input. Settings live in vw_settings.h.
 
 #pragma once
 
 #include <string>
 #include <vector>
 #include "common/types.h"
-#include "gow3_png.h"
+#include "vw_png.h"
 #include "video_core/renderer_vulkan/vk_common.h"
 
 union SDL_Event;
@@ -18,7 +18,7 @@ namespace Vulkan {
 class Instance;
 }
 
-namespace Gow3Overlay {
+namespace VwOverlay {
 
 /// Present thread, once: the ImGui context and its Vulkan backend.
 void Init(const Vulkan::Instance& instance, vk::Format format, u32 image_count);
@@ -50,7 +50,7 @@ void SetTextEntry(bool active, const std::string& prompt, const std::string& tex
 /// cancels (Esc/Circle). `pictures`: one per item (empty = none), drawn beside its text.
 /// PollChoice: -1 while open, -2 cancelled, else the chosen index.
 void BeginChoice(const std::string& title, const std::vector<std::string>& items,
-                 std::vector<Gow3Png::Image> pictures, int focus);
+                 std::vector<VwPng::Image> pictures, int focus);
 int PollChoice();
 
-} // namespace Gow3Overlay
+} // namespace VwOverlay

@@ -12,7 +12,7 @@ layout (push_constant) uniform settings {
     float gamma;
     bool hdr;
     bool srgb_input;
-    float sharpen; // gow3: contrast-adaptive sharpening of the downscaled image, 0 off to 1
+    float sharpen; // vw: contrast-adaptive sharpening of the downscaled image, 0 off to 1
 } pp;
 
 const float cutoff = 0.0031308, a = 1.055, b = 0.055, d = 12.92;
@@ -34,7 +34,7 @@ vec3 degamma(vec3 rgb) {
     );
 }
 
-// gow3: an image larger than the output (render resolution above the window) is averaged
+// vw: an image larger than the output (render resolution above the window) is averaged
 // over each output pixel's footprint instead of read with one bilinear tap, which skips most
 // of its pixels and shimmers. A grid of bilinear taps covers the footprint (box filter,
 // slightly widened by the bilinear taps); the sRGB view gives linear values to average.

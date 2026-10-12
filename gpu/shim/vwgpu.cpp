@@ -1,13 +1,13 @@
-#include "gow3_write_log.h"
-// gow3: glue between the C loader and the vendored shadPS4 video core.
-#include "gow3_overlay.h"
-#include "gow3_png.h"
-#include "gow3_settings.h"
-#include "gow3_copy.h"
+#include "vw_write_log.h"
+// vw: glue between the C loader and the vendored shadPS4 video core.
+#include "vw_overlay.h"
+#include "vw_png.h"
+#include "vw_settings.h"
+#include "vw_copy.h"
 #ifndef _WIN32
 #include <sys/resource.h>
 #endif
-#include "gow3_toggles.h"
+#include "vw_toggles.h"
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
@@ -21,7 +21,7 @@
 #include <thread>
 #include <vector>
 #include <SDL3/SDL.h>
-#include "../gow3gpu.h"
+#include "../vwgpu.h"
 #include "common/elf_info.h"
 #include "common/logging/log.h"
 #include "common/rdtsc.h"
@@ -75,7 +75,7 @@ void SymbolsResolver::AddSymbol(const char* nid, const char* library, const char
 namespace Core {
 class Emulator {
 public:
-    static void FillElfInfo(const Gow3GpuConfig& config) {
+    static void FillElfInfo(const VwGpuConfig& config) {
         auto& info = Common::ElfInfo::Instance();
         info.initialized = true;
         info.game_serial = config.serial ? config.serial : "UNKNOWN";
@@ -119,28 +119,28 @@ static void CopySparseSerial(VAddr source, u8* dest, u64 size) {
     }
 }
 void MemoryManager::CopySparseMemory(VAddr source, u8* dest, u64 size) {
-    // gow3: large uploads (streaming) are split across the copy threads.
+    // vw: large uploads (streaming) are split across the copy threads.
     constexpr u64 Chunk = 512 * 1024;
-    if (size < 4 * Chunk || !Gow3Copy::Enabled()) {
+    if (size < 4 * Chunk || !VwCopy::Enabled()) {
         return CopySparseSerial(source, dest, size);
     }
-    Gow3Copy::ParallelFor((size + Chunk - 1) / Chunk, [&](std::size_t i) {
+    VwCopy::ParallelFor((size + Chunk - 1) / Chunk, [&](std::size_t i) {
         const u64 offset = i * Chunk;
         CopySparseSerial(source + offset, dest + offset, std::min(Chunk, size - offset));
     });
 }
 bool MemoryManager::TryWriteBacking(void* address, const void* data, u64 size) {
-    Gow3WriteLog::Note(reinterpret_cast<uintptr_t>(address), data, size, Gow3WriteLog::Backing);
+    VwWriteLog::Note(reinterpret_cast<uintptr_t>(address), data, size, VwWriteLog::Backing);
     return runtime_memory_write_backing(reinterpret_cast<uintptr_t>(address), data, size) != 0;
 }
 void AddressSpace::Protect(VAddr virtual_addr, u64 size, MemoryPermission perms) {
-    Gow3Stats::Timer timer{Gow3Stats::t_protect};
+    VwStats::Timer timer{VwStats::t_protect};
     const u64 pages = (size + 4095) / 4096;
-    Gow3Stats::protect_calls.fetch_add(1, std::memory_order_relaxed);
-    Gow3Stats::protect_pages.fetch_add(pages, std::memory_order_relaxed);
+    VwStats::protect_calls.fetch_add(1, std::memory_order_relaxed);
+    VwStats::protect_pages.fetch_add(pages, std::memory_order_relaxed);
     if (!True(perms & MemoryPermission::Write)) {
-        Gow3Stats::protect_revoke_calls.fetch_add(1, std::memory_order_relaxed);
-        Gow3Stats::protect_revoke_pages.fetch_add(pages, std::memory_order_relaxed);
+        VwStats::protect_revoke_calls.fetch_add(1, std::memory_order_relaxed);
+        VwStats::protect_revoke_pages.fetch_add(pages, std::memory_order_relaxed);
     }
     runtime_memory_gpu_protect(virtual_addr, size, True(perms & MemoryPermission::Read),
                                True(perms & MemoryPermission::Write));
@@ -179,7 +179,7 @@ std::condition_variable g_window_cv;
 bool g_window_ready;
 } // namespace
 
-u32 Gow3DisplayRefreshHz() {
+u32 VwDisplayRefreshHz() {
     static const u32 hz = [] {
         const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetPrimaryDisplay());
         const u32 rate = mode && mode->refresh_rate > 0 ? u32(mode->refresh_rate + 0.5f) : 60;
@@ -189,15 +189,15 @@ u32 Gow3DisplayRefreshHz() {
     return hz;
 }
 
-#ifdef GOW3_PGO_GENERATE
+#ifdef VW_PGO_GENERATE
 extern "C" void __gcov_dump(void);
 extern "C" void __gcov_reset(void);
-// Instrumented build (GOW3_PGO=generate): the game often ends through _exit (watchdog, guest
+// Instrumented build (VW_PGO=generate): the game often ends through _exit (watchdog, guest
 // exit), which skips the profile write at exit. Write every 30 s and reset: the files sum the
 // intervals.
 static void StartProfileWriter() {
     std::thread([] {
-        Common::SetCurrentThreadName("gow3:pgo");
+        Common::SetCurrentThreadName("vw:pgo");
         for (;;) {
             std::this_thread::sleep_for(std::chrono::seconds(30));
             __gcov_dump();
@@ -208,22 +208,22 @@ static void StartProfileWriter() {
 }
 #endif
 
-extern "C" int gow3gpu_init(const Gow3GpuConfig* config) {
-    Gow3Settings::Load();
-#ifdef GOW3_PGO_GENERATE
+extern "C" int vwgpu_init(const VwGpuConfig* config) {
+    VwSettings::Load();
+#ifdef VW_PGO_GENERATE
     StartProfileWriter();
 #endif
     g_sdk_version = config->sdk_version;
 #ifdef _WIN32
-    if (config->user_dir && !std::getenv("GOW3_GPU_USER_DIR")) _putenv_s("GOW3_GPU_USER_DIR", config->user_dir);
+    if (config->user_dir && !std::getenv("VW_GPU_USER_DIR")) _putenv_s("VW_GPU_USER_DIR", config->user_dir);
 #else
-    if (config->user_dir) setenv("GOW3_GPU_USER_DIR", config->user_dir, 0);
+    if (config->user_dir) setenv("VW_GPU_USER_DIR", config->user_dir, 0);
 #endif
     Core::Emulator::FillElfInfo(*config);
     const std::string title = config->title ? config->title : "God of War III";
     const s32 width = config->width, height = config->height;
     g_window_thread = std::thread([title, width, height] {
-        Common::SetCurrentThreadName("gow3:window");
+        Common::SetCurrentThreadName("vw:window");
         auto* window = new Frontend::WindowSDL(width, height, title.c_str());
         {
             std::scoped_lock lock{g_window_mutex};
@@ -251,14 +251,14 @@ extern "C" int gow3gpu_init(const Gow3GpuConfig* config) {
 }
 
 namespace Libraries::Kernel { void StartKernelService(); }
-extern "C" void gow3gpu_register_kernel(void) {
+extern "C" void vwgpu_register_kernel(void) {
     Libraries::Kernel::StartKernelService();
     Core::Loader::SymbolsResolver resolver;
     Libraries::Kernel::RegisterEventQueue(&resolver);
     Libraries::AvPlayer::RegisterLib(&resolver);
 }
 
-extern "C" uintptr_t gow3gpu_resolve(const char* scoped_nid) {
+extern "C" uintptr_t vwgpu_resolve(const char* scoped_nid) {
     const char* hash = std::strchr(scoped_nid, '#');
     const size_t length = hash ? size_t(hash - scoped_nid) : std::strlen(scoped_nid);
     for (const auto& symbol : g_symbols) {
@@ -269,11 +269,11 @@ extern "C" uintptr_t gow3gpu_resolve(const char* scoped_nid) {
     return 0;
 }
 
-extern "C" int gow3gpu_handle_fault(void* ucontext, void* address) {
+extern "C" int vwgpu_handle_fault(void* ucontext, void* address) {
     return Core::Signals::Instance()->DispatchAccessViolation(ucontext, address) ? 1 : 0;
 }
 
-extern "C" unsigned gow3gpu_symbol_count(void) {
+extern "C" unsigned vwgpu_symbol_count(void) {
     return unsigned(g_symbols.size());
 }
 
@@ -292,7 +292,7 @@ void KernelSignalRequest() {
 }
 
 static void KernelServiceThread(std::stop_token stoken) {
-    Common::SetCurrentThreadName("gow3:kernel_service");
+    Common::SetCurrentThreadName("vw:kernel_service");
     while (!stoken.stop_requested()) {
         {
             std::unique_lock lock{m_asio_req};
@@ -328,36 +328,36 @@ u32 ConsumeWithOverlaysScreenshotRequests() { return 0; }
 ScreenshotRequests ConsumeScreenshotRequests() { return {}; }
 } // namespace VideoCore
 
-extern "C" int gow3gpu_overlay_captures_input(void) {
-    return Gow3Overlay::CapturesInput() ? 1 : 0;
+extern "C" int vwgpu_overlay_captures_input(void) {
+    return VwOverlay::CapturesInput() ? 1 : 0;
 }
 
-extern "C" int gow3gpu_text_input_begin(const char* initial, const char* prompt) {
+extern "C" int vwgpu_text_input_begin(const char* initial, const char* prompt) {
     if (!g_window) return 0;
     g_window->BeginTextInput(initial ? initial : "", prompt ? prompt : "Text");
     return 1;
 }
 
-extern "C" int gow3gpu_choice_begin(const char* title, const char* const* items, const char* const* images,
+extern "C" int vwgpu_choice_begin(const char* title, const char* const* items, const char* const* images,
                                     int count, int focus) {
     if (!g_window || count <= 0) return 0;
     // Pictures are decoded here, on the game's thread, before the list is shown.
-    std::vector<Gow3Png::Image> pictures(count);
+    std::vector<VwPng::Image> pictures(count);
     for (int i = 0; images && i < count; ++i) {
-        if (images[i] && !Gow3Png::LoadRgba(images[i], pictures[i])) {
+        if (images[i] && !VwPng::LoadRgba(images[i], pictures[i])) {
             LOG_WARNING(Lib_SaveDataDialog, "save list: no picture from {}", images[i]);
         }
     }
-    Gow3Overlay::BeginChoice(title ? title : "", std::vector<std::string>(items, items + count),
+    VwOverlay::BeginChoice(title ? title : "", std::vector<std::string>(items, items + count),
                              std::move(pictures), focus);
     return 1;
 }
 
-extern "C" int gow3gpu_choice_poll(void) {
-    return Gow3Overlay::PollChoice();
+extern "C" int vwgpu_choice_poll(void) {
+    return VwOverlay::PollChoice();
 }
 
-extern "C" int gow3gpu_text_input_poll(char* out, uint64_t size) {
+extern "C" int vwgpu_text_input_poll(char* out, uint64_t size) {
     if (!g_window) return 2;
     std::string text;
     const int state = g_window->PollTextInput(text);

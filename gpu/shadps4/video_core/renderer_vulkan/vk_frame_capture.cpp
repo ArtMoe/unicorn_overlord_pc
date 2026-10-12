@@ -56,11 +56,11 @@ void AddBuffers(Entry& entry) {
     pending_buffers.clear();
 }
 bool pass_open = false;
-// GOW3_CAPTURE_FRAMES: display passes recorded into one capture (default 1).
+// VW_CAPTURE_FRAMES: display passes recorded into one capture (default 1).
 u32 frames_left = 0;
 std::mutex display_mutex;
 std::vector<VAddr> display_buffers;
-// gow3: read on every draw; the game registers a handful of display buffers once.
+// vw: read on every draw; the game registers a handful of display buffers once.
 std::array<std::atomic<VAddr>, 16> display_list{};
 std::atomic<u32> display_count{0};
 
@@ -100,12 +100,12 @@ void SetResult(std::string text) {
     result = std::move(text);
 }
 
-// GOW3_CAPTURE_DIR, else <user>/captures (GOW3_GPU_USER_DIR, the saves folder).
+// VW_CAPTURE_DIR, else <user>/captures (VW_GPU_USER_DIR, the saves folder).
 std::filesystem::path CaptureDir() {
-    if (const char* dir = std::getenv("GOW3_CAPTURE_DIR"); dir && dir[0]) {
+    if (const char* dir = std::getenv("VW_CAPTURE_DIR"); dir && dir[0]) {
         return dir;
     }
-    const char* user = std::getenv("GOW3_GPU_USER_DIR");
+    const char* user = std::getenv("VW_GPU_USER_DIR");
     return std::filesystem::path(user && user[0] ? user : "user") / "captures";
 }
 
@@ -163,7 +163,7 @@ void Write(VAddr presented) {
 void FrameCapture::OnFlip(VAddr presented_address) {
     last_presented.store(presented_address, std::memory_order_relaxed);
     flips.fetch_add(1, std::memory_order_release);
-    static const char* trigger = std::getenv("GOW3_CAPTURE_TRIGGER");
+    static const char* trigger = std::getenv("VW_CAPTURE_TRIGGER");
     if (state.load(std::memory_order_relaxed) != Idle) {
         return;
     }
@@ -230,7 +230,7 @@ void FrameCapture::BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_
         }
     }
     // Frame boundaries in the command stream: the pass that writes a display buffer as its only
-    // target. gow3: God of War III also draws scene passes (two targets) into display buffers.
+    // target. vw: God of War III also draws scene passes (two targets) into display buffers.
     display = display && targets.size() == 1;
     const bool new_pass = !(pass_open && !entries.empty() && !entries.back().compute &&
                             entries.back().colors == targets);
@@ -251,7 +251,7 @@ void FrameCapture::BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_
             pending_sampled.clear();
             pending_buffers.clear();
             pass_open = false;
-            const char* frames = std::getenv("GOW3_CAPTURE_FRAMES");
+            const char* frames = std::getenv("VW_CAPTURE_FRAMES");
             frames_left = frames ? std::max(1, std::atoi(frames)) : 1;
             state.store(Recording, std::memory_order_release);
         }
@@ -331,7 +331,7 @@ void FrameCapture::Note(const char* text) {
 namespace {
 bool Detail() {
     static const bool detail = [] {
-        const char* env = std::getenv("GOW3_CAPTURE_DETAIL");
+        const char* env = std::getenv("VW_CAPTURE_DETAIL");
         return env && env[0] == '1';
     }();
     return detail;

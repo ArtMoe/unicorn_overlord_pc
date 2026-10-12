@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Startup graphics options of gow3.ini (gpu/shim/gow3_graphics.h) for run.py.
+"""Startup graphics options of vw.ini (gpu/shim/vw_graphics.h) for run.py.
 
 The in-game menu and the launcher write them; run.py turns them into environment variables
 (the probe reads render_resolution itself) at every start, so "Apply and restart" uses the new values. After a
@@ -34,7 +34,7 @@ def write_keys(path, updates):
     try:
         lines = path.read_text(encoding='utf-8').splitlines()
     except OSError:
-        lines = ['# gow3 settings (in-game menu: Insert / R3+L2)']
+        lines = ['# vw settings (in-game menu: Insert / R3+L2)']
     done, out = set(), []
     for line in lines:
         key = line.split('=', 1)[0].strip() if '=' in line and not line.lstrip().startswith('#') else None
@@ -83,6 +83,6 @@ def prepare(config, state_path):
 
 
 def environment(options):
-    return {'GOW3_DEFERRED_READBACK': options['deferred_readback'],
-            'GOW3_STALE_READBACK': options['stale_readback'],
-            'GOW3_ASYNC_SHADERS': options['async_shaders']}
+    return {'VW_DEFERRED_READBACK': options['deferred_readback'],
+            'VW_STALE_READBACK': options['stale_readback'],
+            'VW_ASYNC_SHADERS': options['async_shaders']}

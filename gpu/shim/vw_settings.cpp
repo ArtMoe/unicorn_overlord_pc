@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-#include "gow3_settings.h"
-#include "gow3_graphics.h"
+#include "vw_settings.h"
+#include "vw_graphics.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -9,13 +9,13 @@
 #include <string>
 #include <string_view>
 
-namespace Gow3Settings {
+namespace VwSettings {
 
 namespace {
 
 const char* Path() {
-    const char* env = std::getenv("GOW3_CONFIG");
-    return env && env[0] ? env : "gow3.ini";
+    const char* env = std::getenv("VW_CONFIG");
+    return env && env[0] ? env : "vw.ini";
 }
 
 void Set(Values& v, const std::string& key, const std::string& value) {
@@ -52,11 +52,11 @@ void Set(Values& v, const std::string& key, const std::string& value) {
     if (key == "show_fps") {
         v.show_fps = i != 0;
     } else if (key == "display_mode") {
-        v.display_mode = Gow3Graphics::ParseDisplayMode(value);
+        v.display_mode = VwGraphics::ParseDisplayMode(value);
     } else if (key == "vsync") {
         v.vsync = i != 0;
     } else if (key == "fps_limit") {
-        v.fps_limit = Gow3Graphics::ParseFpsLimit(i);
+        v.fps_limit = VwGraphics::ParseFpsLimit(i);
     } else if (key == "async_shaders") {
         v.async_shaders = i != 0;
     } else if (key == "fsr1") {
@@ -64,11 +64,11 @@ void Set(Values& v, const std::string& key, const std::string& value) {
     } else if (key == "rcas") {
         v.rcas = i != 0;
     } else if (key == "rcas_strength") {
-        v.rcas_strength = Gow3Graphics::ParseRcasStrength(value.empty() ? -1 : i);
+        v.rcas_strength = VwGraphics::ParseRcasStrength(value.empty() ? -1 : i);
     } else if (key == "frames_queued") {
-        v.frames_queued = Gow3Graphics::ParseFramesQueued(value.empty() ? -1 : i);
+        v.frames_queued = VwGraphics::ParseFramesQueued(value.empty() ? -1 : i);
     } else if (key == "render_resolution") {
-        v.render_resolution = Gow3Graphics::ParseResolution(value);
+        v.render_resolution = VwGraphics::ParseResolution(value);
     } else if (key == "deferred_readback") {
         v.deferred_readback = i != 0;
     } else if (key == "stale_readback") {
@@ -103,9 +103,9 @@ void Load() {
     }
     // Environment overrides (scripts, A/B tests).
     const std::pair<const char*, const char*> env_keys[] = {
-        {"GOW3_ASYNC_SHADERS", "async_shaders"}, {"GOW3_DEFERRED_READBACK", "deferred_readback"},
-        {"GOW3_STALE_READBACK", "stale_readback"}, {"GOW3_FSR1", "fsr1"},
-        {"GOW3_RCAS", "rcas"},                   {"GOW3_FRAMES_AHEAD", "frames_queued"},
+        {"VW_ASYNC_SHADERS", "async_shaders"}, {"VW_DEFERRED_READBACK", "deferred_readback"},
+        {"VW_STALE_READBACK", "stale_readback"}, {"VW_FSR1", "fsr1"},
+        {"VW_RCAS", "rcas"},                   {"VW_FRAMES_AHEAD", "frames_queued"},
     };
     for (const auto& [env, key] : env_keys) {
         if (const char* value = std::getenv(env); value && value[0]) {
@@ -131,7 +131,7 @@ void Save() {
         std::printf("Settings: cannot write %s\n", Path());
         return;
     }
-    std::fprintf(file, "# gow3 settings (in-game menu: Insert / R3+L2)\nshow_fps=%d\n",
+    std::fprintf(file, "# vw settings (in-game menu: Insert / R3+L2)\nshow_fps=%d\n",
                  int(v.show_fps.load()));
     std::fprintf(file,
                  "overlay_fps=%d\noverlay_frametime=%d\noverlay_resolution=%d\noverlay_gpu=%d\n"
@@ -146,15 +146,15 @@ void Save() {
                  "fsr1=%d\nrcas=%d\nrcas_strength=%d\nframes_queued=%d\n"
                  "render_resolution=%s\ndeferred_readback=%d\nstale_readback=%d\n"
                  "restart_unconfirmed=%d\n",
-                 Gow3Graphics::DisplayModeKeys[std::clamp(v.display_mode.load(), 0, 2)].data(),
+                 VwGraphics::DisplayModeKeys[std::clamp(v.display_mode.load(), 0, 2)].data(),
                  int(v.vsync.load()), v.fps_limit.load(), int(v.async_shaders.load()),
                  int(v.fsr1.load()), int(v.rcas.load()), v.rcas_strength.load(), v.frames_queued.load(),
-                 Gow3Graphics::Resolutions[std::clamp(v.render_resolution.load(), 0,
-                                                      int(Gow3Graphics::Resolutions.size()) - 1)]
+                 VwGraphics::Resolutions[std::clamp(v.render_resolution.load(), 0,
+                                                      int(VwGraphics::Resolutions.size()) - 1)]
                      .data(),
                  int(v.deferred_readback.load()), int(v.stale_readback.load()),
                  int(v.restart_unconfirmed.load()));
     std::fclose(file);
 }
 
-} // namespace Gow3Settings
+} // namespace VwSettings

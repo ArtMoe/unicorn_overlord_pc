@@ -29,7 +29,7 @@ Unknown NIDs are labelled `<library>_nid_<NID>`.
 program (same helpers as doax3-mod: Decomp, Xrefs, CallArgs, CallUp, Deref, DumpCallers,
 FindImm, Table).
 
-## Unnamed imports (runtime has no implementation yet — gow3 never calls them)
+## Unnamed imports (runtime has no implementation yet — vw never calls them)
 
 libkernel 7, libSceNpTus 6, libSceSystemGesture 5, libSceErrorDialog 4, libSceGnmDriver 3,
 libc 2, libSceCoredump 2, libSceGameLiveStreaming 2, libSceVideoOut 2, libSceSaveData 1,
