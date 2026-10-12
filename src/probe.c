@@ -332,56 +332,57 @@ static int install_jump(uint64_t at, unsigned length, unsigned char *stub) {
     return 1;
 }
 
-/* Odin Sphere Leifthrasir: VW_RENDER_SCALE=<factor> (1 to 3) renders at
- * 1920x1080 times the factor (src/odin_render_scale.h); the presenter scales to the window. */
-static int odin_prefix(const char *text, const char *prefix) {
+/* Render scale: VW_RENDER_SCALE=<factor> or render_resolution= in vw.ini draws the game at
+ * 1920x1080 times the factor (src/odin_render_scale.h); the
+ * presenter averages it down to the window. */
+static int render_scale_prefix(const char *text, const char *prefix) {
     for (; *prefix; ++text, ++prefix)
         if ((*text | 0x20) != *prefix) return 0;
     return 1;
 }
 
 /* A resolution name of the in-game menu (vw_graphics.h Resolutions) or a factor. */
-static float odin_render_scale_value(const char *text) {
+static float render_scale_value(const char *text) {
     while (*text == ' ' || *text == '\t') ++text;
-    if (odin_prefix(text, "native") || odin_prefix(text, "1080p")) return 1.0f;
-    if (odin_prefix(text, "480p")) return 4.0f / 9.0f;
-    if (odin_prefix(text, "720p")) return 2.0f / 3.0f;
-    if (odin_prefix(text, "1440p")) return 4.0f / 3.0f;
-    if (odin_prefix(text, "1800p")) return 5.0f / 3.0f;
-    if (odin_prefix(text, "4k") || odin_prefix(text, "2160p")) return 2.0f;
+    if (render_scale_prefix(text, "native") || render_scale_prefix(text, "1080p")) return 1.0f;
+    if (render_scale_prefix(text, "480p")) return 4.0f / 9.0f;
+    if (render_scale_prefix(text, "720p")) return 2.0f / 3.0f;
+    if (render_scale_prefix(text, "1440p")) return 4.0f / 3.0f;
+    if (render_scale_prefix(text, "1800p")) return 5.0f / 3.0f;
+    if (render_scale_prefix(text, "4k") || render_scale_prefix(text, "2160p")) return 2.0f;
     return strtof(text, NULL);
 }
 
 /* VW_RENDER_SCALE, else render_resolution= in vw.ini (VW_CONFIG; the menu's "Render
  * resolution", applied on restart). */
-static float odin_render_scale_setting(void) {
+static float render_scale_setting(void) {
     const char *env = getenv("VW_RENDER_SCALE");
-    if (env && *env) return odin_render_scale_value(env);
+    if (env && *env) return render_scale_value(env);
     const char *config = getenv("VW_CONFIG");
     FILE *f = config ? fopen(config, "r") : NULL;
     float scale = 1.0f;
     char line[256];
     while (f && fgets(line, sizeof(line), f))
-        if (!strncmp(line, "render_resolution=", 18)) scale = odin_render_scale_value(line + 18);
+        if (!strncmp(line, "render_resolution=", 18)) scale = render_scale_value(line + 18);
     if (f) fclose(f);
     return scale;
 }
 
 static void install_odin_render_scale(const char *app0, Segment *segments, uint64_t count,
                                       uint64_t size) {
-    const float scale = odin_render_scale_setting();
+    char path[4096], serial[32] = "", version[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    if (strcmp(serial, "CUSA05083")) return;
+    const float scale = render_scale_setting();
     if (!(scale > 1.001f)) {
         /* Below 1080p a scaled target's size (1280x720, ...) is also a texture asset size:
          * the texture size hooks would misreport those assets. */
         if (scale > 0.0f && scale < 0.999f) printf("Render scale: below 1080p is not supported for this game; native\n");
         return;
     }
-    char path[4096], serial[32] = "", version[32] = "";
-    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
-    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
     sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(serial, "CUSA05083") || strcmp(version, "01.01") || scale > 3.0f ||
-        !odin_render_scale_signature_match(image, size)) {
+    if (strcmp(version, "01.01") || scale > 3.0f || !odin_render_scale_signature_match(image, size)) {
         printf("Render scale: unavailable (game version, code signature or factor %.2f)\n", scale);
         return;
     }
@@ -689,7 +690,7 @@ int main(int argc, char **argv) {
     if (fread(image, 1, size, f) != size || fgetc(f) != EOF) fail("incorrect memory image size");
     fclose(f);
     if (!cpu_only) {
-        char title[128]="God of War III", serial[16]="UNKNOWN", sfo[4096];
+        char title[128]="Unknown", serial[16]="UNKNOWN", sfo[4096];
         uint32_t attributes=0;
         snprintf(sfo,sizeof(sfo),"%s/sce_sys/param.sfo",app0 ? app0 : ".");
         sfo_value(sfo,"TITLE",title,sizeof(title),NULL);
