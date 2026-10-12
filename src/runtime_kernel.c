@@ -124,6 +124,9 @@ static ABI int32_t posix_nanosleep(const GuestTimespec *rq,GuestTimespec *rem) {
     if (rem) { rem->sec=0; rem->nsec=0; }
     return 0;
 }
+/* A base PS4 without sanitizers: no PS4 Pro mode, no sanitizer hooks. */
+static ABI int32_t kernel_false(void) { return 0; }
+static ABI int32_t kernel_not_found(void) { return (int32_t)0x80020002; }
 static ABI int32_t kernel_nanosleep(const GuestTimespec *rq,GuestTimespec *rem) {
     return posix_nanosleep(rq,rem) ? ERR(*runtime_errno()) : 0;
 }
@@ -369,6 +372,11 @@ static const RuntimeExport exports[]={
     {"sceKernelGetProcessTimeCounterFrequency",process_time_frequency},
     {"sceKernelReadTsc",read_tsc}, {"sceKernelGetTscFrequency",tsc_frequency},
     {"sceKernelUsleep",kernel_usleep}, {"usleep",posix_usleep}, {"sleep",posix_sleep},
+    {"_nanosleep",posix_nanosleep},
+    {"sceKernelIsNeoMode",kernel_false}, {"sceKernelIsAddressSanitizerEnabled",kernel_false},
+    {"sceKernelGetSanitizerMallocReplaceExternal",kernel_false},
+    {"sceKernelGetSanitizerNewReplaceExternal",kernel_false},
+    {"sceKernelInternalMemoryGetModuleSegmentInfo",kernel_not_found},
     {"nanosleep",posix_nanosleep}, {"sceKernelNanosleep",kernel_nanosleep},
     {"sceKernelGettimezone",kernel_gettimezone}, {"gettimeofday",posix_gettimeofday},
     {"sceKernelGettimeofday",kernel_gettimeofday},

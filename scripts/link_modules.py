@@ -19,6 +19,11 @@ from prepare import parse_self, span, unpack
 from link_libc import encode_id
 
 DEFAULT_MODULES = ('libc.prx', 'libSceFios2.prx')
+# Games whose bundled PSN libraries run natively: their C++ toolkit then reaches the host
+# runtime only through the PSN C APIs, which answer as signed out.
+TITLE_MODULES = {
+    'CUSA36381': DEFAULT_MODULES + ('libSceNpToolkit2.prx', 'libSceNpCppWebApi.prx', 'libSceJobManager.prx'),
+}
 FS_LOAD = bytes.fromhex('64488b042500000000')  # mov rax, fs:[0]
 
 
@@ -248,6 +253,9 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('game', type=Path)
     p.add_argument('--out', type=Path, default=Path(__file__).resolve().parent.parent / 'out')
-    p.add_argument('--modules', nargs='*', default=list(DEFAULT_MODULES))
+    p.add_argument('--modules', nargs='*', default=None)
     a = p.parse_args()
+    if a.modules is None:
+        from patches import game_title_id
+        a.modules = list(TITLE_MODULES.get(game_title_id(a.game), DEFAULT_MODULES))
     link(a.game, a.out, a.modules)

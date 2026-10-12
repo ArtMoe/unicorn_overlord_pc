@@ -33,6 +33,18 @@ static ABI int32_t module_load(uint16_t id) {
     else printf("Runtime: system module 0x%x loaded (host implementation)\n",id);
     return 0;
 }
+/* The same load with module arguments and a result slot (newer SDKs). */
+static ABI int32_t module_load_with_arg(uint16_t id,uint64_t argc,const void *argv,uint32_t flags,int32_t *result) {
+    (void)argc; (void)argv; (void)flags;
+    int32_t r=module_load(id);
+    if (result) *result=0;
+    return r;
+}
+/* System modules are host code: no guest unwind tables (ESRCH as the kernel's variant). */
+static ABI int32_t module_unwind_info(uint64_t address,int32_t flags,void *info) {
+    (void)address; (void)flags;
+    return info ? (int32_t)0x80020003 : (int32_t)0x8002000e;
+}
 static ABI int32_t module_loaded(uint16_t id) {
     if (!id) return INVALID_ID;
     return module_refs[id] ? 0 : NOT_LOADED;
@@ -81,6 +93,8 @@ uintptr_t runtime_content_resolve(const char *name) {
     if (!strcmp(name,"g8cM39EUZ6o#libSceSysmodule")) return (uintptr_t)module_load;
     if (!strcmp(name,"fMP5NHUOaMk#libSceSysmodule")) return (uintptr_t)module_loaded;
     if (!strcmp(name,"eR2bZFAAU0Q#libSceSysmodule")) return (uintptr_t)module_unload;
+    if (!strcmp(name,"hHrGoGoNf+s#libSceSysmodule")) return (uintptr_t)module_load_with_arg;
+    if (!strcmp(name,"4fU5yvOkVG4#libSceSysmodule")) return (uintptr_t)module_unwind_info;
     if (!strcmp(name,"R9lA82OraNs#libSceAppContent")) return (uintptr_t)content_init;
     if (!strcmp(name,"99b82IKXpH4#libSceAppContent")) return (uintptr_t)param_int;
     if (!strcmp(name,"xnd8BJzAxmk#libSceAppContent")) return (uintptr_t)addon_list;

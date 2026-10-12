@@ -89,6 +89,18 @@ static ABI int32_t rtc_current_clock(DateTime *t, int32_t minutes) {
     from_tick((uint64_t)((int64_t)now_utc()+(int64_t)minutes*60000000),t);
     return 0;
 }
+/* Win32 FILETIME: 100 ns units since 1601-01-01 (11644473600 s before the Unix epoch). */
+#define WIN32_EPOCH_TICKS (UNIX_EPOCH_TICKS-UINT64_C(11644473600000000))
+static ABI int32_t rtc_get_win32(const uint64_t *tick, uint64_t *filetime) {
+    if (!tick || !filetime) return ERR_INVALID_POINTER;
+    *filetime=*tick>=WIN32_EPOCH_TICKS ? (*tick-WIN32_EPOCH_TICKS)*10 : 0;
+    return 0;
+}
+static ABI int32_t rtc_set_win32(uint64_t *tick, uint64_t filetime) {
+    if (!tick) return ERR_INVALID_POINTER;
+    *tick=WIN32_EPOCH_TICKS+filetime/10;
+    return 0;
+}
 static ABI int32_t rtc_current_tick(uint64_t *tick) { if (!tick) return ERR_INVALID_POINTER; *tick=now_utc(); return 0; }
 static ABI int32_t rtc_utc_to_local(const uint64_t *utc, uint64_t *local) {
     if (!utc || !local) return ERR_INVALID_POINTER;
@@ -151,5 +163,6 @@ static const RuntimeExport exports[]={
     {"sceRtcGetDayOfWeek",rtc_day_of_week}, {"sceRtcGetTick",rtc_get_tick}, {"sceRtcSetTick",rtc_set_tick},
     {"sceRtcGetTickResolution",rtc_tick_resolution}, {"sceRtcSetTime_t",rtc_set_time_t},
     {"sceRtcGetTime_t",rtc_get_time_t}, {"sceRtcFormatRFC2822LocalTime",rtc_rfc2822_local},
+    {"sceRtcGetWin32FileTime",rtc_get_win32}, {"sceRtcSetWin32FileTime",rtc_set_win32},
 };
 uintptr_t runtime_rtc_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }

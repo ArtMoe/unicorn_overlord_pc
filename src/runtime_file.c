@@ -480,6 +480,14 @@ static ABI int64_t posix_unlink(const char *p) { return posix(path_op(p,2,0)); }
 static ABI int32_t sce_check_reachability(const char *p) {
     GuestStat s; return (int32_t)sce(do_stat(p,&s));
 }
+static ABI int64_t sce_getdents_nobase(int fd,char *b,uint64_t n) { return sce(do_getdents(fd,b,n,NULL)); }
+/* Host permissions and timestamps are not the guest's: an existing path succeeds. */
+static ABI int32_t sce_chmod(const char *p,int mode) {
+    (void)mode; GuestStat s; return (int32_t)sce(do_stat(p,&s));
+}
+static ABI int32_t sce_utimes(const char *p,const void *times) {
+    (void)times; GuestStat s; return (int32_t)sce(do_stat(p,&s));
+}
 
 static const RuntimeExport exports[]={
     {"sceKernelOpen",sce_open}, {"open",posix_open}, {"_open",posix_open},
@@ -492,6 +500,7 @@ static const RuntimeExport exports[]={
     {"sceKernelFstat",sce_fstat}, {"fstat",posix_fstat},
     {"sceKernelStat",sce_stat}, {"stat",posix_stat},
     {"sceKernelGetdirentries",sce_getdents}, {"getdirentries",posix_getdents},
+    {"sceKernelGetdents",sce_getdents_nobase}, {"sceKernelChmod",sce_chmod}, {"sceKernelUtimes",sce_utimes},
     {"sceKernelRename",sce_rename}, {"rename",posix_rename},
     {"sceKernelFtruncate",sce_ftruncate}, {"ftruncate",posix_ftruncate},
     {"sceKernelTruncate",sce_truncate}, {"truncate",posix_truncate},

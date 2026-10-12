@@ -34,6 +34,7 @@ typedef struct ThreadAttr {
     uint32_t magic;
     int detached, policy, prio, inherit;
     uint64_t stack, guard, affinity;
+    void *stack_addr; /* the running thread's stack, for attributes read from one */
     struct ThreadAttr *next;
 } ThreadAttr;
 typedef struct GuestThread {
@@ -46,6 +47,7 @@ typedef struct GuestThread {
     ThreadAttr attr;
     char name[32];
     int detached, finished, joined, host_owned;
+    int32_t id; /* scePthreadGetthreadid */
 #ifdef _WIN32
     gow3_jmp_buf exit_jump; /* no SEH unwinding through guest frames */
 #else
@@ -102,6 +104,8 @@ static void attach(GuestThread *t) {
     tcb[1]=(uint64_t)(uintptr_t)dtv;         /* tcb_dtv (static module only) */
     tcb[2]=(uint64_t)(uintptr_t)t;           /* tcb_thread */
     t->tls_block=block; t->tcb=tcb;
+    static int32_t next_id=1;
+    t->id=__atomic_fetch_add(&next_id,1,__ATOMIC_RELAXED);
     set_gs(tcb);
     current=t;
 }
@@ -181,8 +185,23 @@ static ABI int32_t attr_get(void *thread,ThreadAttr **out) {
     ThreadAttr *next=a->next;
     *a=t->attr; a->magic=ATTR_MAGIC; a->next=next;
     a->detached=t->detached;
+#ifndef _WIN32
+    pthread_attr_t host;
+    if (!pthread_getattr_np(t->host,&host)) {
+        size_t size=0;
+        pthread_attr_getstack(&host,&a->stack_addr,&size);
+        if (size) a->stack=size;
+        pthread_attr_destroy(&host);
+    }
+#endif
     return 0;
 }
+static ABI int32_t attr_get_stack_range(ThreadAttr **slot,void **addr,uint64_t *size) {
+    ThreadAttr *a=find_attr(slot);
+    if (!a || !addr || !size) return ERR(22);
+    *addr=a->stack_addr; *size=a->stack; return 0;
+}
+static ABI int32_t thread_get_id(void) { return runtime_thread_current()->id; }
 static ABI int32_t attr_set_stack(ThreadAttr **slot,uint64_t size) {
     ThreadAttr *a=find_attr(slot);
     if (!a || size<16384) return ERR(22);
@@ -252,11 +271,19 @@ static void set_host_name(const char *name) {
 #define exit_setjmp(t) setjmp((t)->exit_jump)
 #define exit_longjmp(t) longjmp((t)->exit_jump,1)
 #endif
+/* _sceKernelSetThreadDtors: newer SDK libcs register their thread-local destructor routine;
+ * the kernel calls it as each thread finishes. */
+typedef ABI void (*GuestDtors)(void);
+static GuestDtors thread_dtors;
+static ABI int32_t set_thread_dtors(GuestDtors dtors) { thread_dtors=dtors; return 0; }
+/* The thread-atexit bookkeeping of the same libcs: nothing to account for here. */
+static ABI int32_t thread_atexit_ok(void) { return 0; }
 static void *host_start(void *p) {
     GuestThread *t=p;
     attach(t);
     set_host_name(t->name);
     if (!exit_setjmp(t)) t->result=t->entry(t->argument);
+    if (thread_dtors) thread_dtors();
     runtime_thread_keys_cleanup();
     pthread_mutex_lock(&lock); t->finished=1; ++exited; pthread_mutex_unlock(&lock);
     return t->result;
@@ -351,6 +378,12 @@ static ABI int32_t thread_rename(GuestThread *t,const char *name) {
     return 0;
 }
 static ABI int32_t thread_equal(GuestThread *a,GuestThread *b) { return a==b; }
+static ABI int32_t thread_get_name(GuestThread *t,char *name) {
+    if (!find_thread(t)) return ERR(3);
+    if (!name) return ERR(22);
+    memcpy(name,t->name,sizeof(t->name));
+    return 0;
+}
 
 /* POSIX (libScePosix) variants return positive errno values. */
 static int32_t posix(int32_t r) { return r ? (int32_t)((uint32_t)r&0xffff) : 0; }
@@ -383,7 +416,11 @@ uintptr_t runtime_thread_resolve(const char *name) {
         {"E+tyo3lp5Lw#libkernel",posix_attr_set_detach}, {"2Q0z6rnBrTE#libkernel",posix_attr_set_stack},
         {"euKRgm0Vn2M#libkernel",posix_attr_set_param}, {"OxhIB8LB-PQ#libkernel",posix_create},
         {"Jmi+9w9u0E4#libkernel",posix_create_name}, {"h9CcP3J0oVM#libkernel",posix_join},
-        {"FJrT5LuUBAU#libkernel",thread_exit},
+        {"FJrT5LuUBAU#libkernel",thread_exit}, {"How7B8Oet6k#libkernel",thread_get_name},
+        {"rNhWz+lvOMU#libkernel",set_thread_dtors}, {"-quPa4SEJUw#libkernel",attr_get_stack_range},
+        {"EI-5-jlq2dE#libkernel",thread_get_id}, {"pB-yGZ2nQ9o#libkernel",thread_atexit_ok},
+        {"WhCc1w3EhSI#libkernel",thread_atexit_ok}, {"Tz4RNUCBbGI#libkernel",thread_atexit_ok},
+        {"8OnWXlgQlvo#libkernel",thread_atexit_ok},
     };
     for (size_t i=0;i<sizeof(table)/sizeof(*table);++i)
         if (!strcmp(name,table[i].nid)) return (uintptr_t)table[i].fn;

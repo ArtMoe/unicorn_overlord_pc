@@ -113,6 +113,24 @@ static ABI int32_t flag_set(uint64_t id,uint64_t bits) {
     pthread_mutex_unlock(&lock);
     return result;
 }
+/* Sets the pattern and releases every waiter with ECANCELED; *count gets how many. */
+static ABI int32_t flag_cancel(uint64_t id,uint64_t pattern,int32_t *count) {
+    pthread_mutex_lock(&lock);
+    Flag *f=find(id);
+    int32_t result=0, released=0;
+    if (!f) result=ERR(3);
+    else {
+        f->pattern=pattern;
+        for (Waiter *w=f->first;w;w=w->next) {
+            w->result=ERR(89); w->result_pattern=pattern; w->done=1; ++released;
+            host_check(pthread_cond_signal(&w->event));
+        }
+        f->first=NULL;
+        if (count) *count=released;
+    }
+    pthread_mutex_unlock(&lock);
+    return result;
+}
 static ABI int32_t flag_clear(uint64_t id,uint64_t bits) {
     pthread_mutex_lock(&lock);
     Flag *f=find(id);
@@ -177,6 +195,7 @@ static const RuntimeExport exports[]={
     {"sceKernelCreateEventFlag",flag_create}, {"sceKernelDeleteEventFlag",flag_delete},
     {"sceKernelSetEventFlag",flag_set}, {"sceKernelClearEventFlag",flag_clear},
     {"sceKernelWaitEventFlag",flag_wait}, {"sceKernelPollEventFlag",flag_poll},
+    {"sceKernelCancelEventFlag",flag_cancel},
 };
 uintptr_t runtime_eventflag_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }
 void runtime_eventflag_report(void) {

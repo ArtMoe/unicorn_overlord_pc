@@ -142,7 +142,23 @@ static ABI int32_t rw_destroy(Rwlock **handle) {
     }
     pthread_mutex_unlock(&registry_lock); return error(e);
 }
+/* POSIX (libScePosix) variants return positive errno values. */
+static int32_t posix(int32_t r) { return r ? (int32_t)((uint32_t)r&0xffff) : 0; }
+static ABI int32_t posix_init(Rwlock **out,void *const *attr) { return posix(rw_init(out,attr,NULL)); }
+static ABI int32_t posix_destroy(Rwlock **r) { return posix(rw_destroy(r)); }
+static ABI int32_t posix_read(Rwlock **r) { return posix(rw_read(r)); }
+static ABI int32_t posix_write(Rwlock **r) { return posix(rw_write(r)); }
+static ABI int32_t posix_tryread(Rwlock **r) { return posix(rw_tryread(r)); }
+static ABI int32_t posix_trywrite(Rwlock **r) { return posix(rw_trywrite(r)); }
+static ABI int32_t posix_unlock(Rwlock **r) { return posix(rw_unlock(r)); }
 uintptr_t runtime_rwlock_resolve(const char *name) {
+    if (!strcmp(name,"ytQULN-nhL4#libkernel")) return (uintptr_t)posix_init;
+    if (!strcmp(name,"1471ajPzxh0#libkernel")) return (uintptr_t)posix_destroy;
+    if (!strcmp(name,"iGjsr1WAtI0#libkernel")) return (uintptr_t)posix_read;
+    if (!strcmp(name,"sIlRvQqsN2Y#libkernel")) return (uintptr_t)posix_write;
+    if (!strcmp(name,"SFxTMOfuCkE#libkernel")) return (uintptr_t)posix_tryread;
+    if (!strcmp(name,"XhWHn6P5R7U#libkernel")) return (uintptr_t)posix_trywrite;
+    if (!strcmp(name,"EgmLo6EWgso#libkernel")) return (uintptr_t)posix_unlock;
     if (!strcmp(name,"6ULAa0fq4jA#libkernel")) return (uintptr_t)rw_init;
     if (!strcmp(name,"BB+kb08Tl9A#libkernel")) return (uintptr_t)rw_destroy;
     if (!strcmp(name,"Ox9i0c7L5w0#libkernel")) return (uintptr_t)rw_read;

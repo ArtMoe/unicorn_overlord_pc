@@ -403,6 +403,31 @@ static int direct_range_allocated(uint64_t phys, uint64_t size) {
 }
 
 static ABI uint64_t direct_size(void) { return POOL_SIZE; }
+/* The largest unallocated, aligned range of the pool within [low, high). */
+static ABI int32_t direct_available(int64_t low, int64_t high, uint64_t alignment, int64_t *out, uint64_t *size_out) {
+    if (!alignment) alignment = PAGE;
+    if (!out || !size_out || low < 0 || high < 0 || !valid_alignment(alignment)) return INVALID;
+    uint64_t end = (uint64_t)high < POOL_SIZE ? (uint64_t)high : POOL_SIZE;
+    uint64_t best = 0, best_start = 0;
+    read_lock();
+    for (int candidate = -1; candidate < LIMIT; ++candidate) {
+        if (candidate >= 0 && !blocks[candidate].used) continue;
+        uint64_t start = align_up(candidate < 0 ? (uint64_t)low : blocks[candidate].start + blocks[candidate].size, alignment);
+        if (start < (uint64_t)low || start >= end) continue;
+        uint64_t stop = end;
+        int inside = 0;
+        for (int i=0; i<LIMIT; ++i) {
+            if (!blocks[i].used) continue;
+            if (start >= blocks[i].start && start - blocks[i].start < blocks[i].size) { inside = 1; break; }
+            if (blocks[i].start > start && blocks[i].start < stop) stop = blocks[i].start;
+        }
+        if (!inside && stop - start > best) { best = stop - start; best_start = start; }
+    }
+    read_unlock();
+    if (!best) return NO_SPACE;
+    *out = (int64_t)best_start; *size_out = best;
+    return 0;
+}
 static ABI int32_t direct_allocate(int64_t low, int64_t high, uint64_t size,
                                   uint64_t alignment, int type, int64_t *out) {
     if (!alignment) alignment = PAGE;
@@ -646,6 +671,7 @@ static ABI int32_t batch_map(BatchEntry *entries, int count, int *processed) {
 static const RuntimeExport exports[]={
     {"mmap",posix_mmap}, {"msync",posix_msync},
     {"sceKernelGetDirectMemorySize",direct_size}, {"sceKernelAllocateDirectMemory",direct_allocate},
+    {"sceKernelAvailableDirectMemorySize",direct_available},
     {"sceKernelMapDirectMemory",direct_map}, {"sceKernelMapNamedDirectMemory",direct_map_named},
     {"sceKernelReleaseDirectMemory",direct_release}, {"sceKernelMunmap",direct_unmap}, {"munmap",direct_unmap},
     {"sceKernelMapFlexibleMemory",map_flexible}, {"sceKernelMapNamedFlexibleMemory",map_flexible_named},

@@ -188,6 +188,17 @@ static const char *canonical_name(const char *name, char out[128]) {
     snprintf(out,128,"%.*s#libkernel",(int)(posix-name),name);
     return out;
 }
+/* sceLibcHeapGetTraceInfo (newer SDK libcs, at start): the heap trace state, empty on a
+ * retail console (layout as in shadPS4). */
+typedef struct { uint64_t size; uint32_t flag, get_segment_info; uint64_t *atomic_id_mask, *mstate_table; } HeapTraceInfo;
+static ABI int32_t heap_trace_info(HeapTraceInfo *info) {
+    static uint64_t atomic_id_mask, mstate_table[64];
+    if (!info) return (int32_t)0x80020016;
+    info->get_segment_info=0;
+    info->atomic_id_mask=&atomic_id_mask;
+    info->mstate_table=mstate_table;
+    return 0;
+}
 uintptr_t runtime_resolve(const char *name, int is_data) {
     if (!(capabilities & 1)) return 0;
     char canonical[128];
@@ -219,6 +230,7 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
     if (!strcmp(name, "vNe1w4diLCs#libkernel")) return (uintptr_t)guest_tls_get_addr;
     if (!strcmp(name, "959qrazPIrg#libkernel")) return (uintptr_t)guest_procparam;
     if (!strcmp(name, "p5EcQeEeJAE#libkernel")) return (uintptr_t)guest_set_heap_api;
+    if (!strcmp(name, "NWtTN10cJzE#libSceLibcInternalExt")) return (uintptr_t)heap_trace_info;
     uintptr_t mutex = runtime_mutex_resolve(name);
     if (mutex) return mutex;
     uintptr_t thread = runtime_thread_resolve(name);
