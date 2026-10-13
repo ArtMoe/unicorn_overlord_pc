@@ -55,6 +55,7 @@ enum : std::uint64_t {
     RenderStateMemo = 1ull << 44,
     TextureSetMemo = 1ull << 45,
     PipelinedIndirectDraws = 1ull << 46,
+    ConstRamGuard = 1ull << 47,
     OrderedGuestWrites = 1ull << 49,
     UpdateImageFastPath = 1u << 30,
 };

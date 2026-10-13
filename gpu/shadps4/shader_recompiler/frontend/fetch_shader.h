@@ -68,6 +68,17 @@ struct FetchShaderSnapshot {
     void Capture(const Info& source);
 };
 
+// vw: V#s of a draw's vertex attributes as the GPU command thread read them. The draw recording
+// thread installs them while it records that draw: the table they come from (constant engine
+// memory) may already hold a later draw's V#s.
+struct VertexSharps {
+    const Info* info;
+    const VertexAttribute* attributes;
+    const AmdGpu::Buffer* buffers;
+    u32 count;
+};
+void SetVertexSharps(const VertexSharps* sharps);
+
 class ScopedFetchShaderSnapshot {
 public:
     explicit ScopedFetchShaderSnapshot(const FetchShaderSnapshot& snapshot);

@@ -318,6 +318,8 @@ struct DrawPacket {
     std::array<AmdGpu::CbDbExtent, AmdGpu::NUM_COLOR_BUFFERS> cb_extent;
     AmdGpu::CbDbExtent db_extent;
     u64 ring_end; ///< constant ring position after this packet's copies
+    u32 num_vertex_sharps; ///< V#s of the fetch shader's attributes, after the stages
+    u32 pad;
 };
 struct PacketStage {
     const Shader::Info* info;
@@ -446,8 +448,58 @@ bool Rasterizer::PendingWriteOverlaps(VAddr address, u64 size) {
     return false;
 }
 
-void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDraw* prepared,
+bool Rasterizer::ConstRamTargetOverlaps(VAddr address, u64 size) const {
+    if (address >= const_ram_max || address + size <= const_ram_min) {
+        return false;
+    }
+    const VAddr end = address + size;
+    for (const auto& [begin, target_end] : const_ram_targets) {
+        if (address < target_end && begin < end) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Rasterizer::BeforeConstRamDump(VAddr address, u64 size) {
+    if (!draw_pipe || !OnStageA()) {
+        return;
+    }
+    // Packets carry their user data, flattened user data, vertex V#s and constant ring copies;
+    // only draws that bind other buffers in dumped memory read it when recorded. A range not
+    // seen before was not checked for earlier packets: drain once for it.
+    const VAddr end = address + size;
+    bool known = false;
+    for (const auto& [begin, target_end] : const_ram_targets) {
+        if (begin <= address && end <= target_end) {
+            known = true;
+            break;
+        }
+    }
+    if (!known) {
+        const_ram_targets.emplace_back(address, end);
+        std::ranges::sort(const_ram_targets);
+        std::vector<std::pair<VAddr, VAddr>> merged;
+        for (const auto& range : const_ram_targets) {
+            if (!merged.empty() && range.first <= merged.back().second) {
+                merged.back().second = std::max(merged.back().second, range.second);
+            } else {
+                merged.push_back(range);
+            }
+        }
+        const_ram_targets = std::move(merged);
+        const_ram_min = const_ram_targets.front().first;
+        const_ram_max = const_ram_targets.back().second;
+    }
+    if (!known || VwToggle::Disabled(VwToggle::ConstRamGuard) ||
+        !draw_pipe->Reached(const_ram_reader)) {
+        DrainDrawPipe(DrawPipe::ReasonConstRam);
+    }
+}
+
+bool Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDraw* prepared,
                            boost::container::static_vector<RingBinding, Shader::NUM_BUFFERS>& out) {
+    bool reads_const_ram = false;
     const PreparedStage* prepared_stage = nullptr;
     if (prepared && !VwToggle::Disabled(VwToggle::PreparedResources)) {
         for (u32 i = 0; i < prepared->num_stages; ++i) {
@@ -464,7 +516,7 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
     const auto copy = [&](u32 index, const void* source, VAddr address, u64 size) {
         const auto offset = constant_ring->Allocate(size, alignment);
         if (!offset) {
-            return;
+            return false;
         }
         u8* dst = constant_ring->Data(*offset);
         if (source) {
@@ -474,6 +526,7 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
         }
         constant_ring->Flush(*offset, size);
         out.push_back({index, static_cast<u32>(size), *offset, address});
+        return true;
     };
     for (u32 index = 0; index < stage.buffers.size(); ++index) {
         const auto& desc = stage.buffers[index];
@@ -494,16 +547,17 @@ void Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
         const u64 size = memory->ClampRangeSize(address, vsharp.GetSize());
         if (desc.is_written) {
             NotePendingGpuWrite(address, size);
+        } else if (size != 0 && size <= VideoCore::BufferCache::STREAM_THRESHOLD &&
+                   !buffer_cache.IsRegionGpuModified(address, size) &&
+                   !PendingWriteOverlaps(address, size) && copy(index, nullptr, address, size)) {
+            // The stream path of BufferCache::ObtainBuffer, taken here: small, read-only, not
+            // written by the GPU (now or by work still queued for the recording thread).
             continue;
         }
-        // The stream path of BufferCache::ObtainBuffer, taken here: small, read-only, not
-        // written by the GPU (now or by work still queued for the recording thread).
-        if (size == 0 || size > VideoCore::BufferCache::STREAM_THRESHOLD ||
-            buffer_cache.IsRegionGpuModified(address, size) || PendingWriteOverlaps(address, size)) {
-            continue;
-        }
-        copy(index, nullptr, address, size);
+        // Bound from guest memory when the recording thread records the draw.
+        reads_const_ram |= ConstRamTargetOverlaps(address, size);
     }
+    return reads_const_ram;
 }
 
 void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_prepared,
@@ -541,18 +595,33 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
     u32 num_stages = 0;
     u32 size = sizeof(DrawPacket) + AlignPacket(num_blocks * sizeof(u16)) +
                num_blocks * AmdGpu::RegDirty::BlockWords * sizeof(u32);
+    bool reads_const_ram = false;
     for (const auto* stage : stages) {
         if (stage) {
             auto& ring = rings[num_stages];
             ring.clear();
             if (constant_ring && !VwToggle::Disabled(VwToggle::ConstantRing)) {
-                CollectRingBindings(*stage, used_prepared, ring);
+                reads_const_ram |= CollectRingBindings(*stage, used_prepared, ring);
+            } else {
+                reads_const_ram = true;
             }
             ++num_stages;
             size += sizeof(PacketStage) +
                     AlignPacket(u32(stage->user_data.size() + stage->flattened_ud_buf.size()) *
                                 sizeof(u32)) +
                     u32(ring.size() * sizeof(RingBinding));
+        }
+    }
+    // The vertex attribute V#s, read here in stream order: their table may be rewritten (by a
+    // constant engine dump) before the recording thread gets to this draw.
+    const Shader::Gcn::FetchShaderData* fetch = nullptr;
+    const Shader::Info* vs_info = nullptr;
+    if (pipeline && !cs) {
+        const auto* graphics = static_cast<const GraphicsPipeline*>(pipeline);
+        if (const auto& shader = graphics->GetFetchShader(); shader && !shader->attributes.empty()) {
+            fetch = &*shader;
+            vs_info = &graphics->GetStage(Shader::SwStage::Vertex);
+            size += u32(fetch->attributes.size() * sizeof(AmdGpu::Buffer));
         }
     }
     if (cs) {
@@ -585,6 +654,8 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
     packet.cb_extent = liverpool->last_cb_extent;
     packet.db_extent = liverpool->last_db_extent;
     packet.ring_end = constant_ring ? constant_ring->Position() : 0;
+    packet.num_vertex_sharps = fetch ? u32(fetch->attributes.size()) : 0;
+    packet.pad = 0;
     out += sizeof(DrawPacket);
     std::memcpy(out, blocks.data(), num_blocks * sizeof(u16));
     out += AlignPacket(num_blocks * sizeof(u16));
@@ -616,6 +687,17 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
         out += AlignPacket(u32(stage->user_data.size() + stage->flattened_ud_buf.size()) *
                            sizeof(u32));
     }
+    if (fetch) {
+        auto* buffers = reinterpret_cast<AmdGpu::Buffer*>(out);
+        for (u32 i = 0; i < packet.num_vertex_sharps; ++i) {
+            buffers[i] = fetch->attributes[i].GetSharp(*vs_info);
+            if (buffers[i].base_address != 0) {
+                reads_const_ram |=
+                    ConstRamTargetOverlaps(buffers[i].base_address, buffers[i].GetSize());
+            }
+        }
+        out += packet.num_vertex_sharps * sizeof(AmdGpu::Buffer);
+    }
     if (cs) {
         std::memcpy(out, cs, sizeof(AmdGpu::ComputeProgram));
         out += AlignPacket(sizeof(AmdGpu::ComputeProgram));
@@ -630,6 +712,9 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
     }
     dirty.Clear();
     draw_pipe->Commit(static_cast<u32>(out - start));
+    if (reads_const_ram) {
+        const_ram_reader = draw_pipe->Head();
+    }
     PrintPipeStats();
 }
 
@@ -693,6 +778,15 @@ void Rasterizer::RunDrawPacket(void* context, const u8* data, u32 size) {
     }
     Shader::Info::num_ud_snapshots = packet.num_stages;
     self.num_ring_stages = packet.num_stages;
+    thread_local Shader::Gcn::VertexSharps vertex_sharps;
+    if (packet.num_vertex_sharps) {
+        const auto* graphics = static_cast<const GraphicsPipeline*>(packet.pipeline);
+        vertex_sharps = {&graphics->GetStage(Shader::SwStage::Vertex),
+                         graphics->GetFetchShader()->attributes.data(),
+                         reinterpret_cast<const AmdGpu::Buffer*>(in), packet.num_vertex_sharps};
+        Shader::Gcn::SetVertexSharps(&vertex_sharps);
+        in += packet.num_vertex_sharps * sizeof(AmdGpu::Buffer);
+    }
     const AmdGpu::ComputeProgram* cs = nullptr;
     if (packet.kind == PacketKind::Dispatch || packet.kind == PacketKind::IndirectDispatch) {
         cs = reinterpret_cast<const AmdGpu::ComputeProgram*>(in);
@@ -787,6 +881,7 @@ void Rasterizer::RunDrawPacket(void* context, const u8* data, u32 size) {
     }
     Shader::Info::num_ud_snapshots = 0;
     self.num_ring_stages = 0;
+    Shader::Gcn::SetVertexSharps(nullptr);
     if (self.constant_ring) {
         self.constant_ring->Stamp(packet.ring_end);
     }
