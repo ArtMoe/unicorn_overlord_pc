@@ -920,12 +920,14 @@ private:
     std::deque<std::unique_ptr<RecordChunk>> recorder_queue;
     std::vector<std::unique_ptr<RecordChunk>> free_chunks;
     bool recorder_busy = false;
-    std::atomic<size_t> queued_chunks{0}; ///< recorder_queue.size() for lock-free polling
-    bool recorder_sleeping = false; ///< waiting on recorder_cv (guarded by recorder_mutex)
+    // vw: the recording thread spins on queued_chunks and stores host_copies_done for every
+    // small copy; each sits on its own cache line, away from the fields the producer writes.
+    alignas(64) std::atomic<size_t> queued_chunks{0}; ///< recorder_queue.size(), lock-free polling
+    alignas(64) bool recorder_sleeping = false; ///< waiting on recorder_cv (recorder_mutex)
     bool direct_mode = false; ///< the command buffer is recorded on the caller's thread
     u64 host_copies_issued = 0;
-    std::atomic<u64> host_copies_done{0};
-    std::atomic<u64> deferred_signals_issued{0}; ///< by the thread recording (A or B)
+    alignas(64) std::atomic<u64> host_copies_done{0};
+    alignas(64) std::atomic<u64> deferred_signals_issued{0}; ///< by the thread recording (A or B)
     std::shared_ptr<std::atomic<u64>> deferred_signals_done =
         std::make_shared<std::atomic<u64>>(0);
     // vw: whether recorder_thread runs, read on every Record(). std::jthread::joinable()

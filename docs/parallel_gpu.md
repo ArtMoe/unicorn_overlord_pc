@@ -626,3 +626,11 @@ Script: phases of 12 s alternating toggle masks, FPS and stage B µs per draw
   stage B no longer reads the worker's prepared vertex inputs (cache misses on data another core
   wrote, and in UO they rarely match). Stage A 5.29 → 5.20 µs/draw; memo on/off 48.3 vs
   46.3 FPS. Tried and reverted: each `VwStats` counter on its own cache line (no change).
+- **False sharing between the GPU threads.** `DrawPipe::busy_cycles` (stage B stores it for
+  every packet) shared its cache line with `handler`, `context`, `ring` and stage A's `head`/
+  `unpublished`; the scheduler's `host_copies_done` (the recording thread stores it after
+  every small guest copy, about one per draw) shared one with `host_copies_issued` and
+  `recording_threaded`, and the recording thread spins on `queued_chunks` next to fields the
+  producer writes. Each group now has its own line. Stage A 5.23 → 5.07, stage B 5.07 → 4.91
+  µs/draw, 48.0 → 49.4 FPS. Workers also no longer prepare vertex inputs while the vertex memo
+  is on (nothing reads them).
