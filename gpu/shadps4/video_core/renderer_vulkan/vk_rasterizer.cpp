@@ -962,7 +962,9 @@ bool Rasterizer::FilterDrawPasses() const {
 
 void Rasterizer::Draw(bool is_indexed, u32 index_offset, const PreparedDraw* prepared) {
     RENDERER_TRACE;
-    VwStats::draws.fetch_add(1, std::memory_order_relaxed);
+    // One writer (this thread): a plain increment, not a locked one (a full barrier per draw).
+    VwStats::draws.store(VwStats::draws.load(std::memory_order_relaxed) + 1,
+                         std::memory_order_relaxed);
 
     // vw: with the draw pipeline this thread only selects the pipeline and hands the draw
     // to the recording thread (DrawRecord there); draws FilterDraw handles itself run here.
@@ -1622,8 +1624,12 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
     VertexInputs<AmdGpu::Buffer> guest_buffers;
     // Inputs a draw-preparation worker read from the same registers and (verified) user data.
     const auto& fetch = pipeline->GetFetchShader();
+    // With the memo below the worker's copy is not read: in UO its V#s rarely match (they are
+    // read before the constant engine writes them), and reading it costs cache misses.
+    const bool use_memo = !VwToggle::Disabled(VwToggle::VertexInputMemo);
     const PreparedVertexInputs* ready =
-        prepared && prepared->vertex.valid && instance.IsVertexInputDynamicState() && fetch &&
+        !use_memo && prepared && prepared->vertex.valid && instance.IsVertexInputDynamicState() &&
+                fetch &&
                 fetch->attributes.size() == prepared->vertex.count && !FrameCapture::Active() &&
                 !VwToggle::Disabled(VwToggle::PreparedResources)
             ? &prepared->vertex
@@ -1645,8 +1651,7 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
         attributes.assign(ready->attributes, ready->attributes + ready->count);
         bindings.assign(ready->bindings, ready->bindings + ready->count);
         guest_buffers.assign(ready->buffers, ready->buffers + ready->count);
-    } else if (fetch && !fetch->attributes.empty() &&
-               !VwToggle::Disabled(VwToggle::VertexInputMemo)) {
+    } else if (use_memo && fetch && !fetch->attributes.empty()) {
         // vw: the descriptions depend on the V#s' formats and strides, not on where the
         // streams are: remembered per pipeline, step rates and masked V#s.
         struct Memo {
