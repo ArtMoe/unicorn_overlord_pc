@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <cstdio>
+#include <chrono>
+#include <mutex>
+#include <map>
 #include <atomic>
 #include <thread>
 #include <magic_enum/magic_enum.hpp>
@@ -479,7 +483,33 @@ int PS4_SYSV_ABI sceKernelWaitEqueue(OrbisKernelEqueue eq, OrbisKernelEvent* ev,
         return ORBIS_KERNEL_ERROR_EINVAL;
     }
 
+    // vw diagnostics (VW_FRAME_STATS): wall time the guest blocks here, by queue and event.
+    static const bool wait_stats = std::getenv("VW_FRAME_STATS") != nullptr;
+    const auto wait_start = std::chrono::steady_clock::now();
     *out = equeue->WaitForEvents(ev, num, timo);
+    if (wait_stats) {
+        static std::mutex stats_mutex;
+        static std::map<std::string, std::pair<double, u64>> waits;
+        static auto window = std::chrono::steady_clock::now();
+        const auto now = std::chrono::steady_clock::now();
+        const std::string key = fmt::format("{}/{}:{:x}", equeue->GetName(),
+                                            *out ? s32(ev[0].filter) : -99,
+                                            *out ? u64(ev[0].ident) : 0);
+        std::scoped_lock lk{stats_mutex};
+        auto& entry = waits[key];
+        entry.first += std::chrono::duration<double, std::milli>(now - wait_start).count();
+        ++entry.second;
+        if (now - window >= std::chrono::seconds(5)) {
+            const double secs = std::chrono::duration<double>(now - window).count();
+            std::printf("Guest equeue waits (ms/s, waits/s):");
+            for (const auto& [name, value] : waits) {
+                std::printf(" %s=%.1f/%.0f", name.c_str(), value.first / secs, value.second / secs);
+            }
+            std::printf("\n");
+            waits.clear();
+            window = now;
+        }
+    }
 
     if (*out == 0) {
         return ORBIS_KERNEL_ERROR_ETIMEDOUT;
