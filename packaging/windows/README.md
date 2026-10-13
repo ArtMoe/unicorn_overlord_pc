@@ -11,10 +11,9 @@ cleanup of 2026-10-13: report the first error of `out/gpu-build.log` if one fail
 2. Open the **MSYS2 CLANG64** shell, clone the repository and run the one-shot script:
 
    ```bash
-   git clone --recursive https://github.com/hachi23/odin_sphere_pc
-   cd odin_sphere_pc
-   git checkout odin-sphere            # or unicorn-overlord
-   bash packaging/windows/build.sh odin   # or: unicorn
+   git clone --recursive https://github.com/hachi23/unicorn_overlord_pc
+   cd unicorn_overlord_pc
+   bash packaging/windows/build.sh unicorn
    ```
 
    It installs the packages, builds `out/vwport.exe` and writes `dist/<Title> PC/` and its .zip:

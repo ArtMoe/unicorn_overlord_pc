@@ -74,8 +74,8 @@ Linux needs GCC or Clang, CMake, Ninja, Python 3, and the Vulkan, SDL3 and FFmpe
 packages. `shell.nix` lists them.
 
 ```bash
-git clone --recursive https://github.com/hachi23/odin_sphere_pc
-cd odin_sphere_pc
+git clone --recursive https://github.com/hachi23/unicorn_overlord_pc
+cd unicorn_overlord_pc
 bash build.sh                                  # out/vwport and out/gpu/libvwgpu.so
 VW_GAME_DIR=/path/to/CUSA05083 bash run.sh     # builds, prepares the game and starts it
 ```
