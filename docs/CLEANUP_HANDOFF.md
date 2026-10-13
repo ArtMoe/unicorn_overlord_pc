@@ -84,7 +84,13 @@ and what is open. `docs/odin/HANDOFF.md` and `docs/unicorn/HANDOFF.md` cover the
      - Vulkan allows parallel recording into per-thread command pools and secondary buffers
        ([Vulkan docs](https://docs.vulkan.org/samples/latest/samples/performance/command_buffer_usage/README.html)).
      - No emulator found yet that splits one PM4 stream across threads.
+   - **Done 2026-10-13:** the measurement showed the two stages waiting on each other, not
+     saturated: `DumpConstRam` drained the draw pipe ~3500 times/s. Those drains are gone
+     (vertex V#s now travel in the packet, plus a guard on dumped ranges): UO battle 31 → 39 FPS.
+     See "Constant engine dumps without a drain" in `docs/parallel_gpu.md`. Stage B (draw
+     recording) is now the limit at ~76-84% busy.
    - Next steps:
+     0. Profile stage B now that it is the limit (`perf record` on `vw:DrawRec`).
      1. Measure per-thread CPU in a UO battle (`top -H -p $(pgrep -x vwport)` plus
         `perf record -g` per thread): how busy are the game's own threads (JobManager workers)
         and the helpers?
