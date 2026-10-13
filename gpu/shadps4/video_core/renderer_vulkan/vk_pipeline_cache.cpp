@@ -658,14 +658,24 @@ void PipelineCache::ReportCompilerStats() {
 bool PipelineCache::PrepareGraphicsPipeline(PipelineSelection& worker_sel) {
     // Tessellation stages read constant buffers from memory at selection time: not prepared.
     if (worker_sel.regs->stage_enable.hs_en) {
+        g_prep_failures[FailOther].fetch_add(1, std::memory_order_relaxed);
         return false;
     }
-    return RefreshGraphicsKey(worker_sel) && !worker_sel.worker->failed;
+    const bool ok = RefreshGraphicsKey(worker_sel);
+    if (!ok && !worker_sel.worker->failed) {
+        g_prep_failures[FailOther].fetch_add(1, std::memory_order_relaxed);
+    }
+    return ok && !worker_sel.worker->failed;
 }
 
 const GraphicsPipeline* PipelineCache::TryPreparedPipeline(const PreparedDraw& prepared) {
-    if (prepared.state.load(std::memory_order_acquire) != PreparedDraw::Ready ||
-        prepared.reg_checksum != liverpool->gfx_reg_checksum) {
+    const u32 state = prepared.state.load(std::memory_order_acquire);
+    if (state != PreparedDraw::Ready) {
+        ++g_prep_outcomes[state == PreparedDraw::Pending ? PrepPending : PrepUnavailable];
+        return nullptr;
+    }
+    if (prepared.reg_checksum != liverpool->gfx_reg_checksum) {
+        ++g_prep_outcomes[PrepRegs];
         return nullptr;
     }
     // Same registers; the stage programs and their flattened user data (which also covers
@@ -676,10 +686,12 @@ const GraphicsPipeline* PipelineCache::TryPreparedPipeline(const PreparedDraw& p
         const auto& stage = prepared.stages[i];
         const auto* pgm = regs.ProgramForStage(static_cast<u32>(stage.hw_stage));
         if (!pgm || !pgm->Address<u32*>()) {
+            ++g_prep_outcomes[PrepProgram];
             return nullptr;
         }
         const auto params = AmdGpu::GetParams(*pgm);
         if (params.hash != stage.hash) {
+            ++g_prep_outcomes[PrepProgram];
             return nullptr;
         }
         auto& info = const_cast<Program*>(stage.program)->info;
@@ -689,10 +701,31 @@ const GraphicsPipeline* PipelineCache::TryPreparedPipeline(const PreparedDraw& p
         if (info.pgm_base != stage.pgm_base || info.flattened_ud_buf.size() != stage.flat_size ||
             std::memcmp(info.flattened_ud_buf.data(), stage.flat,
                         stage.flat_size * sizeof(u32)) != 0) {
+            ++g_prep_outcomes[PrepUserData];
             return nullptr;
+        }
+        // The vertex attribute specialization from the V#s as they are now (the worker's
+        // copies may have been read before the constant engine wrote them).
+        const auto& spec = stage.program->modules[stage.perm].spec;
+        if (!spec.vs_attribs.empty() && spec.fetch_shader_data) {
+            const auto& attributes = spec.fetch_shader_data->attributes;
+            for (size_t a = 0; a < attributes.size(); ++a) {
+                const auto sharp = attributes[a].GetSharp(info);
+                Shader::VsAttribSpecialization live{};
+                if (sharp) {
+                    live.divisor = spec.vs_attribs[a].divisor; // from registers: checksummed
+                    live.num_class = AmdGpu::GetNumberClass(sharp.GetNumberFmt());
+                    live.dst_select = sharp.DstSelect();
+                }
+                if (!(live == spec.vs_attribs[a])) {
+                    ++g_prep_outcomes[PrepVertex];
+                    return nullptr;
+                }
+            }
         }
     }
     const auto it = graphics_pipelines.find(prepared.key);
+    ++g_prep_outcomes[it != graphics_pipelines.end() ? PrepUsed : PrepNoPipeline];
     return it != graphics_pipelines.end() ? it->second.get() : nullptr;
 }
 
@@ -708,6 +741,8 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
             used_prepared = prepared;
             return pipeline;
         }
+    } else {
+        ++g_prep_outcomes[PrepMissing];
     }
     sel.draw_indirect_params = params;
     if (!RefreshGraphicsKey(sel)) {
@@ -1096,6 +1131,7 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
         std::shared_lock lk{programs_mutex};
         const auto found_program = program_cache.find(params.hash);
         if (found_program == program_cache.end() || !found_program->second->info_template) {
+            g_prep_failures[FailNoProgram].fetch_add(1, std::memory_order_relaxed);
             worker.failed = true;
             return {};
         }
@@ -1110,6 +1146,7 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
         // thread. A jump out of the specialization leaks its partial allocations (rare).
         sigjmp_buf recover;
         if (sigsetjmp(recover, 0)) {
+            g_prep_failures[FailFault].fetch_add(1, std::memory_order_relaxed);
             worker.failed = true;
             return {};
         }
@@ -1117,15 +1154,29 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
         info.RefreshFlatBuf();
         auto spec = Shader::StageSpecialization(info, runtime_info, profile, binding);
         runtime_fault_recover = nullptr;
-        const auto it = std::ranges::find(program->modules, spec, &Program::Module::spec);
+        auto it = std::ranges::find(program->modules, spec, &Program::Module::spec);
+        if (it == program->modules.end() && !spec.vs_attribs.empty() &&
+            !VwToggle::Disabled(VwToggle::PreparedVertexMatch)) {
+            // The vertex V#s this worker read may be stale (their table is written by the
+            // constant engine in stream order); the GPU thread verifies them.
+            it = std::ranges::find_if(program->modules, [&](const Program::Module& module) {
+                return spec.FirstDifference(module.spec, true) == 8;
+            });
+        }
         if (it == program->modules.end()) {
+            g_prep_failures[FailNoVariant].fetch_add(1, std::memory_order_relaxed);
+            u32 closest = 0;
+            for (const auto& module : program->modules) {
+                closest = std::max(closest, spec.FirstDifference(module.spec));
+            }
+            g_prep_variant_diff[closest].fetch_add(1, std::memory_order_relaxed);
             worker.failed = true;
             return {};
         }
         info.AddBindings(binding);
         const size_t perm_idx = std::distance(program->modules.begin(), it);
-        worker.stages.push_back(
-            {program, params.hash, hw_stage, info.pgm_base, &info.flattened_ud_buf});
+        worker.stages.push_back({program, params.hash, hw_stage, info.pgm_base,
+                                 &info.flattened_ud_buf, static_cast<u32>(perm_idx)});
         return std::make_tuple(&info, it->module, it->spec.fetch_shader_data,
                                HashCombine(params.hash, perm_idx));
     }

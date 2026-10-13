@@ -245,6 +245,31 @@ struct StageSpecialization {
         return true;
     }
 
+    /// vw diagnostics: index of the first field (in operator== order) that differs:
+    /// 0 vs_attribs, 1 runtime_info, 2 fetch_shader_data, 3 fmasks, 4 start, 5 buffers,
+    /// 6 images, 7 samplers, 8 equal.
+    /// `skip_vs_attribs`: the draw-preparation workers read vertex V#s ahead of the GPU thread
+    /// (possibly stale); the GPU thread checks those fields itself (TryPreparedPipeline).
+    u32 FirstDifference(const StageSpecialization& other, bool skip_vs_attribs = false) const {
+        if (!skip_vs_attribs && vs_attribs != other.vs_attribs) return 0;
+        if (runtime_info != other.runtime_info) return 1;
+        if (fetch_shader_data != other.fetch_shader_data) return 2;
+        if (fmasks != other.fmasks) return 3;
+        if (bitset.none() && other.bitset.none()) return 8;
+        if (start != other.start) return 4;
+        u32 binding{};
+        for (u32 i = 0; i < buffers.size(); i++) {
+            if (other.bitset[binding++] && buffers[i] != other.buffers[i]) return 5;
+        }
+        for (u32 i = 0; i < images.size(); i++) {
+            if (other.bitset[binding++] && images[i] != other.images[i]) return 6;
+        }
+        for (u32 i = 0; i < samplers.size(); i++) {
+            if (samplers[i] != other.samplers[i]) return 7;
+        }
+        return 8;
+    }
+
     void Serialize(Serialization::Archive& ar) const;
     bool Deserialize(Serialization::Archive& ar);
 };

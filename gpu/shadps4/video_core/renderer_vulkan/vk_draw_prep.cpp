@@ -458,6 +458,7 @@ void DrawPreparation::WorkerLoop(std::stop_token stop, u32 index) {
                             .pgm_base = stage.pgm_base,
                             .flat = arena.Append(*stage.flat),
                             .flat_size = static_cast<u32>(stage.flat->size()),
+                            .perm = stage.perm,
                         };
                         PrepareResources(prep_worker.infos.at(stage.program), draw.stages[i],
                                          arena);
@@ -498,6 +499,28 @@ void DrawPreparation::Count(bool was_used) {
                 static_cast<unsigned long long>(used), static_cast<unsigned long long>(unused),
                 worker_count, static_cast<unsigned long long>(rebases));
     used = unused = 0;
+    static constexpr const char* names[] = {"used", "none", "pending", "unavailable", "regs",
+                                            "program", "user data", "vertex", "no pipeline"};
+    std::printf("  prepared draws:");
+    for (u32 i = 0; i < NumPrepOutcomes; ++i) {
+        std::printf(" %s=%llu", names[i], static_cast<unsigned long long>(g_prep_outcomes[i]));
+        g_prep_outcomes[i] = 0;
+    }
+    static constexpr const char* failures[] = {"no program", "fault", "no variant", "other"};
+    std::printf("; worker failures:");
+    for (u32 i = 0; i < NumPrepFailures; ++i) {
+        std::printf(" %s=%llu", failures[i],
+                    static_cast<unsigned long long>(g_prep_failures[i].exchange(0)));
+    }
+    static constexpr const char* fields[] = {"vs_attribs", "runtime_info", "fetch", "fmasks",
+                                             "start", "buffers", "images", "samplers", "equal"};
+    std::printf("; variant differs in:");
+    for (u32 i = 0; i < 9; ++i) {
+        if (const u64 n = g_prep_variant_diff[i].exchange(0)) {
+            std::printf(" %s=%llu", fields[i], static_cast<unsigned long long>(n));
+        }
+    }
+    std::printf("\n");
 }
 
 } // namespace Vulkan

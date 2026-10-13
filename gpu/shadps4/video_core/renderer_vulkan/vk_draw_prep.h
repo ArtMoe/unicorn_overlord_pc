@@ -30,6 +30,19 @@
 
 namespace Vulkan {
 
+/// vw: why prepared draws were not used (VW_FRAME_STATS; GPU command thread only).
+enum PrepOutcome : u32 {
+    PrepUsed, PrepMissing, PrepPending, PrepUnavailable, PrepRegs, PrepProgram, PrepUserData,
+    PrepVertex, PrepNoPipeline, NumPrepOutcomes
+};
+inline u64 g_prep_outcomes[NumPrepOutcomes]{};
+/// Why draw-preparation workers gave up on a draw (all workers, relaxed).
+enum PrepFailure : u32 { FailNoProgram, FailFault, FailNoVariant, FailOther, NumPrepFailures };
+inline std::atomic<u64> g_prep_failures[NumPrepFailures]{};
+/// For "no variant": the field where the closest compiled variant differs (FirstDifference).
+inline std::atomic<u64> g_prep_variant_diff[9]{};
+
+
 struct PreparedStage {
     const Program* program;
     u64 hash;
@@ -37,6 +50,7 @@ struct PreparedStage {
     VAddr pgm_base;
     const u32* flat; ///< flattened user data the worker computed, owned by the submission
     u32 flat_size;
+    u32 perm; ///< the module of `program` the worker selected
     // Resource sharps read from `flat` in the order of the program's resource lists, and the
     // texture description hash of each image (docs/parallel_gpu.md, step 2). Valid for the
     // GPU thread exactly when `flat` matched: sharps depend on nothing else.
