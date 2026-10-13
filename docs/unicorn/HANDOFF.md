@@ -1,7 +1,10 @@
 # Unicorn Overlord (CUSA36381, Asia, v01.04) — handoff
 
 Branch `unicorn-overlord` of `hachi23/odin_sphere_pc` (it contains all of `odin-sphere`, merged
-2026-10-13). Same method as Odin Sphere: the game's x86-64 code runs natively,
+2026-10-13). Locally it is checked out on its own in `~/unicorn_overlord_pc` (a git worktree of
+`~/odin_sphere_pc`, which stays on `odin-sphere`): commit engine fixes on `odin-sphere` in
+`~/odin_sphere_pc`, then `git merge odin-sphere` here. A new worktree needs
+`git submodule update --init`. Same method as Odin Sphere: the game's x86-64 code runs natively,
 `src/runtime_*.c` replaces the PS4 libraries, `gpu/shadps4` translates the GPU to Vulkan.
 Read `docs/odin/HANDOFF.md` first for building on Linux, the run scripts and the tooling.
 
@@ -40,7 +43,7 @@ shown so far (everything through the first battle renders and the text is Englis
 ## Running
 
 ```
-VW_GAME_DIR=$HOME/Downloads/game_dump/CUSA36381 VW_DATA_DIR=$HOME/odin_sphere_pc/run_uo bash run.sh
+VW_GAME_DIR=$HOME/Downloads/game_dump/CUSA36381 VW_DATA_DIR=$HOME/unicorn_overlord_pc/run_uo bash run.sh
 python3 launcher/unicorn_launcher.py          # the launcher (data: run_uo/)
 python3 packaging/package.py unicorn          # dist/Unicorn Overlord PC/: 4 files
 ```
