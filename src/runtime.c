@@ -251,6 +251,10 @@ uintptr_t runtime_resolve(const char *name, int is_data) {
     if (kernel) return kernel;
     uintptr_t services = runtime_services_resolve(name);
     if (services) return services;
+    uintptr_t online = runtime_online_resolve(name);
+    if (online) return online;
+    uintptr_t dialogs = runtime_dialogs_resolve(name);
+    if (dialogs) return dialogs;
     uintptr_t ajm = runtime_ajm_resolve(name);
     if (ajm) return ajm;
     uintptr_t videodec = runtime_videodec_resolve(name);

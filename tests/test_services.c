@@ -1,6 +1,8 @@
-/* System services contracts: dialogs (progress bars run until closed), PlayGo, trophies. */
+/* Offline system library contracts: dialogs (progress bars run until closed), PlayGo, trophies. */
 #undef NDEBUG /* the checks are asserts; release builds define NDEBUG */
 #include "../src/runtime_services.c"
+#include "../src/runtime_online.c"
+#include "../src/runtime_dialogs.c"
 #include <assert.h>
 
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *nid) { (void)table; (void)count; (void)nid; return 0; }
