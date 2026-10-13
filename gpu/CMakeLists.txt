@@ -53,6 +53,13 @@ elseif (VW_PGO STREQUAL "use")
                         -fprofile-correction -Wno-missing-profile -Wno-coverage-mismatch)
 endif()
 
+# Release builds: static libraries from packaging/deps.sh (FFmpeg, SDL3, fmt, Zydis, xxHash, zlib)
+# are found first, and their own dependencies are linked from pkg-config --static.
+set(VW_DEPS "" CACHE PATH "Prefix of the static dependencies (packaging/deps.sh)")
+if (VW_DEPS)
+    list(PREPEND CMAKE_PREFIX_PATH ${VW_DEPS})
+endif()
+
 find_package(Vulkan REQUIRED)
 find_package(fmt REQUIRED)
 find_package(Boost REQUIRED)
@@ -174,6 +181,9 @@ if (NOT WIN32)
 endif()
 target_link_libraries(vwgpu PUBLIC Vulkan::Headers fmt::fmt Boost::headers magic_enum::magic_enum
     tsl::robin_map GPUOpen::VulkanMemoryAllocator PkgConfig::XXHASH PkgConfig::SDL3 PkgConfig::FFMPEG miniz::miniz Zydis::Zydis sirit)
+if (VW_DEPS)
+    target_link_libraries(vwgpu PUBLIC ${FFMPEG_STATIC_LDFLAGS} ${SDL3_STATIC_LDFLAGS} ${XXHASH_STATIC_LDFLAGS})
+endif()
 target_include_directories(vwgpu PRIVATE third_party/xbyak)
 if (WIN32)
     # Guest code is entered with the System V ABI; NOMINMAX/WIN32_LEAN_AND_MEAN keep
@@ -201,7 +211,7 @@ if (VW_STATIC AND NOT WIN32)
     target_compile_options(vwport PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror -pthread>)
     # Guest pointers must stay below 1 TiB: no PIE (as build.sh). The C++ runtime is linked in
     # so the package runs on other distributions' libstdc++.
-    target_link_options(vwport PRIVATE -no-pie -static-libstdc++ -static-libgcc)
+    target_link_options(vwport PRIVATE -no-pie -static-libstdc++ -static-libgcc -Wl,--as-needed)
     target_link_libraries(vwport PRIVATE vwgpu atrac9 Vulkan::Vulkan m -pthread)
 endif()
 if (WIN32)
@@ -211,6 +221,10 @@ if (WIN32)
     target_compile_options(vwport PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror
         -Wno-unknown-warning-option -Wno-unused-but-set-global>)
     target_link_libraries(vwport PRIVATE vwgpu atrac9 onecore bcrypt ws2_32 -pthread)
+    if (VW_DEPS)
+        # libc++, libunwind and winpthread linked in: vwport.exe then needs only system DLLs.
+        target_link_options(vwport PRIVATE -static)
+    endif()
     # The PS4 range (64 GiB - 1 TiB) must stay free: no high-entropy ASLR for heaps and stacks.
     # The guest main thread runs on the process stack: 16 MiB, committed (no stack probes).
     target_link_options(vwport PRIVATE -Wl,--disable-high-entropy-va "SHELL:-Xlinker --stack -Xlinker 16777216,16777216")

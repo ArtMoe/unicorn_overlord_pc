@@ -14,8 +14,14 @@ MINGW*|MSYS*)
     if [[ ! -f gpu/third_party/imgui/imgui.h || ! -f gpu/third_party/xbyak/xbyak/xbyak.h ]]; then
         git submodule update --init --recursive
     fi
+    # --static (packaging): FFmpeg, SDL3 and the others from packaging/deps.sh, linked in.
+    deps=
+    if [[ ${1:-} == --static ]]; then
+        bash packaging/deps.sh
+        deps=$PWD/out/deps/prefix
+    fi
     cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVW_PGO=off \
-        -DVW_LTO="${VW_LTO:-OFF}" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
+        -DVW_LTO="${VW_LTO:-OFF}" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DVW_DEPS="$deps" >/dev/null
     echo "GPU library and loader: LTO ${VW_LTO:-OFF}"
     if ! ninja -C out/gpu vwport > out/gpu-build.log 2>&1; then
         grep -v '^\[' out/gpu-build.log | tail -40 >&2
@@ -57,11 +63,13 @@ mkdir -p pgo
 if [[ ! -f gpu/third_party/imgui/imgui.h ]]; then
     git submodule update --init --recursive
 fi
-# --static: the release executable, out/static/vwport, with the GPU library linked in
-# (packaging/package.py).
+# --static: the release executable, out/static/vwport, with the GPU library and the static
+# third-party libraries of packaging/deps.sh linked in (packaging/package.py).
 if [[ ${1:-} == --static ]]; then
+    bash packaging/deps.sh
     cmake -S gpu -B out/static -G Ninja -DCMAKE_BUILD_TYPE=Release -DVW_STATIC=ON -DVW_PGO="$pgo" \
-        -DVW_LTO="${VW_LTO:-ON}" -DVW_PGO_DIR="$PWD/pgo" -DCMAKE_C_COMPILER="$CC" >/dev/null
+        -DVW_LTO="${VW_LTO:-ON}" -DVW_PGO_DIR="$PWD/pgo" -DCMAKE_C_COMPILER="$CC" \
+        -DVW_DEPS="$PWD/out/deps/prefix" >/dev/null
     if ! ninja -C out/static vwport > out/static-build.log 2>&1; then
         grep -v '^\[' out/static-build.log | tail -40 >&2
         echo 'Static build failed (full log: out/static-build.log)' >&2; exit 1

@@ -28,7 +28,9 @@ WINDOWS = os.name == 'nt'
 def wait_for(pid):
     if not WINDOWS:
         import time
-        if pid == os.getpid():  # the restart exec'd this script in the game's own process
+        # The restart exec'd this script in the game's own process: directly, or (the packaged
+        # launcher) as the one-file bootloader whose child this is.
+        if pid in (os.getpid(), os.getppid()):
             return
         for _ in range(300):  # 30 s, as on Windows
             try:
@@ -105,6 +107,8 @@ def main():
     probe = Path(env['VW_PROBE']) if env.get('VW_PROBE') else find_executable('vwport.exe' if WINDOWS else 'vwport')
     if not probe or not probe.is_file():
         fail('vwport not found: build it with build.sh or use a packaged build.')
+    if not WINDOWS and not os.access(probe, os.X_OK):  # bundled as data by the packaged launcher
+        probe.chmod(0o755)
     # Development builds run from the MSYS2 tree: its CLANG64 DLLs (SDL3, FFmpeg, ...).
     if WINDOWS and not (probe.parent / 'SDL3.dll').is_file():
         clang64 = Path(env.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'

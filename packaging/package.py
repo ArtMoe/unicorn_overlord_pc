@@ -3,14 +3,14 @@
 """Packages a port (Linux, or Windows from MSYS2 CLANG64): python3 packaging/package.py <game>
 
 <game> is a key of launcher/vw_launcher.py GAMES (odin, ...). On Linux this builds the static
-executable first (build.sh --static); on Windows build first (bash build.sh). Result:
-dist/<Title> PC/ and an archive of it (.tar.gz on Linux, .zip on Windows):
+executable first (build.sh --static); on Windows build first (bash build.sh --static). Result:
+dist/<Title> PC/ and an archive of it (.tar.gz on Linux, .zip on Windows), two files:
 
-    <Title>(.exe)   the launcher (PyInstaller, one file) with run.py, scripts/ and patches/
-                    inside; it also runs them, so no Python installation is needed
-    vwport(.exe)    the game executable (Linux: the GPU library and C++ runtime linked in)
-    *.dll           Windows only: the MSYS2 CLANG64 libraries vwport loads
-    README.txt, LICENSE
+    <Title>(.exe)   the launcher (PyInstaller, one file). Inside: run.py, scripts/, patches/ and
+                    bin/ with vwport(.exe), the game executable (FFmpeg, SDL3, the GPU library
+                    and the C++ runtime linked in; Windows: plus any DLL it still loads from
+                    MSYS2). It runs all of them, so no Python installation is needed.
+    LICENSE         the GPL text the binaries are distributed under
     data/           created on first start: vw.ini, saves, generated files
 
 No game file is included: the launcher asks for the folder of the user's own dump.
@@ -84,11 +84,13 @@ def make_icon(python, game):
     return path
 
 
-def freeze(python, key, game):
+def freeze(python, key, game, binaries):
     # PIL._tkinter_finder: loaded by ImageTk at run time, not seen by PyInstaller's analysis.
     hidden = [arg for module in [*stdlib_imports(), 'PIL._tkinter_finder'] for arg in ('--hidden-import', module)]
+    # vwport and its DLLs as data: PyInstaller must not bundle what they load from the system
+    # (the Vulkan loader, libc).
     data = [arg for source, target in ((ROOT / 'run.py', 'runtime'), (ROOT / 'scripts', 'runtime/scripts'),
-                                       (ROOT / 'patches', 'runtime/patches'))
+                                       (ROOT / 'patches', 'runtime/patches'), (binaries, 'runtime/bin'))
             for arg in ('--add-data', f'{source}{os.pathsep}{target}')]
     run(python, '-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN', '--onefile',
         '--windowed', '--name', game['title'], '--icon', make_icon(python, game), '--distpath', OUT / 'pyi-dist',
@@ -97,42 +99,27 @@ def freeze(python, key, game):
     return OUT / 'pyi-dist' / (game['title'] + ('.exe' if WINDOWS else ''))
 
 
-def copy_binaries(dist):
+def collect_binaries():
+    """out/pyi-bin: vwport, stripped (Windows: with the CLANG64 DLLs it still loads, if any)."""
+    folder = OUT / 'pyi-bin'
+    if folder.exists():
+        shutil.rmtree(folder)
+    folder.mkdir(parents=True)
     if WINDOWS:
         probe = OUT / 'vwport.exe'
-        shutil.copy2(probe, dist)
-        # The CLANG64 DLLs the probe loads (ldd lists them with their MSYS2 paths).
+        shutil.copy2(probe, folder)
+        # ldd lists DLLs with their MSYS2 paths; system DLLs are not copied.
         listing = subprocess.run(['ldd', str(probe)], capture_output=True, text=True, check=True).stdout
         for line in listing.splitlines():
             parts = line.split('=>')
             if len(parts) == 2 and '/clang64/bin/' in parts[1]:
                 dll = parts[1].split('(')[0].strip()
                 shutil.copy2(subprocess.run(['cygpath', '-w', dll], capture_output=True, text=True,
-                                            check=True).stdout.strip(), dist)
+                                            check=True).stdout.strip(), folder)
     else:
-        shutil.copy2(OUT / 'static' / 'vwport', dist)
-        subprocess.run(['strip', '--strip-unneeded', str(dist / 'vwport')], check=False)
-
-
-README = """{name} - native PC port
-{underline}
-
-1. Start "{exe}".
-2. Click "Choose..." and select the folder of your own dump of the game:
-   {title_id} version {app_version} (the folder that holds eboot.bin and sce_sys).
-3. Pick the resolution and display options, then "{play}".
-
-In game: the settings menu opens with Insert (keyboard) or R3+L2 (controller).
-Saves, settings and generated files live in the "data" folder next to the launcher.
-Nothing of the game is included in this package.
-{requirements}"""
-
-LINUX_REQUIREMENTS = """
-Linux needs these system packages (most desktops have them already):
-  Arch:          sudo pacman -S sdl3 ffmpeg vulkan-icd-loader fmt zydis xxhash
-  Debian/Ubuntu: sudo apt install libsdl3-0 ffmpeg libvulkan1 libfmt-dev libzydis-dev libxxhash0
-  plus your GPU's Vulkan driver (Mesa radv/anv, or NVIDIA).
-"""
+        shutil.copy2(OUT / 'static' / 'vwport', folder)
+    subprocess.run(['strip', '--strip-unneeded', str(folder / ('vwport.exe' if WINDOWS else 'vwport'))], check=False)
+    return folder
 
 
 def main():
@@ -142,23 +129,18 @@ def main():
     game = GAMES[key]
     if WINDOWS:
         if not (OUT / 'vwport.exe').is_file():
-            sys.exit('Build first: bash build.sh')
+            sys.exit('Build first: bash build.sh --static')
     else:
         run('bash', ROOT / 'build.sh', '--static', cwd=ROOT)
     name = f"{game['title']} PC"
     dist = ROOT / 'dist' / name
     python = venv_python()
-    launcher = freeze(python, key, game)
+    launcher = freeze(python, key, game, collect_binaries())
     if dist.exists():
         shutil.rmtree(dist)
     dist.mkdir(parents=True)
     shutil.copy2(launcher, dist)
     shutil.copy2(ROOT / 'LICENSE', dist)
-    copy_binaries(dist)
-    (dist / 'README.txt').write_text(README.format(
-        name=game['name'], underline='=' * (len(game['name']) + 17), exe=launcher.name,
-        title_id=game['title_id'], app_version=game['app_version'], play=game['play'],
-        requirements='' if WINDOWS else LINUX_REQUIREMENTS), encoding='utf-8')
     archive = dist.parent / (name.replace(' ', '-') + ('-windows.zip' if WINDOWS else '-linux.tar.gz'))
     if WINDOWS:
         with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:

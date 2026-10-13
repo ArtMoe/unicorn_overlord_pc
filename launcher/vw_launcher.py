@@ -11,8 +11,8 @@ Packaged (PyInstaller, packaging/package.py) the executable carries run.py, scri
 patches/ and also runs them (`--run`, `--script <file>`), so a packaged port needs no Python
 installation:
 
-    <Game>(.exe)        this launcher, with the runtime scripts inside
-    vwport(.exe)        the game executable (GPU library linked in)
+    <Game>(.exe)        this launcher, with the runtime scripts and bin/vwport(.exe) inside
+    LICENSE
     data/               vw.ini, launcher.json, user/ (saves, caches), out/ (generated)
 """
 import json
@@ -25,8 +25,8 @@ import threading
 
 FROZEN = getattr(sys, 'frozen', False)
 HERE = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
-# Packaged: run.py, scripts/ and patches/ are inside the executable (PyInstaller's bundle
-# folder) and vwport is beside it. From the source tree: the repository.
+# Packaged: run.py, scripts/, patches/ and bin/vwport are inside the executable (PyInstaller's
+# bundle folder). From the source tree: the repository.
 RUNTIME = Path(sys._MEIPASS) / 'runtime' if FROZEN else HERE.parent  # noqa: SLF001
 WINDOWS = os.name == 'nt'
 
@@ -241,6 +241,8 @@ class Launcher:
             ty = 200
         self.shadow_text(54, ty, self.game['title'], self.f_title, self.c['gold_hi'])
         self.shadow_text(56, ty + 48, self.game['subtitle'], self.f_sub, self.c['ink'])
+        c.create_text(56, ty + 96, text='In game, Insert or R3+L2\nopens the settings menu.', font=self.f_small,
+                      fill=self.c['dim'], anchor='nw')
 
         x, y = 414, 62
         ok, message = check_game(self.game, self.settings.get('game_dir'))
@@ -377,7 +379,11 @@ class Launcher:
         env = dict(os.environ, VW_GAME_DIR=self.settings['game_dir'], VW_DATA_DIR=str(self.data),
                    VW_CONFIG=str(self.config))
         if FROZEN:
-            env['VW_PROBE'] = str(HERE / ('vwport.exe' if WINDOWS else 'vwport'))
+            # run.py uses the vwport of its own bundle (bin/), which lives as long as the game
+            # does; one placed beside the launcher replaces it (testing a build).
+            beside = HERE / ('vwport.exe' if WINDOWS else 'vwport')
+            if beside.is_file():
+                env['VW_PROBE'] = str(beside)
             command = [sys.executable, '--run']
         else:
             command = [sys.executable, str(RUNTIME / 'run.py')]
