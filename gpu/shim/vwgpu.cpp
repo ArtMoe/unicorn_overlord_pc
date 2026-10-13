@@ -103,15 +103,32 @@ void MemoryManager::SetRasterizer(Vulkan::Rasterizer* rasterizer_) {
 void MemoryManager::InvalidateMemory(VAddr address, u64 size) {
     if (rasterizer) rasterizer->InvalidateMemory(address, size);
 }
-u64 MemoryManager::ClampRangeSize(VAddr virtual_addr, u64 size) {
+u64 MemoryManager::ClampRangeSizeSlow(VAddr virtual_addr, u64 size) {
+    if (!table_generation) {
+        table_generation = runtime_memory_generation();
+    }
+    const u64 generation = __atomic_load_n(table_generation, __ATOMIC_ACQUIRE);
+    uintptr_t start = 0, end = 0;
+    int mapped = 0;
+    if (runtime_memory_region(virtual_addr, &start, &end, &mapped) && mapped) {
+        NoteMapping(generation, start, end);
+        if (size <= end - virtual_addr) {
+            return size;
+        }
+    }
     return runtime_memory_clamp(virtual_addr, size);
 }
-static void CopySparseSerial(VAddr source, u8* dest, u64 size) {
+void CopySparseSerial(VAddr source, u8* dest, u64 size) {
+    const u64* table = runtime_memory_generation();
+    MemoryManager::table_generation = table;
     while (size) {
         uintptr_t start = 0, end = 0;
         int mapped = 0;
+        const u64 generation = __atomic_load_n(table, __ATOMIC_ACQUIRE);
         if (!runtime_memory_region(source, &start, &end, &mapped)) {
             end = source + size;
+        } else if (mapped) {
+            MemoryManager::NoteMapping(generation, start, end);
         }
         const u64 n = std::min<u64>(size, end - source);
         if (mapped) std::memcpy(dest, reinterpret_cast<const void*>(source), n);
@@ -119,7 +136,7 @@ static void CopySparseSerial(VAddr source, u8* dest, u64 size) {
         source += n; dest += n; size -= n;
     }
 }
-void MemoryManager::CopySparseMemory(VAddr source, u8* dest, u64 size) {
+void MemoryManager::CopySparseMemorySlow(VAddr source, u8* dest, u64 size) {
     // vw: large uploads (streaming) are split across the copy threads.
     constexpr u64 Chunk = 512 * 1024;
     if (size < 4 * Chunk || !VwCopy::Enabled()) {

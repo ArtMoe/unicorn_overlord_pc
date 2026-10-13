@@ -822,6 +822,8 @@ uint64_t runtime_memory_clamp(uintptr_t address, uint64_t size) {
     read_unlock();
     return length<size ? length : size;
 }
+/* The VMA table generation (odd while the table changes), for callers' own region caches. */
+const uint64_t *runtime_memory_generation(void) { return &table_generation; }
 /* Region around address: [start,end) mapped or a gap; 0 past the last mapping. */
 int runtime_memory_region(uintptr_t address, uintptr_t *start, uintptr_t *end, int *mapped) {
     const CachedRegion *c=(runtime_disabled_optimizations & 1) ? NULL : cached_region(address);
