@@ -449,7 +449,6 @@ private:
     static inline thread_local const AmdGpu::Regs* stage_regs = nullptr;
     static inline thread_local const AmdGpu::ComputeProgram* stage_cs = nullptr;
     AmdGpu::Regs pipe_regs{};
-    bool pipe_synced = false;
     std::array<AmdGpu::CbDbExtent, AmdGpu::NUM_COLOR_BUFFERS> pipe_cb_extent{};
     AmdGpu::CbDbExtent pipe_db_extent{};
     /// Stage A: small read-only guest buffers copied into the constant ring for a packet.
@@ -464,6 +463,9 @@ private:
         VAddr end;
         u64 position;
     };
+    // vw: stage A's per-draw state and stage B's below each start a cache line: the two
+    // threads write them for every draw.
+    alignas(64) bool pipe_synced = false; ///< stage A: stage B's register copy initialized
     std::vector<PendingWrite> pending_writes;
     VAddr pending_min = ~VAddr{0}, pending_max = 0; ///< bounds of pending_writes
     u32 pending_checks = 0;
@@ -481,8 +483,20 @@ private:
         const RingBinding* bindings;
         u32 count;
     };
-    std::array<RingStage, Shader::MaxStageTypes> ring_stages{};
+    alignas(64) std::array<RingStage, Shader::MaxStageTypes> ring_stages{};
     u32 num_ring_stages = 0;
+    /// A draw's merged vertex stream ranges (stage A): copied into the constant ring at
+    /// `ring_offset`, or (NotInRing) stage B obtains `size` bytes (end clamped to mapped memory).
+    struct VertexRange {
+        static constexpr u64 NotInRing = ~0ull;
+        VAddr base;
+        VAddr end;
+        u64 size;
+        u64 ring_offset;
+    };
+    /// Stage B: the ranges of the packet being recorded (null without the draw pipeline).
+    const VertexRange* stage_vertex_ranges = nullptr;
+    u32 num_stage_vertex_ranges = 0;
     const RingBinding* FindRingBinding(const Shader::Info& stage, u32 index) const {
         for (u32 i = 0; i < num_ring_stages; ++i) {
             if (ring_stages[i].info == &stage) {
@@ -496,9 +510,10 @@ private:
         }
         return nullptr;
     }
-    std::unique_ptr<ConstantRing> constant_ring;
     /// Submissions (prepared draws) kept alive until stage B reaches the position.
-    std::deque<std::pair<u64, std::shared_ptr<const void>>> pipe_keepalive;
+    alignas(64) std::deque<std::pair<u64, std::shared_ptr<const void>>> pipe_keepalive;
+    // Read by both stages for every draw, written once.
+    alignas(64) std::unique_ptr<ConstantRing> constant_ring;
     std::unique_ptr<DrawPipe> draw_pipe;
 };
 

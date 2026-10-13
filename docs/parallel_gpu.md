@@ -634,3 +634,18 @@ Script: phases of 12 s alternating toggle masks, FPS and stage B µs per draw
   producer writes. Each group now has its own line. Stage A 5.23 → 5.07, stage B 5.07 → 4.91
   µs/draw, 48.0 → 49.4 FPS. Workers also no longer prepare vertex inputs while the vertex memo
   is on (nothing reads them).
+- **Rasterizer fields by writer.** `pipe_synced` (stage A, every draw) sat between `pipe_regs`
+  and `pipe_cb_extent` (stage B, every packet); stage A's pending-write and constant-RAM state
+  ran into stage B's `ring_stages`. Each group starts a cache line now: stage A 5.07 → 5.01,
+  stage B 4.91 → 4.86 µs/draw.
+- Frame stats now show the frame pacing: median 16.67 ms, p99 33.4 ms. The game flips on the
+  60 Hz vblank, so a frame takes one or two vblanks; ~50 FPS is a mix of both. A stage's work
+  per frame must stay under 16.7 ms for a steady 60.
+- **Vertex streams through the constant ring.** Stage B was the limit (88-90% busy, stage A
+  waiting 17%, mostly at `OnSubmit`). Stage A now merges a draw's vertex ranges and copies the
+  small read-only ones (≤ 16 KiB, not GPU-modified, no pending GPU write; the same rules as the
+  constants) into the constant ring, at the guest address modulo 64; the packet carries the
+  ranges, and stage B binds the ring copies instead of `ObtainBuffer` (stream copy, barrier
+  tracking). Toggle 1 << 52 switches it off. Stage B 4.55 → 3.96 µs/draw (-13%), stage A
+  +0.08; stage A is the limit again (it waits 4%, stage B 74% busy), so the frame rate did not
+  change yet (50.0 vs 50.3 FPS).

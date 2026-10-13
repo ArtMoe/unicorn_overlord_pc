@@ -319,7 +319,7 @@ struct DrawPacket {
     AmdGpu::CbDbExtent db_extent;
     u64 ring_end; ///< constant ring position after this packet's copies
     u32 num_vertex_sharps; ///< V#s of the fetch shader's attributes, after the stages
-    u32 pad;
+    u32 num_vertex_ranges; ///< merged vertex stream ranges (VertexRange), after the V#s
 };
 struct PacketStage {
     const Shader::Info* info;
@@ -609,12 +609,59 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
     // constant engine dump) before the recording thread gets to this draw.
     const Shader::Gcn::FetchShaderData* fetch = nullptr;
     const Shader::Info* vs_info = nullptr;
+    thread_local std::array<AmdGpu::Buffer, MaxVertexBufferCount> vertex_sharps;
+    thread_local boost::container::static_vector<VertexRange, MaxVertexBufferCount> vertex_ranges;
+    vertex_ranges.clear();
     if (pipeline && !cs) {
         const auto* graphics = static_cast<const GraphicsPipeline*>(pipeline);
         if (const auto& shader = graphics->GetFetchShader(); shader && !shader->attributes.empty()) {
             fetch = &*shader;
             vs_info = &graphics->GetStage(Shader::SwStage::Vertex);
-            size += u32(fetch->attributes.size() * sizeof(AmdGpu::Buffer));
+            const u32 count = static_cast<u32>(fetch->attributes.size());
+            for (u32 i = 0; i < count; ++i) {
+                const auto buffer = fetch->attributes[i].GetSharp(*vs_info);
+                vertex_sharps[i] = buffer;
+                if (buffer.base_address != 0 && buffer.GetSize() > 0) {
+                    vertex_ranges.push_back({buffer.base_address,
+                                             buffer.base_address + buffer.GetSize(), 0,
+                                             VertexRange::NotInRing});
+                }
+            }
+            // Merged as stage B used to merge them.
+            std::ranges::sort(vertex_ranges, {}, &VertexRange::base);
+            u32 merged = 0;
+            for (const auto& range : vertex_ranges) {
+                if (merged && range.base <= vertex_ranges[merged - 1].end) {
+                    vertex_ranges[merged - 1].end =
+                        std::max(vertex_ranges[merged - 1].end, range.end);
+                } else {
+                    vertex_ranges[merged++] = range;
+                }
+            }
+            vertex_ranges.resize(merged);
+            const bool to_ring = constant_ring && !VwToggle::Disabled(VwToggle::ConstantRing) &&
+                                 !VwToggle::Disabled(VwToggle::VertexRing);
+            for (auto& range : vertex_ranges) {
+                range.size = memory->ClampRangeSize(range.base, range.end - range.base);
+                // Small read-only streams like the constants (CollectRingBindings): copied
+                // here, stage B only binds them. Kept at the guest address modulo 64.
+                if (to_ring && range.size != 0 &&
+                    range.size <= VideoCore::BufferCache::STREAM_THRESHOLD &&
+                    !buffer_cache.IsRegionGpuModified(range.base, range.size) &&
+                    !PendingWriteOverlaps(range.base, range.size)) {
+                    if (const auto at = constant_ring->Allocate(range.size + 64, 64)) {
+                        const u64 offset = *at + (range.base & 63);
+                        memory->CopySparseMemory(range.base, constant_ring->Data(offset),
+                                                 range.size);
+                        constant_ring->Flush(offset, range.size);
+                        range.ring_offset = offset;
+                        continue;
+                    }
+                }
+                // Read from guest memory when stage B records the draw.
+                reads_const_ram |= range.size && ConstRamTargetOverlaps(range.base, range.size);
+            }
+            size += u32(count * sizeof(AmdGpu::Buffer) + vertex_ranges.size() * sizeof(VertexRange));
         }
     }
     if (cs) {
@@ -648,7 +695,7 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
     packet.db_extent = liverpool->last_db_extent;
     packet.ring_end = constant_ring ? constant_ring->Position() : 0;
     packet.num_vertex_sharps = fetch ? u32(fetch->attributes.size()) : 0;
-    packet.pad = 0;
+    packet.num_vertex_ranges = static_cast<u32>(vertex_ranges.size());
     out += sizeof(DrawPacket);
     std::memcpy(out, blocks.data(), num_blocks * sizeof(u16));
     out += AlignPacket(num_blocks * sizeof(u16));
@@ -681,15 +728,10 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
                            sizeof(u32));
     }
     if (fetch) {
-        auto* buffers = reinterpret_cast<AmdGpu::Buffer*>(out);
-        for (u32 i = 0; i < packet.num_vertex_sharps; ++i) {
-            buffers[i] = fetch->attributes[i].GetSharp(*vs_info);
-            if (buffers[i].base_address != 0) {
-                reads_const_ram |=
-                    ConstRamTargetOverlaps(buffers[i].base_address, buffers[i].GetSize());
-            }
-        }
+        std::memcpy(out, vertex_sharps.data(), packet.num_vertex_sharps * sizeof(AmdGpu::Buffer));
         out += packet.num_vertex_sharps * sizeof(AmdGpu::Buffer);
+        std::memcpy(out, vertex_ranges.data(), vertex_ranges.size() * sizeof(VertexRange));
+        out += vertex_ranges.size() * sizeof(VertexRange);
     }
     if (cs) {
         std::memcpy(out, cs, sizeof(AmdGpu::ComputeProgram));
@@ -779,6 +821,9 @@ void Rasterizer::RunDrawPacket(void* context, const u8* data, u32 size) {
                          reinterpret_cast<const AmdGpu::Buffer*>(in), packet.num_vertex_sharps};
         Shader::Gcn::SetVertexSharps(&vertex_sharps);
         in += packet.num_vertex_sharps * sizeof(AmdGpu::Buffer);
+        self.stage_vertex_ranges = reinterpret_cast<const VertexRange*>(in);
+        self.num_stage_vertex_ranges = packet.num_vertex_ranges;
+        in += packet.num_vertex_ranges * sizeof(VertexRange);
     }
     const AmdGpu::ComputeProgram* cs = nullptr;
     if (packet.kind == PacketKind::Dispatch || packet.kind == PacketKind::IndirectDispatch) {
@@ -875,6 +920,8 @@ void Rasterizer::RunDrawPacket(void* context, const u8* data, u32 size) {
     Shader::Info::num_ud_snapshots = 0;
     self.num_ring_stages = 0;
     Shader::Gcn::SetVertexSharps(nullptr);
+    self.stage_vertex_ranges = nullptr;
+    self.num_stage_vertex_ranges = 0;
     if (self.constant_ring) {
         self.constant_ring->Stamp(packet.ring_end);
     }
@@ -1714,7 +1761,7 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
     struct BufferRange {
         VAddr base_address;
         VAddr end_address;
-        const VideoCore::Buffer* buffer;
+        vk::Buffer handle;
         u64 offset;
 
         [[nodiscard]] size_t GetSize() const {
@@ -1725,7 +1772,14 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
     // Build list of ranges covering the requested buffers
     VertexInputs<BufferRange> ranges{};
     VertexInputs<BufferRange> ranges_merged{};
-    if (ready) {
+    // Ranges stage A merged (and maybe copied into the constant ring) for this packet.
+    const bool from_packet = !ready && stage_vertex_ranges;
+    if (from_packet) {
+        for (u32 i = 0; i < num_stage_vertex_ranges; ++i) {
+            const auto& range = stage_vertex_ranges[i];
+            ranges_merged.emplace_back(range.base, range.end);
+        }
+    } else if (ready) {
         for (u32 i = 0; i < ready->num_ranges; ++i) {
             ranges_merged.emplace_back(ready->ranges[i].base, ready->ranges[i].end);
         }
@@ -1754,11 +1808,19 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
     }
 
     // Map buffers for merged ranges
-    for (auto& range : ranges_merged) {
-        const u64 size = memory->ClampRangeSize(range.base_address, range.GetSize());
-        std::tie(range.buffer, range.offset) =
-            buffer_cache.ObtainBuffer(range.base_address, size, false);
-        needs_barrier |= runtime.IsBufferAccessed(range.buffer, range.offset, size);
+    for (u32 i = 0; i < ranges_merged.size(); ++i) {
+        auto& range = ranges_merged[i];
+        if (from_packet && stage_vertex_ranges[i].ring_offset != VertexRange::NotInRing) {
+            range.handle = constant_ring->Handle();
+            range.offset = stage_vertex_ranges[i].ring_offset;
+            continue;
+        }
+        const u64 size = from_packet ? stage_vertex_ranges[i].size
+                                     : memory->ClampRangeSize(range.base_address, range.GetSize());
+        const auto [buffer, offset] = buffer_cache.ObtainBuffer(range.base_address, size, false);
+        range.handle = buffer->Handle();
+        range.offset = offset;
+        needs_barrier |= runtime.IsBufferAccessed(buffer, offset, size);
     }
 
     // Bind vertex buffers
@@ -1776,7 +1838,7 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
                                    buffer.base_address < range.end_address;
                         });
             ASSERT(host_buffer_info != ranges_merged.cend());
-            host_buffers.emplace_back(host_buffer_info->buffer->Handle());
+            host_buffers.emplace_back(host_buffer_info->handle);
             host_offsets.push_back(host_buffer_info->offset + buffer.base_address -
                                    host_buffer_info->base_address);
         } else {
