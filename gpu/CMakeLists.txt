@@ -10,6 +10,11 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 # Frame pointers keep the loader's thread dumps (watchdog, SIGUSR2 sampling) walkable.
 add_compile_options(-fno-omit-frame-pointer)
+if(NOT WIN32)
+    # libvwgpu is linked by vwport, never dlopen'ed: its thread_locals can live in the static TLS
+    # block instead of going through __tls_get_addr (2-3% of the GPU command and recording threads).
+    add_compile_options(-ftls-model=initial-exec)
+endif()
 # MinGW + newer libc++ (clang 21+): vendored code (sirit, ...) relied on
 # transitive includes for std::abort, _countof, swprintf_s, log2 and placement new.
 if (MINGW)
