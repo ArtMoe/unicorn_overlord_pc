@@ -620,3 +620,9 @@ Script: phases of 12 s alternating toggle masks, FPS and stage B µs per draw
   entries, thread-local). Toggle 1 << 51 switches it off. 47.5 vs 45.7 FPS, stage B 5.09 vs
   5.27 µs/draw; screenshots taken at equal intervals differ no more with the toggle than
   without.
+- **Fewer barriers and cache misses per draw.** `Draw` counted draws with a locked add (a full
+  barrier after the decode loop's register stores; ~11% of `Draw`'s own samples sat on the next
+  instruction); it has one writer, so it is a plain increment now. With the vertex memo on,
+  stage B no longer reads the worker's prepared vertex inputs (cache misses on data another core
+  wrote, and in UO they rarely match). Stage A 5.29 → 5.20 µs/draw; memo on/off 48.3 vs
+  46.3 FPS. Tried and reverted: each `VwStats` counter on its own cache line (no change).
