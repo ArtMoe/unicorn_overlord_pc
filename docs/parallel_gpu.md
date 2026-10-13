@@ -593,3 +593,12 @@ Script: phases of 12 s alternating toggle masks, FPS and stage B µs per draw
   Result: unavailable 26% → 0, `vertex` rejections 0, 37.3 vs 35.4 FPS (+5.4%, 3 rounds).
   The remaining unprepared draws are `pending` (~13-22%): the GPU thread reached them before
   a worker, because one worker prepares a whole command buffer in order.
+- **Chunked preparation.** The scanner records, every 48 draws of a buffer, the packet offset,
+  the register checksum and the registers written since the buffer start (`Chunk`). Workers
+  claim chunks instead of whole buffers, the nearest one ahead of the GPU thread's draw
+  (`gpu_draw`, published every 8 draws), so several workers prepare one large buffer.
+  Each chunk has one writer (a crash during a toggle switch came from a whole-buffer claim
+  overlapping chunk claims; whole buffers are now only claimed with no chunk taken).
+  Toggle 1 << 50 restores whole-buffer claims. Pending draws 12% → 5%; frame rate unchanged
+  on the battle map (42.7 vs 42.4 FPS), where the RX 560X is now ~75% busy at its top clock:
+  that scene is close to GPU-bound.

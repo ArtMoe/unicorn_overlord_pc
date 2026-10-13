@@ -229,6 +229,8 @@ std::shared_ptr<DrawPreparation::Submission> DrawPreparation::Build(
         submission->num_draws += IsDirectDraw(header->type3.opcode);
     });
     submission->draws = std::make_unique<PreparedDraw[]>(submission->num_draws);
+    submission->num_chunks = std::max(1u, (submission->num_draws + ChunkDraws - 1) / ChunkDraws);
+    submission->chunk_claimed = std::make_unique<std::atomic<bool>[]>(submission->num_chunks);
     return submission;
 }
 
@@ -250,6 +252,7 @@ void DrawPreparation::BeginSubmission(u64 seq, const AmdGpu::Regs& regs, u64 reg
     if (!Enabled()) {
         return;
     }
+    gpu_draw.store(0, std::memory_order_relaxed);
     gpu_seq.store(seq, std::memory_order_release);
     std::scoped_lock lk{mutex};
     if (!baseline_ready) {
@@ -295,6 +298,9 @@ const PreparedDraw* DrawPreparation::NextDraw() {
         return nullptr;
     }
     const PreparedDraw* draw = &current->draws[current_draw++];
+    if ((current_draw & 7) == 0) {
+        gpu_draw.store(current_draw, std::memory_order_relaxed);
+    }
     if (VwToggle::Disabled(VwToggle::DrawPreparation)) {
         return nullptr;
     }
@@ -361,8 +367,26 @@ void DrawPreparation::ScannerLoop(std::stop_token stop) {
         }
         submission->start_checksum = checksum;
         dirty.Clear();
+        submission->chunks.clear();
+        submission->chunks.push_back({0, 0, checksum, {}});
+        u32 ordinal = 0;
+        bool boundary = false;
+        const u32* base = submission->commands.data();
         ForEachPacket(submission->commands, [&](const AmdGpu::PM4Header* header) {
+            if (boundary) {
+                // The packet after every ChunkDraws-th draw starts a chunk.
+                boundary = false;
+                Chunk chunk{ordinal, static_cast<u32>(reinterpret_cast<const u32*>(header) - base),
+                            checksum, {}};
+                chunk.delta.Capture(*regs, dirty);
+                submission->chunks.push_back(std::move(chunk));
+            }
             AmdGpu::Liverpool::ApplyGraphicsRegisterPacket(*regs, header, checksum, &dirty);
+            if (IsDirectDraw(header->type3.opcode) && ++ordinal % ChunkDraws == 0 &&
+                ordinal < submission->num_draws &&
+                submission->chunks.size() < submission->num_chunks) {
+                boundary = true;
+            }
         });
         submission->delta.Capture(*regs, dirty);
         submission->end_checksum = checksum;
@@ -379,8 +403,16 @@ void DrawPreparation::WorkerLoop(std::stop_token stop, u32 index) {
     Common::SetCurrentThreadName(("vw:DrawPrep" + std::to_string(index)).c_str());
     VwThreads::MakeBackground();
     auto regs = std::make_unique<AmdGpu::Regs>();
+    auto start_regs = std::make_unique<AmdGpu::Regs>(); ///< state at the start of `start_seq`
     constexpr u64 NoPosition = ~0ull;
-    u64 position = NoPosition; ///< `regs` holds the state at the start of this buffer
+    constexpr u32 AtStart = ~0u;
+    // `regs` holds the state inside buffer `position`: at its start (AtStart), or at the end of
+    // chunk `chunk_done`. Applying a buffer's delta from anywhere inside it gives the state at
+    // the start of the next one; a chunk's delta (cumulative from the buffer start) gives its
+    // starting state from any earlier point of the same buffer.
+    u64 position = NoPosition;
+    u32 chunk_done = AtStart;
+    u64 start_seq = NoPosition;
     PipelineSelection sel{};
     sel.regs = regs.get();
     PrepWorker prep_worker{};
@@ -388,14 +420,40 @@ void DrawPreparation::WorkerLoop(std::stop_token stop, u32 index) {
     FlatArena arena;
     std::vector<std::shared_ptr<Submission>> path;
 
-    // The nearest scanned buffer the GPU thread has not reached and no worker has claimed.
+    // The nearest unclaimed chunk the GPU thread has not reached, in a scanned buffer.
+    u32 target_chunk = 0;
+    u32 last_chunk = 0;
+    bool chunked = true; ///< off (toggle): one worker prepares a whole buffer in order
     const auto claimable = [&]() -> std::shared_ptr<Submission> {
         const u64 gpu = gpu_seq.load(std::memory_order_acquire);
         for (const auto& submission : submissions) {
-            if (submission->seq >= gpu && submission->seq >= tail_seq &&
-                submission->scanned.load(std::memory_order_acquire) &&
-                !submission->claimed.load(std::memory_order_relaxed)) {
-                return submission;
+            if (submission->seq < gpu || submission->seq < tail_seq ||
+                !submission->scanned.load(std::memory_order_acquire)) {
+                continue;
+            }
+            const u32 count = static_cast<u32>(submission->chunks.size());
+            if (!chunked) {
+                // A whole buffer, so only one with no chunk claimed: a draw has one writer.
+                bool free = true;
+                for (u32 chunk = 0; chunk < count && free; ++chunk) {
+                    free = !submission->chunk_claimed[chunk].load(std::memory_order_relaxed);
+                }
+                if (free) {
+                    target_chunk = 0;
+                    return submission;
+                }
+                continue;
+            }
+            u32 first = 0;
+            if (submission->seq == gpu) {
+                // Past a quarter of a chunk the GPU thread is likely to finish it first.
+                first = (gpu_draw.load(std::memory_order_relaxed) + ChunkDraws / 4) / ChunkDraws;
+            }
+            for (u32 chunk = first; chunk < count; ++chunk) {
+                if (!submission->chunk_claimed[chunk].load(std::memory_order_relaxed)) {
+                    target_chunk = chunk;
+                    return submission;
+                }
             }
         }
         return {};
@@ -406,6 +464,7 @@ void DrawPreparation::WorkerLoop(std::stop_token stop, u32 index) {
         {
             std::unique_lock lk{mutex};
             // gpu_seq moves without the lock: keep the candidate the predicate found.
+            chunked = !VwToggle::Disabled(VwToggle::ChunkedPreparation);
             cv.wait(lk, stop, [&] {
                 target = baseline_ready ? claimable() : nullptr;
                 return target != nullptr;
@@ -413,12 +472,16 @@ void DrawPreparation::WorkerLoop(std::stop_token stop, u32 index) {
             if (stop.stop_requested() || !target) {
                 return;
             }
-            target->claimed.store(true, std::memory_order_relaxed);
+            last_chunk = chunked ? target_chunk : static_cast<u32>(target->chunks.size()) - 1;
+            for (u32 chunk = target_chunk; chunk <= last_chunk; ++chunk) {
+                target->chunk_claimed[chunk].store(true, std::memory_order_relaxed);
+            }
             // Buffers between this worker's state and the target: their deltas. A position
             // already collected (or past the target) restarts from the queue's tail state.
             if (position == NoPosition || position < tail_seq || position > target->seq) {
                 *regs = *tail_regs;
                 position = tail_seq;
+                chunk_done = AtStart;
             }
             const u64 front = submissions.front()->seq;
             path.clear();
@@ -429,18 +492,42 @@ void DrawPreparation::WorkerLoop(std::stop_token stop, u32 index) {
         for (const auto& step : path) {
             step->delta.Apply(*regs);
         }
+        if (!path.empty()) {
+            position = target->seq;
+            chunk_done = AtStart;
+        }
         path.clear();
-        u64 checksum = target->start_checksum;
-        u32 ordinal = 0;
+        if (chunk_done == AtStart) {
+            if (start_seq != position) {
+                *start_regs = *regs;
+                start_seq = position;
+            }
+        } else if (target_chunk <= chunk_done) {
+            // Behind this worker's point in the buffer: from the buffer start.
+            *regs = *start_regs;
+        }
+        const Chunk& chunk = target->chunks[target_chunk];
+        if (target_chunk != 0) {
+            chunk.delta.Apply(*regs);
+        }
+        const u32 end = last_chunk + 1 < target->chunks.size()
+                            ? target->chunks[last_chunk + 1].offset
+                            : static_cast<u32>(target->commands.size());
+        u64 checksum = chunk.checksum;
+        u32 ordinal = chunk.first_draw;
         arena = FlatArena{};
-        ForEachPacket(target->commands, [&](const AmdGpu::PM4Header* header) {
+        const std::span<const u32> commands{target->commands.data() + chunk.offset,
+                                            end - chunk.offset};
+        ForEachPacket(commands, [&](const AmdGpu::PM4Header* header) {
             AmdGpu::Liverpool::ApplyGraphicsRegisterPacket(*regs, header, checksum);
             if (!IsDirectDraw(header->type3.opcode)) {
                 return;
             }
             // Past the GPU thread the draws are no longer worth preparing.
+            const u64 gpu = gpu_seq.load(std::memory_order_acquire);
             if (ordinal < target->num_draws &&
-                target->seq >= gpu_seq.load(std::memory_order_acquire)) {
+                (target->seq > gpu ||
+                 (target->seq == gpu && ordinal >= gpu_draw.load(std::memory_order_relaxed)))) {
                 auto& draw = target->draws[ordinal];
                 prep_worker.stages.clear();
                 prep_worker.failed = false;
@@ -475,9 +562,12 @@ void DrawPreparation::WorkerLoop(std::stop_token stop, u32 index) {
             }
             ++ordinal;
         });
+        chunk_done = last_chunk;
         // The arena's chunks live as long as the submission.
-        target->flat_chunks = std::move(arena.chunks);
-        position = target->seq + 1;
+        std::scoped_lock lk{mutex};
+        for (auto& block : arena.chunks) {
+            target->flat_chunks.push_back(std::move(block));
+        }
     }
 }
 
