@@ -559,7 +559,25 @@ static ABI int32_t ajm_batch_cancel(uint32_t id, uint32_t batch) {
 static ABI int32_t ajm_error_dump(void) { return 0; }
 static ABI int32_t ajm_memory_register(uint32_t id, void *p, uint64_t pages) { (void)p; (void)pages; return context(id) ? 0 : ERR_INVALID_CONTEXT; }
 
+/* The error's name for log messages. */
+static ABI const char *ajm_str_error(int32_t code) {
+    switch (code) {
+    case 0: return "SCE_OK";
+    case ERR_INVALID_CONTEXT: return "SCE_AJM_ERROR_INVALID_CONTEXT";
+    case ERR_INVALID_INSTANCE: return "SCE_AJM_ERROR_INVALID_INSTANCE";
+    case ERR_INVALID_BATCH: return "SCE_AJM_ERROR_INVALID_BATCH";
+    case ERR_INVALID_PARAMETER: return "SCE_AJM_ERROR_INVALID_PARAMETER";
+    case ERR_OUT_OF_RESOURCES: return "SCE_AJM_ERROR_OUT_OF_RESOURCES";
+    case ERR_ALREADY_REGISTERED: return "SCE_AJM_ERROR_CODEC_ALREADY_REGISTERED";
+    case ERR_NOT_REGISTERED: return "SCE_AJM_ERROR_CODEC_NOT_REGISTERED";
+    case ERR_WRONG_REVISION: return "SCE_AJM_ERROR_WRONG_REVISION_FLAG";
+    case ERR_MALFORMED_BATCH: return "SCE_AJM_ERROR_MALFORMED_BATCH";
+    case ERR_CANCELLED: return "SCE_AJM_ERROR_CANCELLED";
+    default: return "SCE_AJM_ERROR_UNKNOWN";
+    }
+}
 static const RuntimeExport exports[]={
+    {"sceAjmStrError",ajm_str_error},
     {"sceAjmInitialize",ajm_initialize}, {"sceAjmFinalize",ajm_finalize},
     {"sceAjmModuleRegister",ajm_module_register}, {"sceAjmModuleUnregister",ajm_module_unregister},
     {"sceAjmInstanceCreate",ajm_instance_create}, {"sceAjmInstanceDestroy",ajm_instance_destroy},

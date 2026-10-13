@@ -9,6 +9,7 @@
 #include "gpu/vwgpu.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
@@ -366,6 +367,17 @@ typedef struct {
     float x, y; uint32_t halign, valign; const uint16_t *placeholder, *title; int8_t reserved[16];
 } ImeParam;
 static struct { int running, finished, end_status; uint16_t *buffer; uint32_t max_length; } ime;
+/* The system keyboard panel's size (as shadPS4 measured it): 793x528, numbers 370x522,
+ * 2x with the over-2K coordinates option; the extended parameters do not change it. */
+static ABI int32_t ime_panel_size(const ImeParam *param, const void *extended, uint32_t *width, uint32_t *height) {
+    (void)extended;
+    if (!param || !width || !height) return (int32_t)0x80BC0031; /* INVALID_ADDRESS */
+    if (param->type>3) return (int32_t)0x80BC0011; /* INVALID_TYPE */
+    if (param->type==3) { *width=0x172; *height=0x20a; }
+    else { *width=0x319; *height=(param->option & 1) ? 0x274 : 0x210; } /* option 1: multiline */
+    if (param->option & 0x4000) { *width<<=1; *height<<=1; }
+    return 0;
+}
 static size_t utf16_to_utf8(const uint16_t *in, size_t limit, char *out, size_t size) {
     size_t n=0;
     for (size_t i=0; in && i<limit && in[i] && n+4<size; ++i) {
@@ -530,8 +542,39 @@ static ABI int32_t playgo_terminate(void) { playgo_handle=0; return 0; }
 static ABI int32_t discmap_on_hdd(const char *path,int64_t offset,int64_t size,int32_t *result) {
     (void)path; (void)offset; (void)size; (void)result; return DISC_MAP_NO_BITMAP;
 }
+static ABI int32_t discmap_7c98(const char *path,int64_t offset,int64_t size,int32_t *flags,int32_t *r1,int32_t *r2) {
+    (void)path; (void)offset; (void)size;
+    if (flags) *flags=0;
+    if (r1) *r1=0;
+    if (r2) *r2=0;
+    return 0; /* on the HDD, as shadPS4 */
+}
 static ABI int32_t discmap_8a82(const char *path,int64_t offset,int64_t size,int32_t *flags,int32_t *r1,int32_t *r2) {
     (void)path; (void)offset; (void)size; (void)flags; (void)r1; (void)r2; return DISC_MAP_NO_BITMAP;
+}
+
+/* ---- ulobjmgr: user-level object registration (as shadPS4) ---- */
+static ABI int32_t ulobj_register(uint64_t object,int32_t type,uint32_t *id) {
+    if (!object || !type || !id) return 22; /* EINVAL */
+    *id=0; return 0;
+}
+static ABI int32_t ulobj_unregister(uint32_t id) { return id>=0x4000 ? 22 : 0; }
+
+/* ---- Http URI escaping: RFC 3986 unreserved characters stay, the rest becomes %XX ---- */
+static ABI int32_t http_uri_escape(char *out,uint64_t *required,uint64_t prepared,const char *in) {
+    if (!in) return (int32_t)0x804311FE; /* INVALID_VALUE */
+    static const char hex[]="0123456789ABCDEF";
+    uint64_t need=1;
+    for (const unsigned char *p=(const unsigned char *)in;*p;++p)
+        need+=(isalnum(*p) || *p=='-' || *p=='_' || *p=='.' || *p=='~') ? 1 : 3;
+    if (required) *required=need;
+    if (!out) return 0;
+    if (prepared<need) return (int32_t)0x80431022; /* OUT_OF_MEMORY */
+    for (const unsigned char *p=(const unsigned char *)in;*p;++p) {
+        if (isalnum(*p) || *p=='-' || *p=='_' || *p=='.' || *p=='~') *out++=(char)*p;
+        else { *out++='%'; *out++=hex[*p>>4]; *out++=hex[*p&15]; }
+    }
+    *out=0; return 0;
 }
 
 /* ---- Devices that are absent: mouse, microphone, voice chat ---- */
@@ -570,6 +613,12 @@ static ABI int32_t signin_init(void) { signin_status=1; return 0; }
 static ABI int32_t signin_open(const void *param) { (void)param; signin_status=3; return 0; }
 static ABI int32_t signin_update(void) { return signin_status; }
 static ABI int32_t signin_term(void) { signin_status=0; return 0; }
+/* OrbisSigninDialogResult: result (1 = USER_CANCELED, the account stays signed out), reserved[3]. */
+static ABI int32_t signin_result(int32_t *result) {
+    if (!signin_status) return (int32_t)0x81350001; /* NOT_INITIALIZED */
+    if (!result) return (int32_t)0x81350003; /* PARAM_INVALID */
+    memset(result,0,16); result[0]=1; return 0;
+}
 static ABI int32_t error_dialog_term(void) { error_dialog_status=0; return 0; }
 static ABI int32_t coredump_register(void *handler,uint64_t stack,void *arg) { (void)handler; (void)stack; (void)arg; return 0; }
 static ABI int32_t coredump_write(const void *data,uint64_t size) { (void)data; return (int32_t)size; }
@@ -698,6 +747,9 @@ static const RuntimeExport exports[]={
     {"sceMouseInit",ok_void}, {"sceMouseOpen",mouse_open}, {"sceMouseRead",mouse_read}, {"sceMouseClose",mouse_close},
     {"sceAudioInOpen",audio_in_open},
     {"sceDiscMapIsRequestOnHDD",discmap_on_hdd}, {"sceDiscMap_8A828CAEE7EDD5E9",discmap_8a82},
+    {"sceDiscMap_7C980FFB0AA27E7A",discmap_7c98},
+    {"_sceUlobjmgrRegisterObject",ulobj_register}, {"_sceUlobjmgrUnregisterObject",ulobj_unregister},
+    {"sceHttpUriEscape",http_uri_escape}, {"sceImeDialogGetPanelSizeExtended",ime_panel_size},
     {"sceVoiceInit",ok_void}, {"sceVoiceEnd",ok_void},
     {"sceSystemGestureInitializePrimitiveTouchRecognizer",ok_void},
     {"sceSystemGestureFinalizePrimitiveTouchRecognizer",ok_void},
@@ -714,7 +766,7 @@ static const RuntimeExport exports[]={
     {"_ZN3sce4Json11InitializerC1Ev",json_noop}, {"_ZN3sce4Json11InitializerD1Ev",json_noop},
     {"_ZN3sce4Json11Initializer10initializeEPKNS0_13InitParameterE",json_noop},
     {"sceSigninDialogInitialize",signin_init}, {"sceSigninDialogOpen",signin_open},
-    {"sceSigninDialogUpdateStatus",signin_update}, {"sceSigninDialogTerminate",signin_term},
+    {"sceSigninDialogUpdateStatus",signin_update}, {"sceSigninDialogGetResult",signin_result}, {"sceSigninDialogTerminate",signin_term},
     {"sceShareUtilityAdvanceInitialize",ok_void}, {"sceShareUtilityAdvanceTerminate",ok_void},
     {"sceShareUtilityAdvanceSetUploadContentData",ok_void},
     {"sceNpCheckNpAvailabilityA",np_signed_out}, {"sceNpGetAccountIdA",np_signed_out},

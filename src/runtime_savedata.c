@@ -48,6 +48,9 @@ typedef struct { int32_t user; int32_t pad; const TitleId *title; const DirName 
                  uint64_t blocks; uint32_t mode; uint8_t reserved[32]; } Mount1;
 typedef struct { int32_t user; int32_t pad; const DirName *dir; uint64_t blocks; uint32_t mode;
                  uint8_t reserved[32]; int32_t pad2; } Mount2;
+/* Another title's save, read-only (a demo's save carried over): not found unless it is there. */
+typedef struct { int32_t user; int32_t pad; const TitleId *title; const DirName *dir; const void *fingerprint;
+                 uint8_t reserved[32]; } TransferringMount;
 typedef struct { MountPoint point; uint64_t required_blocks; uint32_t unused, status; uint8_t reserved[28]; int32_t pad; } MountResult;
 typedef struct { int32_t user; int32_t pad; const TitleId *title; const DirName *dir; uint32_t unused;
                  uint8_t reserved[32]; int32_t pad2; } Delete;
@@ -59,6 +62,7 @@ typedef struct { uint32_t hits; int32_t pad; DirName *names; uint32_t names_capa
 typedef struct { const void *buffer; uint64_t buffer_size, data_size; uint8_t reserved[32]; } Icon;
 _Static_assert(sizeof(Param)==1328,"OrbisSaveDataParam layout");
 _Static_assert(sizeof(Mount1)==80 && sizeof(Mount2)==64,"OrbisSaveDataMount layouts");
+_Static_assert(sizeof(TransferringMount)==64,"OrbisSaveDataTransferringMount layout");
 _Static_assert(sizeof(MountResult)==64,"OrbisSaveDataMountResult layout");
 _Static_assert(sizeof(SearchCond)==64 && sizeof(SearchResult)==56,"dir name search layouts");
 
@@ -177,6 +181,10 @@ static ABI int32_t save_mount(const Mount1 *m, MountResult *result) {
 static ABI int32_t save_mount2(const Mount2 *m, MountResult *result) {
     if (!m) return ERR_PARAMETER;
     return mount(m->user,NULL,m->dir,m->mode,result);
+}
+static ABI int32_t save_transferring_mount(const TransferringMount *m, MountResult *result) {
+    if (!m || !m->title || !m->dir) return ERR_PARAMETER;
+    return mount(m->user,m->title->data,m->dir,MODE_RDONLY,result);
 }
 static int slot_of(const MountPoint *point) {
     if (!point || strncmp(point->data,"/savedata",9)) return -1;
@@ -345,7 +353,8 @@ static ABI int32_t memory_set(int32_t user, void *buffer, uint64_t size, int64_t
 static const RuntimeExport exports[]={
     {"sceSaveDataInitialize",save_initialize}, {"sceSaveDataInitialize2",save_initialize},
     {"sceSaveDataInitialize3",save_initialize}, {"sceSaveDataTerminate",save_terminate},
-    {"sceSaveDataMount",save_mount}, {"sceSaveDataMount2",save_mount2}, {"sceSaveDataUmount",save_umount},
+    {"sceSaveDataMount",save_mount}, {"sceSaveDataMount2",save_mount2},
+    {"sceSaveDataTransferringMount",save_transferring_mount}, {"sceSaveDataUmount",save_umount},
     {"sceSaveDataSetParam",save_set_param}, {"sceSaveDataSaveIcon",save_icon}, {"sceSaveDataDelete",save_delete},
     {"sceSaveDataDirNameSearch",save_search}, {"sceSaveDataGetMountInfo",save_mount_info},
     {"sceSaveDataSetupSaveDataMemory",memory_setup}, {"sceSaveDataGetSaveDataMemory",memory_get},

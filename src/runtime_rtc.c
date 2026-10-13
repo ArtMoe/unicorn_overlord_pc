@@ -5,6 +5,7 @@
 #include "runtime.h"
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 
 #define ERR_INVALID_POINTER ((int32_t)0x80B50002)
@@ -156,6 +157,97 @@ static ABI int32_t rtc_rfc2822_local(char *out, const uint64_t *utc_tick) {
     return 0;
 }
 
+/* "2026-10-13T12:00:00.00+05:30" for the UTC tick (NULL = now) shown at the given offset; the
+ * SDK prints two fraction digits and "Z" for offset 0. */
+static ABI int32_t rtc_format_rfc3339(char *out, const uint64_t *utc_tick, int32_t minutes) {
+    if (!out) return ERR_INVALID_POINTER;
+    uint64_t utc=utc_tick ? *utc_tick : now_utc();
+    DateTime t; from_tick((uint64_t)((int64_t)utc+(int64_t)minutes*60000000),&t);
+    char zone[16]="Z";
+    if (minutes) {
+        int32_t m=minutes<0 ? -minutes : minutes;
+        snprintf(zone,sizeof(zone),"%c%02d:%02d",minutes<0 ? '-' : '+',(int)(m/60%100),(int)(m%60));
+    }
+    char text[64];
+    snprintf(text,sizeof(text),"%04u-%02u-%02uT%02u:%02u:%02u.%02u%s",t.year,t.month,t.day,t.hour,t.minute,t.second,
+             (unsigned)(t.microsecond/10000),zone);
+    memcpy(out,text,strlen(text)+1);
+    return 0;
+}
+static int digits(const char **p, int count, int *value) {
+    *value=0;
+    for (int i=0;i<count;++i,++*p) { if (**p<'0' || **p>'9') return 0; *value=*value*10+(**p-'0'); }
+    return 1;
+}
+static int month_name(const char *p) {
+    static const char names[]="JanFebMarAprMayJunJulAugSepOctNovDec";
+    for (int i=0;i<12;++i) if (!strncasecmp(p,names+i*3,3)) return i+1;
+    return 0;
+}
+/* "+hh:mm", "+hhmm", "Z", "GMT"/"UT" or nothing: minutes east of UTC. */
+static int zone_minutes(const char *p, int32_t *minutes) {
+    while (*p==' ') ++p;
+    *minutes=0;
+    if (!*p || *p=='Z' || *p=='z' || !strncmp(p,"GMT",3) || !strncmp(p,"UT",2)) return 1;
+    if (*p!='+' && *p!='-') return 0;
+    int sign=*p++=='-' ? -1 : 1, h, m;
+    if (!digits(&p,2,&h)) return 0;
+    if (*p==':') ++p;
+    if (!digits(&p,2,&m)) return 0;
+    *minutes=sign*(h*60+m);
+    return 1;
+}
+static int32_t store_utc(DateTime *t, int32_t minutes, uint64_t *tick) {
+    int32_t r=validate(t);
+    if (r) return r;
+    *tick=(uint64_t)((int64_t)to_tick(t)-(int64_t)minutes*60000000);
+    return 0;
+}
+#define ERR_INVALID_VALUE ((int32_t)0x80B50003)
+/* "YYYY-MM-DDThh:mm:ss[.fraction](Z|+hh:mm|-hh:mm)" to a UTC tick. */
+static ABI int32_t rtc_parse_rfc3339(uint64_t *tick, const char *text) {
+    if (!tick || !text) return ERR_INVALID_POINTER;
+    const char *p=text; int y,mo,d,h,mi,se;
+    if (!digits(&p,4,&y) || *p++!='-' || !digits(&p,2,&mo) || *p++!='-' || !digits(&p,2,&d)) return ERR_INVALID_VALUE;
+    if (*p!='T' && *p!='t' && *p!=' ') return ERR_INVALID_VALUE;
+    ++p;
+    if (!digits(&p,2,&h) || *p++!=':' || !digits(&p,2,&mi) || *p++!=':' || !digits(&p,2,&se)) return ERR_INVALID_VALUE;
+    uint32_t us=0;
+    if (*p=='.') {
+        ++p;
+        uint32_t scale=100000;
+        for (; *p>='0' && *p<='9'; ++p) { us+=(uint32_t)(*p-'0')*scale; scale/=10; }
+    }
+    int32_t minutes;
+    if (!zone_minutes(p,&minutes)) return ERR_INVALID_VALUE;
+    DateTime t={(uint16_t)y,(uint16_t)mo,(uint16_t)d,(uint16_t)h,(uint16_t)mi,(uint16_t)se,us};
+    return store_utc(&t,minutes,tick);
+}
+/* RFC 3339, RFC 2822 ("Tue, 13 Oct 2026 12:00:00 +0530") or asctime ("Tue Oct 13 12:00:00 2026"). */
+static ABI int32_t rtc_parse_date_time(uint64_t *tick, const char *text) {
+    if (!tick || !text) return ERR_INVALID_POINTER;
+    if (text[0]>='0' && text[0]<='9') return rtc_parse_rfc3339(tick,text);
+    const char *p=text;
+    while (*p && *p!=' ' && *p!=',') ++p;
+    while (*p==',' || *p==' ') ++p;
+    int y,mo,d,h,mi,se;
+    int32_t minutes=0;
+    if (*p>='0' && *p<='9') { /* RFC 2822 */
+        if (!digits(&p,p[1]>='0' && p[1]<='9' ? 2 : 1,&d) || *p++!=' ' || !(mo=month_name(p))) return ERR_INVALID_VALUE;
+        p+=3;
+        if (*p++!=' ' || !digits(&p,4,&y) || *p++!=' ' || !digits(&p,2,&h) || *p++!=':' || !digits(&p,2,&mi) ||
+            *p++!=':' || !digits(&p,2,&se) || !zone_minutes(p,&minutes)) return ERR_INVALID_VALUE;
+    } else { /* asctime */
+        if (!(mo=month_name(p))) return ERR_INVALID_VALUE;
+        p+=3;
+        while (*p==' ') ++p;
+        if (!digits(&p,p[1]>='0' && p[1]<='9' ? 2 : 1,&d) || *p++!=' ' || !digits(&p,2,&h) || *p++!=':' ||
+            !digits(&p,2,&mi) || *p++!=':' || !digits(&p,2,&se) || *p++!=' ' || !digits(&p,4,&y)) return ERR_INVALID_VALUE;
+    }
+    DateTime t={(uint16_t)y,(uint16_t)mo,(uint16_t)d,(uint16_t)h,(uint16_t)mi,(uint16_t)se,0};
+    return store_utc(&t,minutes,tick);
+}
+
 static const RuntimeExport exports[]={
     {"sceRtcGetCurrentClockLocalTime",rtc_current_local}, {"sceRtcGetCurrentClock",rtc_current_clock},
     {"sceRtcGetCurrentTick",rtc_current_tick}, {"sceRtcGetCurrentNetworkTick",rtc_current_tick},
@@ -164,5 +256,7 @@ static const RuntimeExport exports[]={
     {"sceRtcGetTickResolution",rtc_tick_resolution}, {"sceRtcSetTime_t",rtc_set_time_t},
     {"sceRtcGetTime_t",rtc_get_time_t}, {"sceRtcFormatRFC2822LocalTime",rtc_rfc2822_local},
     {"sceRtcGetWin32FileTime",rtc_get_win32}, {"sceRtcSetWin32FileTime",rtc_set_win32},
+    {"sceRtcFormatRFC3339",rtc_format_rfc3339}, {"sceRtcFormatRFC3339Precise",rtc_format_rfc3339},
+    {"sceRtcParseRFC3339",rtc_parse_rfc3339}, {"sceRtcParseDateTime",rtc_parse_date_time},
 };
 uintptr_t runtime_rtc_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }
