@@ -724,7 +724,7 @@ const GraphicsPipeline* PipelineCache::TryPreparedPipeline(const PreparedDraw& p
             }
         }
     }
-    const auto it = graphics_pipelines.find(prepared.key);
+    const auto it = graphics_pipelines.find(prepared.key, prepared.key_hash);
     ++g_prep_outcomes[it != graphics_pipelines.end() ? PrepUsed : PrepNoPipeline];
     return it != graphics_pipelines.end() ? it->second.get() : nullptr;
 }

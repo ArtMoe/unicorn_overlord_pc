@@ -94,6 +94,7 @@ struct PreparedDraw {
     std::atomic<u32> state{Pending};
     u64 reg_checksum{};
     GraphicsPipelineKey key{};
+    u64 key_hash{}; ///< std::hash of `key`, computed by the worker
     u32 num_stages{};
     std::array<PreparedStage, MaxShaderStages> stages{};
     PreparedVertexInputs vertex{};

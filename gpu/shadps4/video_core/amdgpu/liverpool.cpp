@@ -64,17 +64,20 @@ static const char* acb_task_name[] = NAME_ARRAY(ACB_TASK, MAX_NAMES);
 
 std::array<u8, 48_KB> Liverpool::ConstantEngine::constants_heap;
 
-static std::span<const u32> NextPacket(std::span<const u32> span, size_t offset) {
-    if (offset > span.size()) {
-        LOG_ERROR(
-            Lib_GnmDriver,
-            ": packet length exceeds remaining submission size. Packet dword count={}, remaining "
-            "submission dwords={}",
-            offset, span.size());
+[[gnu::cold, gnu::noinline]] static void ReportPacketOverrun(size_t offset, size_t remaining) {
+    LOG_ERROR(Lib_GnmDriver,
+              ": packet length exceeds remaining submission size. Packet dword count={}, remaining "
+              "submission dwords={}",
+              offset, remaining);
+}
+
+// vw: inline, called for every packet; the error report stays out of line.
+static inline std::span<const u32> NextPacket(std::span<const u32> span, size_t offset) {
+    if (offset > span.size()) [[unlikely]] {
+        ReportPacketOverrun(offset, span.size());
         // Return empty subspan so check for next packet bails out
         return {};
     }
-
     return span.subspan(offset);
 }
 
@@ -88,7 +91,7 @@ Liverpool::~Liverpool() {
     process_thread.join();
 }
 
-void Liverpool::ProcessCommands() {
+void Liverpool::ProcessCommandsSlow() {
     if (num_commands && rasterizer) {
         rasterizer->DrainDrawPipe(Vulkan::DrawPipe::ReasonCommands); // vw: commands touch the caches
     }
@@ -474,13 +477,6 @@ Liverpool::Task Liverpool::ProcessCeUpdate(std::span<const u32> ccb) {
 // vw: graphics-register effects of a type-3 packet. The GPU thread and the draw-preparation
 // workers both go through this function, and both fold every register-writing packet into a
 // running checksum: equal checksums at a draw mean equal register files.
-u64 Liverpool::HashRegisterPacket(u64 checksum, const u32* words, u32 count) {
-    for (u32 i = 0; i < count; ++i) {
-        checksum = (checksum ^ words[i]) * 0x9E3779B97F4A7C15ull;
-        checksum ^= checksum >> 29;
-    }
-    return checksum;
-}
 
 void Liverpool::ApplyGraphicsRegisterPacket(Regs& regs, const PM4Header* header, u64& checksum,
                                              RegDirty* dirty) {

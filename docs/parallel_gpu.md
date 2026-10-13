@@ -602,3 +602,13 @@ Script: phases of 12 s alternating toggle masks, FPS and stage B µs per draw
   Toggle 1 << 50 restores whole-buffer claims. Pending draws 12% → 5%; frame rate unchanged
   on the battle map (42.7 vs 42.4 FPS), where the RX 560X is now ~75% busy at its top clock:
   that scene is close to GPU-bound.
+- **Per-packet calls on stage A.** `ProcessCommands` (a check before every packet, 4.8% as an
+  out-of-line call with a stack-protector prologue), `NextPacket` (3.4%) and
+  `HashRegisterPacket` (4.6%) are inline now; the hash takes two dwords per multiply step. The
+  workers hash the pipeline key of a prepared draw, so `TryPreparedPipeline` looks it up with
+  the precomputed hash (the key hash was 2.5%). Stage A 5.79 → 5.51 µs/draw.
+  First battle map, same camera as the first benchmark of the night: 39.1 → 45.7 FPS for
+  everything in this section.
+- GPU profile on that map (`VW_GPU_PROFILE=1`): 22.8 ms/frame, of which 9.8 ms GPU idle between
+  submissions; the GPU is not the limit. Per frame it uploads three 1920x1080, two 1280x720 and
+  two 960x540 images (~35 MB) and runs a 32640-group compute shader 21 times (2.4 ms).

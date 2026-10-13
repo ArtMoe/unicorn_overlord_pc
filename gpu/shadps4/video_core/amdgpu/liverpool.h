@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstring>
+
 #include <cstdlib>
 
 #include <condition_variable>
@@ -87,7 +89,22 @@ struct Liverpool {
     /// Top-level graphics submissions, numbered for the draw preparation workers.
     static constexpr u64 NoSeq = ~0ull;
     u64 gfx_submit_seq{};
-    static u64 HashRegisterPacket(u64 checksum, const u32* words, u32 count);
+    static u64 HashRegisterPacket(u64 checksum, const u32* words, u32 count) {
+        // Two dwords per step: half the multiply chain of one per dword (every packet goes
+        // through here on the GPU thread, the scanner and the workers).
+        u32 i = 0;
+        for (; i + 2 <= count; i += 2) {
+            u64 pair;
+            std::memcpy(&pair, words + i, sizeof(pair));
+            checksum = (checksum ^ pair) * 0x9E3779B97F4A7C15ull;
+            checksum ^= checksum >> 29;
+        }
+        if (i < count) {
+            checksum = (checksum ^ words[i]) * 0x9E3779B97F4A7C15ull;
+            checksum ^= checksum >> 29;
+        }
+        return checksum;
+    }
     /// `dirty` (draw-preparation scanner) records the register blocks written.
     static void ApplyGraphicsRegisterPacket(Regs& regs, const PM4Header* header, u64& checksum,
                                             RegDirty* dirty = nullptr);
@@ -225,7 +242,13 @@ private:
     template <bool is_indirect = false>
     Task ProcessCompute(std::span<const u32> acb, u32 vqid);
 
-    void ProcessCommands();
+    /// Called before every packet: inline check, the queue is rarely non-empty.
+    void ProcessCommands() {
+        if (num_commands) [[unlikely]] {
+            ProcessCommandsSlow();
+        }
+    }
+    void ProcessCommandsSlow();
     void Process(std::stop_token stoken);
 
     struct GpuQueue {
