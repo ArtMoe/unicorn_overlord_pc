@@ -31,9 +31,12 @@ public:
         return buffer.Handle();
     }
 
-    /// Stage A: `size` bytes at `alignment`; returns the ring offset, or nullopt when the ring is
-    /// still in use by the GPU (the caller leaves the binding to stage B).
-    std::optional<u64> Allocate(u64 size, u64 alignment) {
+    static constexpr u64 NoSpace = ~0ull;
+
+    /// Stage A: `size` bytes at `alignment`; returns the ring offset, or NoSpace when the ring is
+    /// still in use by the GPU (the caller leaves the binding to stage B). vw: a plain u64, not
+    /// std::optional: the optional's two stores and 16-byte reload stalled store forwarding.
+    u64 Allocate(u64 size, u64 alignment) {
         u64 at = (position + alignment - 1) & ~(alignment - 1);
         if (at % Capacity + size > Capacity) {
             at += Capacity - at % Capacity; // wrap to the ring start
@@ -42,7 +45,7 @@ public:
         if (in_use()) {
             Retire();
             if (in_use()) {
-                return std::nullopt;
+                return NoSpace;
             }
         }
         position = at + size;

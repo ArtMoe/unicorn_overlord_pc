@@ -507,18 +507,18 @@ bool Rasterizer::CollectRingBindings(const Shader::Info& stage, const PreparedDr
     const u64 alignment = std::max<u64>(instance.StorageMinAlignment(),
                                         instance.UniformMinAlignment());
     const auto copy = [&](u32 index, const void* source, VAddr address, u64 size) {
-        const auto offset = constant_ring->Allocate(size, alignment);
-        if (!offset) {
+        const u64 offset = constant_ring->Allocate(size, alignment);
+        if (offset == ConstantRing::NoSpace) {
             return false;
         }
-        u8* dst = constant_ring->Data(*offset);
+        u8* dst = constant_ring->Data(offset);
         if (source) {
             std::memcpy(dst, source, size);
         } else {
             memory->CopySparseMemory(address, dst, size);
         }
-        constant_ring->Flush(*offset, size);
-        out.push_back({index, static_cast<u32>(size), *offset, address});
+        constant_ring->Flush(offset, size);
+        out.push_back({index, static_cast<u32>(size), offset, address});
         return true;
     };
     for (u32 index = 0; index < stage.buffers.size(); ++index) {
@@ -649,8 +649,9 @@ void Rasterizer::PostDraw(const Pipeline* pipeline, const PreparedDraw* used_pre
                     range.size <= VideoCore::BufferCache::STREAM_THRESHOLD &&
                     !buffer_cache.IsRegionGpuModified(range.base, range.size) &&
                     !PendingWriteOverlaps(range.base, range.size)) {
-                    if (const auto at = constant_ring->Allocate(range.size + 64, 64)) {
-                        const u64 offset = *at + (range.base & 63);
+                    if (const u64 at = constant_ring->Allocate(range.size + 64, 64);
+                        at != ConstantRing::NoSpace) {
+                        const u64 offset = at + (range.base & 63);
                         memory->CopySparseMemory(range.base, constant_ring->Data(offset),
                                                  range.size);
                         constant_ring->Flush(offset, range.size);

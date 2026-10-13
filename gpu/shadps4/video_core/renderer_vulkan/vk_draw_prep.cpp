@@ -301,6 +301,16 @@ const PreparedDraw* DrawPreparation::NextDraw() {
     if ((current_draw & 7) == 0) {
         gpu_draw.store(current_draw, std::memory_order_relaxed);
     }
+    // A worker on another core wrote the draws: fetch the next ones' state, key and first
+    // stages ahead of TryPreparedPipeline (those reads were its main cache misses).
+    for (u32 ahead = current_draw; ahead < current_draw + 2 && ahead < current->num_draws;
+         ++ahead) {
+        const auto* bytes = reinterpret_cast<const char*>(&current->draws[ahead]);
+        constexpr size_t Lines = (offsetof(PreparedDraw, stages) + 2 * sizeof(PreparedStage)) / 64;
+        for (size_t line = 0; line <= Lines; ++line) {
+            __builtin_prefetch(bytes + line * 64);
+        }
+    }
     if (VwToggle::Disabled(VwToggle::DrawPreparation)) {
         return nullptr;
     }
