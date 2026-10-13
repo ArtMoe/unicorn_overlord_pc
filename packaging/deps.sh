@@ -12,10 +12,19 @@ PREFIX=$DEPS/prefix
 JOBS=$(nproc 2>/dev/null || echo 4)
 mkdir -p "$DEPS/src" "$DEPS/build" "$PREFIX"
 case $(uname -s) in MINGW*|MSYS*) WINDOWS=1 ;; *) WINDOWS=0 ;; esac
-export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig PATH=$PREFIX/bin:$PATH
+# NATIVE: the prefix as the compilers, CMake and pkg-config see it (Windows: C:/..., ';' lists);
+# PREFIX stays the shell's path for files and PATH.
+if [[ $WINDOWS == 1 ]]; then
+    NATIVE=$(cygpath -m "$PREFIX")
+    export PKG_CONFIG_PATH="$NATIVE/lib/pkgconfig;$NATIVE/share/pkgconfig"
+else
+    NATIVE=$PREFIX
+    export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig
+fi
+export PATH=$PREFIX/bin:$PATH
 CC=${CC:-$(command -v clang || command -v cc)}
 CXX=${CXX:-$(command -v clang++ || command -v c++)}
-CMAKE=(cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" -DCMAKE_PREFIX_PATH="$PREFIX"
+CMAKE=(cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$NATIVE" -DCMAKE_PREFIX_PATH="$NATIVE"
        -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_POSITION_INDEPENDENT_CODE=ON
        -DBUILD_SHARED_LIBS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5)
 
@@ -121,9 +130,9 @@ if needs ffmpeg "${FFMPEG_OPTIONS[*]}"; then
     command -v nasm >/dev/null || asm=(--disable-x86asm)
     platform=()
     [[ $WINDOWS == 1 ]] && platform=(--enable-w32threads)
-    quiet ffmpeg bash -c 'cd "$1" && shift && ./configure "$@"' _ "$src" --prefix="$PREFIX" --cc="$CC" --cxx="$CXX" \
-        --enable-static --disable-shared --enable-pic --pkg-config-flags=--static --extra-cflags="-I$PREFIX/include" \
-        --extra-ldflags="-L$PREFIX/lib" "${FFMPEG_OPTIONS[@]}" "${asm[@]}" "${platform[@]}"
+    quiet ffmpeg bash -c 'cd "$1" && shift && ./configure "$@"' _ "$src" --prefix="$NATIVE" --cc="$CC" --cxx="$CXX" \
+        --enable-static --disable-shared --enable-pic --pkg-config-flags=--static --extra-cflags="-I$NATIVE/include" \
+        --extra-ldflags="-L$NATIVE/lib" "${FFMPEG_OPTIONS[@]}" "${asm[@]}" "${platform[@]}"
     quiet ffmpeg make -C "$src" -j"$JOBS" install
     done_ ffmpeg "${FFMPEG_OPTIONS[*]}"
 fi

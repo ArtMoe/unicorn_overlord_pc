@@ -1,8 +1,8 @@
 # Windows build
 
 The ports build and run natively on 64-bit Windows 10 (1903+) / 11 from the same sources as on
-Linux, with the MSYS2 CLANG64 toolchain. Windows builds have not been retested since the Linux
-cleanup of 2026-10-13: report the first error of `out/gpu-build.log` if one fails.
+Linux, with the MSYS2 CLANG64 toolchain. The static-library build (2026-10-13) has only been run
+on Linux so far: report the first error of `out/deps/<library>.log` or `out/gpu-build.log`.
 
 ## Build and package
 
@@ -16,9 +16,15 @@ cleanup of 2026-10-13: report the first error of `out/gpu-build.log` if one fail
    bash packaging/windows/build.sh unicorn
    ```
 
-   It installs the packages, builds `out/vwport.exe` and writes `dist/<Title> PC/` and its .zip:
-   the launcher (with the runtime scripts inside), `vwport.exe`, the CLANG64 DLLs it loads,
-   `README.txt` and `LICENSE`.
+   It installs the packages, builds the static libraries (`packaging/deps.sh`: FFmpeg, SDL3,
+   fmt, Zydis, xxHash, zlib; a few minutes the first time), links them and libc++ into
+   `out/vwport.exe` (`bash build.sh --static`) and writes `dist/<Title> PC/` and its .zip: the
+   launcher, with the runtime scripts and `vwport.exe` inside, and `LICENSE`. Any DLL vwport
+   still loads from MSYS2 is packed into the launcher as well.
+
+   If the static libraries fail to build, `bash build.sh` (MSYS2's own libraries) followed by
+   `py -3 packaging/package.py unicorn` still gives the same two files, with the DLLs inside the
+   launcher (slower to start: they are unpacked on every launch).
 
 For development, `bash build.sh` builds `out/vwport.exe` and
 `VW_GAME_DIR=D:/path/CUSA05083 python run.py` starts a game. From the source tree `run.py` puts

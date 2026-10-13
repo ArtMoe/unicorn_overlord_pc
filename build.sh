@@ -18,7 +18,7 @@ MINGW*|MSYS*)
     deps=
     if [[ ${1:-} == --static ]]; then
         bash packaging/deps.sh
-        deps=$PWD/out/deps/prefix
+        deps=$(cygpath -m "$PWD/out/deps/prefix")
     fi
     cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVW_PGO=off \
         -DVW_LTO="${VW_LTO:-OFF}" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DVW_DEPS="$deps" >/dev/null

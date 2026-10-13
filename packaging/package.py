@@ -118,7 +118,8 @@ def collect_binaries():
                                             check=True).stdout.strip(), folder)
     else:
         shutil.copy2(OUT / 'static' / 'vwport', folder)
-    subprocess.run(['strip', '--strip-unneeded', str(folder / ('vwport.exe' if WINDOWS else 'vwport'))], check=False)
+    if strip := shutil.which('strip') or shutil.which('llvm-strip'):
+        subprocess.run([strip, '--strip-unneeded', str(folder / ('vwport.exe' if WINDOWS else 'vwport'))], check=False)
     return folder
 
 
