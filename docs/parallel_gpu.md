@@ -612,3 +612,11 @@ Script: phases of 12 s alternating toggle masks, FPS and stage B µs per draw
 - GPU profile on that map (`VW_GPU_PROFILE=1`): 22.8 ms/frame, of which 9.8 ms GPU idle between
   submissions; the GPU is not the limit. Per frame it uploads three 1920x1080, two 1280x720 and
   two 960x540 images (~35 MB) and runs a 32640-group compute shader 21 times (2.4 ms).
+- **Vertex input memo (stage B).** In UO the workers' prepared vertex inputs rarely match (their
+  V#s are read early), so stage B built the attribute and binding descriptions for nearly
+  every draw (`GetVertexInputs`, V# format remapping: ~10% of stage B). They depend on the V#s'
+  formats and strides, not on where the streams are: `ResolveVertexBuffers` remembers them per
+  pipeline, instance step rates and V#s with base address and record count masked (256
+  entries, thread-local). Toggle 1 << 51 switches it off. 47.5 vs 45.7 FPS, stage B 5.09 vs
+  5.27 µs/draw; screenshots taken at equal intervals differ no more with the toggle than
+  without.
