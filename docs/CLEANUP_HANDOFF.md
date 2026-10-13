@@ -41,7 +41,8 @@ and what is open. `docs/odin/HANDOFF.md` and `docs/unicorn/HANDOFF.md` cover the
 - **Launcher:** `launcher/vw_launcher.py` is themed per game (`GAMES`). The entry scripts are
   `odin_launcher.py` and `unicorn_launcher.py` (UO: navy and gold, the war-table backdrop). It has
   resolution, display mode, VSync, FPS counter, FSR 1 and sharpening options.
-- **Packages:** `python3 packaging/package.py odin|unicorn` writes four files on Linux: the
+- **Packages** (two files since 2026-10-13 on `unicorn-overlord`: the launcher with vwport
+  inside, built against `packaging/deps.sh`, and LICENSE; before that:) `python3 packaging/package.py odin|unicorn` writes four files on Linux: the
   launcher (with run.py, scripts and patches inside), a static `vwport` (`build.sh --static`,
   GPU library linked in), README.txt and LICENSE. `vw-gpu-capabilities` became
   `vwport --gpu-device`. Both packages were run from a clean folder.

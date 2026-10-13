@@ -52,7 +52,7 @@ shown so far (everything through the first battle renders and the text is Englis
 ```
 VW_GAME_DIR=$HOME/Downloads/game_dump/CUSA36381 VW_DATA_DIR=$HOME/unicorn_overlord_pc/run_uo bash run.sh
 python3 launcher/unicorn_launcher.py          # the launcher (data: run_uo/)
-python3 packaging/package.py unicorn          # dist/Unicorn Overlord PC/: 4 files
+python3 packaging/package.py unicorn          # dist/Unicorn Overlord PC/: launcher + LICENSE
 ```
 (with the shell environment cleaned as in docs/odin/HANDOFF.md). Saves, caches and vw.ini are
 in `run_uo/`. `run.sh` builds and then runs `run.py`, so since 2026-10-13 UO runs with run.py's
@@ -60,6 +60,21 @@ defaults: deferred and stale readbacks on (graphics options in vw.ini). The batt
 correctly with them; switch them off in the menu if something looks wrong.
 
 The per-game settings are in `scripts/game_profiles.py` (`CUSA36381`: the native PSN modules).
+
+## Release package (2026-10-13)
+
+`dist/Unicorn Overlord PC/` holds two files: the launcher (PyInstaller, one file) with run.py,
+scripts/, patches/ and `bin/vwport` inside, and LICENSE. `vwport` links pinned static libraries
+from `packaging/deps.sh` (FFmpeg reduced to H.264/HEVC/MP3/AAC/PNG decoding and MP4 demuxing,
+SDL3, fmt, Zydis, xxHash, zlib; checksums in the script, built once into `out/deps/prefix`), so
+it needs only libc, libm and the Vulkan loader (before: ~130 libraries, the system FFmpeg's
+whole tree, tied to its soname). Each `--run` process uses its own unpacked vwport; a `vwport`
+beside the launcher replaces it. Windows: `packaging/windows/build.sh` does the same with
+`-static` (libc++ inside); not run yet.
+
+Offline system libraries: `runtime_services.c` (users, system, PlayGo, DiscMap, devices),
+`runtime_online.c` (network, PSN, trophies), `runtime_dialogs.c` (common dialogs, IME, sign-in),
+sharing `runtime_offline.h`.
 
 ## Render resolution (PS4 Pro path)
 

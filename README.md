@@ -5,7 +5,7 @@ Native Linux and Windows ports of two Vanillaware games for the PlayStation 4:
 | Game | Dump | Branch | State |
 |---|---|---|---|
 | Odin Sphere Leifthrasir | CUSA05083 (US), app 01.01 | `odin-sphere` | Playable |
-| Unicorn Overlord | CUSA36381 (Asia, English patch), app 01.04 | `unicorn-overlord` | Prologue and first battles playable; movies not implemented |
+| Unicorn Overlord | CUSA36381 (Asia, English patch), app 01.04 | `unicorn-overlord` (this repository's `main`) | Prologue, chapter 1 and its first battle played; saving works; every system function the game imports is implemented |
 
 The game's own executable runs directly on the PC's processor (the PS4 uses the same x86-64
 architecture). A runtime written for these games replaces the PS4 system libraries, and the
@@ -77,7 +77,7 @@ packages. `shell.nix` lists them.
 git clone --recursive https://github.com/hachi23/unicorn_overlord_pc
 cd unicorn_overlord_pc
 bash build.sh                                  # out/vwport and out/gpu/libvwgpu.so
-VW_GAME_DIR=/path/to/CUSA05083 bash run.sh     # builds, prepares the game and starts it
+VW_GAME_DIR=/path/to/CUSA36381 bash run.sh     # builds, prepares the game and starts it
 ```
 
 `run.sh` builds first and then runs `run.py`, which does the same on every platform. `run.py`
@@ -88,9 +88,11 @@ folder).
 On Windows, build in an MSYS2 CLANG64 shell. See
 [packaging/windows/README.md](packaging/windows/README.md).
 
-To package a release, run `python packaging/package.py odin`. On Linux it builds a static
-`vwport` (`build.sh --static`, the GPU library linked in) and writes four files: the launcher
-(with the runtime scripts inside), `vwport`, `README.txt` and `LICENSE`.
+To package a release, run `python packaging/package.py unicorn`. On Linux it builds
+`packaging/deps.sh` (pinned static FFmpeg with only the decoders the port uses, SDL3, fmt, Zydis,
+xxHash, zlib; a few minutes the first time) and a `vwport` with them and the GPU library linked
+in (`build.sh --static`), which needs only libc, libm and the Vulkan loader. `dist/` then holds
+two files: the launcher, with the runtime scripts and `vwport` inside, and `LICENSE`.
 
 ### Tests
 
