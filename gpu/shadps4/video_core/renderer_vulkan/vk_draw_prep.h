@@ -129,16 +129,27 @@ public:
     /// GPU thread: counts whether a prepared draw was used; prints every 5 s (VW_FRAME_STATS).
     void Count(bool used);
 
+    /// Draws per chunk: workers claim chunks, so several of them prepare one large buffer.
+    static constexpr u32 ChunkDraws = 48;
+    /// Where a worker starts preparing a chunk (recorded by the scanner).
+    struct Chunk {
+        u32 first_draw;
+        u32 offset;             ///< word offset of its first packet in `commands`
+        u64 checksum;           ///< register checksum before that packet
+        AmdGpu::RegDelta delta; ///< registers written since the buffer start, values here
+    };
     struct Submission {
         u64 seq{};
         std::vector<u32> commands;
         std::unique_ptr<PreparedDraw[]> draws;
         u32 num_draws{};
-        std::vector<std::unique_ptr<u32[]>> flat_chunks; ///< from the claiming worker
+        u32 num_chunks{}; ///< upper bound of chunks.size(), size of `chunk_claimed`
+        std::vector<std::unique_ptr<u32[]>> flat_chunks; ///< from the workers, under `mutex`
         u64 start_checksum{}, end_checksum{}; ///< set by the scanner
         AmdGpu::RegDelta delta;                ///< registers written, values at the end
+        std::vector<Chunk> chunks;             ///< set by the scanner
+        std::unique_ptr<std::atomic<bool>[]> chunk_claimed;
         std::atomic<bool> scanned{false};
-        std::atomic<bool> claimed{false};
         std::atomic<bool> gpu_done{false};
     };
 
@@ -162,6 +173,10 @@ private:
     std::condition_variable_any cv;
     std::deque<std::shared_ptr<Submission>> submissions; ///< ordered by seq
     std::atomic<u64> gpu_seq{0};
+    /// The GPU thread's next draw in submission `gpu_seq`, every 8 draws (own cache line: the
+    /// workers read it).
+    alignas(64) std::atomic<u32> gpu_draw{0};
+    char gpu_draw_pad[60];
     std::shared_ptr<Submission> current;
 
 public:

@@ -57,6 +57,7 @@ enum : std::uint64_t {
     PipelinedIndirectDraws = 1ull << 46,
     ConstRamGuard = 1ull << 47,
     PreparedVertexMatch = 1ull << 48,
+    ChunkedPreparation = 1ull << 50,
     OrderedGuestWrites = 1ull << 49,
     UpdateImageFastPath = 1u << 30,
 };
