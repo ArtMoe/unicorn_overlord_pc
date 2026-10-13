@@ -59,6 +59,7 @@ enum : std::uint64_t {
     PreparedVertexMatch = 1ull << 48,
     ChunkedPreparation = 1ull << 50,
     VertexInputMemo = 1ull << 51,
+    VertexRing = 1ull << 52,
     OrderedGuestWrites = 1ull << 49,
     UpdateImageFastPath = 1u << 30,
 };
