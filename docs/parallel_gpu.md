@@ -561,3 +561,35 @@ stage B ~76% busy. Screenshots in both modes differ no more than two shots in th
 (rain, animated lighting). Combat scenes: 25-46 FPS, stage B 75-84% busy, so stage B is the
 next limit. The 1440p/4K modes and Odin Sphere gameplay were not measured; Odin Sphere boots to
 its menus without errors.
+
+## Stage A after the drain fix (2026-10-13, night)
+
+Benchmark: UO's first battle map in its tutorial state (the units wait, so the scene holds;
+the camera position varies between restarts, so only A/B inside one run is compared).
+Script: phases of 12 s alternating toggle masks, FPS and stage B µs per draw
+(busy share / draws per second).
+
+- With the drain gone, stage B waits for packets (~14% of its samples in the `DrawPipe` spin)
+  and stage A waits ~1-3%: **stage A is the limit**. Its profile: PM4 decode ~32%
+  (`ProcessGraphics`, register apply, `HashRegisterPacket`, `NextPacket`, `ProcessCommands`),
+  packet building ~21% (`Draw`, `PostDraw`, `CollectRingBindings`), pipeline selection for
+  draws not prepared by the workers ~10-14%.
+- Draw preparation (toggle 8192) is worth ~10% (39.3 vs 35.8 FPS); the prepared resources
+  (4096) no longer change the frame rate.
+- **TLS model:** libvwgpu is linked by vwport, not dlopen'ed, so it is built with
+  `-ftls-model=initial-exec` (not on Windows). `__tls_get_addr` was 2-3% of both GPU threads.
+  40.0 vs 39.1 FPS, stage B 5.04 vs 5.33 µs/draw (two runs, same spot).
+- **The constant-RAM guard** keeps its ranges sorted (binary search): 2.4% → 1.0% of stage A.
+  UO dumps into ~256 separate ranges.
+- **Prepared draws and the vertex V#s.** `VW_FRAME_STATS` now breaks down why prepared draws were
+  not used (`prepared draws:` line) and why workers gave up (`worker failures:`). Workers gave up
+  on 4% (map) to 26% (unit panel) of the draws, all with "no variant", always because of
+  `vs_attribs`: they read the vertex V# table ahead of the constant engine, so the V#s can be
+  stale. Worse, a stale V# that happened to match another variant was accepted, since the GPU
+  thread verified registers and flattened user data only.
+  Now workers take a variant that matches in everything but `vs_attribs`, and the GPU thread
+  recomputes `vs_attribs` from the live V#s before it uses a prepared pipeline
+  (`TryPreparedPipeline`; counted as `vertex`). Toggle 1 << 48 turns the worker side off.
+  Result: unavailable 26% → 0, `vertex` rejections 0, 37.3 vs 35.4 FPS (+5.4%, 3 rounds).
+  The remaining unprepared draws are `pending` (~13-22%): the GPU thread reached them before
+  a worker, because one worker prepares a whole command buffer in order.

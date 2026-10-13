@@ -112,6 +112,7 @@ struct PrepWorker {
         Shader::HwStage hw_stage;
         VAddr pgm_base;
         const std::vector<u32>* flat;
+        u32 perm; ///< index in program->modules
     };
     // Node-based: stages keep pointers to these Infos while later stages are inserted.
     std::unordered_map<const Program*, Shader::Info> infos;
