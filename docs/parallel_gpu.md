@@ -649,3 +649,10 @@ Script: phases of 12 s alternating toggle masks, FPS and stage B µs per draw
   tracking). Toggle 1 << 52 switches it off. Stage B 4.55 → 3.96 µs/draw (-13%), stage A
   +0.08; stage A is the limit again (it waits 4%, stage B 74% busy), so the frame rate did not
   change yet (50.0 vs 50.3 FPS).
+- **Guest mapping memo.** `ClampRangeSize` and `CopySparseMemory` run for every constant
+  buffer and vertex stream of every draw; each went into the C runtime's region lookup (a
+  cross-library call, the table generation, an 8-entry scan): ~8% of stage A. The shim now
+  remembers the mapping a thread found last and answers inline while the VMA table generation
+  is unchanged (`runtime_memory_generation`); toggle bit 1 (region cache) turns it off with the
+  runtime's own cache. Stage A 4.95 → 4.58 µs/draw, 52.1 FPS; frames over 1.5x the median
+  52 → 38 per window.
