@@ -244,7 +244,65 @@ bool PipelinedOpcode(PM4ItOpcode opcode) {
 } // namespace
 
 namespace {
+// vw diagnostics (VW_FRAME_STATS): end-of-pipe latency. Stage A stamps each EOP it decodes
+// (and how long after the guest's last submission); the signal pops the stamps in order.
+struct EopLatency {
+    static constexpr u32 Size = 256;
+    std::array<u64, Size> decoded{};
+    std::atomic<u64> head{0}, tail{0};
+    std::atomic<u64> last_submit{0};
+    std::atomic<u64> sum_queue{0}, sum_signal{0}, max_signal{0}, count{0};
+    static u64 Now() {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(
+                   std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+};
+EopLatency g_eop_latency;
+const bool g_eop_stats = std::getenv("VW_FRAME_STATS") != nullptr;
+
+void NoteEopDecoded() {
+    auto& l = g_eop_latency;
+    const u64 now = EopLatency::Now();
+    const u64 h = l.head.load(std::memory_order_relaxed);
+    if (h - l.tail.load(std::memory_order_acquire) < EopLatency::Size) {
+        l.decoded[h % EopLatency::Size] = now;
+        l.head.store(h + 1, std::memory_order_release);
+    }
+    l.sum_queue.fetch_add(now - l.last_submit.load(std::memory_order_relaxed),
+                          std::memory_order_relaxed);
+}
+
+void NoteEopSignaled() {
+    auto& l = g_eop_latency;
+    const u64 t = l.tail.load(std::memory_order_relaxed);
+    if (t == l.head.load(std::memory_order_acquire)) {
+        return;
+    }
+    const u64 now = EopLatency::Now();
+    const u64 latency = now - l.decoded[t % EopLatency::Size];
+    l.tail.store(t + 1, std::memory_order_release);
+    l.sum_signal.fetch_add(latency, std::memory_order_relaxed);
+    u64 max = l.max_signal.load(std::memory_order_relaxed);
+    while (latency > max && !l.max_signal.compare_exchange_weak(max, latency)) {
+    }
+    const u64 n = l.count.fetch_add(1, std::memory_order_relaxed) + 1;
+    static std::atomic<u64> window{0};
+    u64 start = window.load(std::memory_order_relaxed);
+    if (!start) {
+        window.store(now);
+    } else if (now - start > 5'000'000'000ull && window.compare_exchange_strong(start, now)) {
+        std::printf("EOP latency: %llu EOPs, after last submit %.2f ms, decode->signal avg %.2f "
+                    "ms max %.2f ms\n",
+                    (unsigned long long)n, l.sum_queue.exchange(0) / 1e6 / n,
+                    l.sum_signal.exchange(0) / 1e6 / n, l.max_signal.exchange(0) / 1e6);
+        l.count.store(0);
+    }
+}
+
 void SignalEop(const PM4CmdEventWriteEop& eop) {
+    if (g_eop_stats) {
+        NoteEopSignaled();
+    }
     eop.SignalFence(
         [](void* address, u64 data, u32 num_bytes) {
             auto* memory = Core::Memory::Instance();
@@ -1138,6 +1196,9 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
             }
             case PM4ItOpcode::EventWriteEop: {
                 const auto* event_eop = reinterpret_cast<const PM4CmdEventWriteEop*>(header);
+                if (g_eop_stats) {
+                    NoteEopDecoded();
+                }
                 if (rasterizer) {
                     if (rasterizer->RunInOrder(&RunEventWriteEop, event_eop, sizeof(*event_eop))) {
                         NotePendingFences(*event_eop);
@@ -1690,6 +1751,9 @@ void Liverpool::SubmitGfx(std::span<const u32> dcb, std::span<const u32> ccb) {
         queue.submits.emplace(task.handle);
     }
 
+    if (g_eop_stats) {
+        g_eop_latency.last_submit.store(EopLatency::Now(), std::memory_order_relaxed);
+    }
     std::scoped_lock lk{submit_mutex};
     ++num_submits;
     work_retired = false;

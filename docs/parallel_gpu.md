@@ -661,3 +661,31 @@ Script: phases of 12 s alternating toggle masks, FPS and stage B µs per draw
   `NextDraw` now prefetches the next two draws' first lines. `ConstantRing::Allocate` returns
   `NoSpace` instead of an optional (its two stores and 16-byte reload stalled store
   forwarding in `PostDraw`). Stage A 4.58 → 4.50 µs/draw, 52.5 FPS.
+
+## What limits the frame now (2026-10-14, early morning)
+
+UO first battle map, same camera as the first benchmark of the night: 39.1 → ~52.5 FPS. Stage
+A ~4.5 µs/draw (4-7% of it waiting), stage B ~4.1 µs/draw (~80% busy), GPU ~12.8 ms busy of
+~18.3 ms per frame (`VW_GPU_PROFILE`).
+
+New diagnostics (`VW_FRAME_STATS=1`):
+- `Guest equeue waits`: wall time guest threads block in `sceKernelWaitEqueue`, by queue and
+  event. UO: one thread waits on the "EOP QUEUE" (end-of-pipe interrupts) once per frame and
+  is blocked ~92% of the time; the game paces its frames on these interrupts.
+- `EOP latency`: stage A decodes an end-of-pipe packet on average **~9 ms after the guest's
+  last submission**; decode to signal (stage B, the Vulkan recording thread, the copy threads)
+  is only ~0.8 ms.
+
+So the frame rate is set by how long stage A takes to work through a frame's command buffers
+after the game submits them (~3650 draws × ~4.2 µs ≈ 15 ms of serial decoding), not by
+throughput overlap between the stages. A steady 60 FPS needs stage A at ~12-13 ms per frame.
+That calls for splitting stage A's work across threads (decode is serial because the register
+state carries from packet to packet; the draw scanner already replays it, so a design where
+workers build most of each packet and stage A only verifies checksums is the candidate),
+rather than more per-draw tuning.
+
+Tried and reverted tonight: reusing stage A's V# reads between `TryPreparedPipeline` and
+`PostDraw`, with a per-module memo of the vs_attribs check (no change); each `VwStats` counter
+on its own cache line (no change); the Gnmx fill shader (`2ba388c6`, 21 dispatches of 8 MiB
+per frame) as `vkCmdFillBuffer` (GPU time −0.2 ms, frame rate unchanged: the fill is
+bandwidth-bound either way).
