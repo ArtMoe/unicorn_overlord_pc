@@ -553,7 +553,9 @@ void DrawPreparation::WorkerLoop(std::stop_token stop, u32 index) {
                     }
                     draw.vertex.valid = false;
                     const auto* vs = sel.infos[static_cast<u32>(Shader::SwStage::Vertex)];
-                    if (vs && sel.fetch_shader) {
+                    // Only read by the GPU thread with the vertex input memo off.
+                    if (vs && sel.fetch_shader &&
+                        VwToggle::Disabled(VwToggle::VertexInputMemo)) {
                         PrepareVertexInputs(*vs, *sel.fetch_shader, *regs, draw.vertex, arena);
                     }
                     draw.state.store(PreparedDraw::Ready, std::memory_order_release);

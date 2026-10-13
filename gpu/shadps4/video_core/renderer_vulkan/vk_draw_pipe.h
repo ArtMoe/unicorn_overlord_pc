@@ -235,10 +235,12 @@ private:
     }
 
     static inline thread_local bool on_stage_b = false;
-    Handler handler;
+    // vw: one cache line per writer: stage B stores busy_cycles and consumed for every packet,
+    // stage A head/unpublished; sharing a line with them bounced it between the cores.
+    alignas(64) Handler handler; ///< read-only after construction, read by both stages
     void* context;
     std::unique_ptr<u8[]> ring;
-    u64 head = 0; ///< stage A's write position
+    alignas(64) u64 head = 0; ///< stage A's write position
     u64 published_head = 0; ///< stage A: the last position handed to B
     u64 consumed_seen = 0;  ///< stage A: B's position when last read
     u32 unpublished = 0;    ///< stage A: packets committed since the last publication
