@@ -1645,6 +1645,54 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
         attributes.assign(ready->attributes, ready->attributes + ready->count);
         bindings.assign(ready->bindings, ready->bindings + ready->count);
         guest_buffers.assign(ready->buffers, ready->buffers + ready->count);
+    } else if (fetch && !fetch->attributes.empty() &&
+               !VwToggle::Disabled(VwToggle::VertexInputMemo)) {
+        // vw: the descriptions depend on the V#s' formats and strides, not on where the
+        // streams are: remembered per pipeline, step rates and masked V#s.
+        struct Memo {
+            const GraphicsPipeline* pipeline;
+            u32 step_rate_0, step_rate_1, count;
+            std::array<u64, 2 * MaxVertexBufferCount> words;
+            VertexInputs<vk::VertexInputAttributeDescription2EXT> attributes;
+            VertexInputs<vk::VertexInputBindingDescription2EXT> bindings;
+        };
+        thread_local std::unique_ptr<std::array<Memo, 256>> memos;
+        if (!memos) {
+            memos = std::make_unique<std::array<Memo, 256>>();
+        }
+        const auto& vs_info = pipeline->GetStage(Shader::SwStage::Vertex);
+        const u32 count = static_cast<u32>(fetch->attributes.size());
+        std::array<u64, 2 * MaxVertexBufferCount> words;
+        u64 hash = reinterpret_cast<uintptr_t>(pipeline) ^
+                   (u64(regs.vgt_instance_step_rate_0) << 32 | regs.vgt_instance_step_rate_1);
+        for (u32 i = 0; i < count; ++i) {
+            const auto buffer = fetch->attributes[i].GetSharp(vs_info);
+            guest_buffers.push_back(buffer);
+            std::memcpy(&words[2 * i], &buffer, sizeof(buffer));
+            words[2 * i] &= ~((u64{1} << 40) - 1);         // base address
+            words[2 * i + 1] &= ~u64{0xFFFFFFFF};            // num_records
+            hash = (hash ^ words[2 * i] ^ (words[2 * i + 1] >> 7)) * 0x9E3779B97F4A7C15ull;
+        }
+        auto& memo = (*memos)[(hash >> 56) ^ (hash & 0xFF)];
+        if (memo.pipeline != pipeline || memo.count != count ||
+            memo.step_rate_0 != regs.vgt_instance_step_rate_0 ||
+            memo.step_rate_1 != regs.vgt_instance_step_rate_1 ||
+            std::memcmp(memo.words.data(), words.data(), 2 * count * sizeof(u64)) != 0) {
+            memo.pipeline = nullptr;
+            memo.attributes.clear();
+            memo.bindings.clear();
+            VertexInputs<AmdGpu::Buffer> unused;
+            pipeline->GetVertexInputs(memo.attributes, memo.bindings, divisors, unused,
+                                      regs.vgt_instance_step_rate_0,
+                                      regs.vgt_instance_step_rate_1);
+            memo.pipeline = pipeline;
+            memo.count = count;
+            memo.step_rate_0 = regs.vgt_instance_step_rate_0;
+            memo.step_rate_1 = regs.vgt_instance_step_rate_1;
+            std::memcpy(memo.words.data(), words.data(), 2 * count * sizeof(u64));
+        }
+        attributes = memo.attributes;
+        bindings = memo.bindings;
     } else {
         pipeline->GetVertexInputs(attributes, bindings, divisors, guest_buffers,
                                   regs.vgt_instance_step_rate_0, regs.vgt_instance_step_rate_1);

@@ -58,6 +58,7 @@ enum : std::uint64_t {
     ConstRamGuard = 1ull << 47,
     PreparedVertexMatch = 1ull << 48,
     ChunkedPreparation = 1ull << 50,
+    VertexInputMemo = 1ull << 51,
     OrderedGuestWrites = 1ull << 49,
     UpdateImageFastPath = 1u << 30,
 };
