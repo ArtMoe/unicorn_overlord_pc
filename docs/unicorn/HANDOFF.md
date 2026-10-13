@@ -15,7 +15,12 @@ Read `docs/odin/HANDOFF.md` first for building on Linux, the run scripts and the
 - Boots, plays the opening, reaches the title (New Game / Load Game / Library / System, English
   through the EN patch), starts a new game, plays the prologue story scenes and the first battle
   (defence of the capital): tutorial, unit movement, unit panels, text log, minimap all work.
-- Not reached yet: the end of the first battle, the world map, saving, full-motion video.
+- 2026-10-13 (later): no missing imports are left (`--check-imports`: 0). Played past the
+  prologue battle into chapter 1 (Alain and Lex, Scarlett in the cathedral) and the first real
+  battle (deploy from the Command Post, move, fight, liberate and garrison Palevia Town). The
+  game autosaves before that battle (`SAVEDATA0`, 5 MB, icon and param written).
+- Not reached yet: the end of the first real battle, the world map, a load from the title, a
+  movie playing in the game (CRI Mana is linked, but no movie was found in the CPKs yet).
 - Performance on the test laptop (Ryzen 5 2500U, the game on the discrete RX 560X, AC power):
   first battle map ~19 FPS at first, ~27 after the draw-pipe batching, **~53 FPS** after the
   2026-10-13/14 work (below; frames take one or two 60 Hz vblanks). Goal: a steady 60.
@@ -101,15 +106,20 @@ every import the game would stop at without running it; names come from shadPS4'
   `Getthreadid`, `sceKernelCancelEventFlag`, `AvailableDirectMemorySize`, `Getdents`, `Chmod`,
   `Utimes`, `IsNeoMode` (0), sanitizer queries, `sceLibcHeapGetTraceInfo` (as shadPS4),
   Win32 RTC file times, `sceSysmoduleLoadModuleInternalWithArg`/`GetModuleInfoForUnwind`.
-- **`sce::Json` (libSceJson2, a firmware library)**: only the set-up (MemAllocator,
-  Initializer) is stubbed. Parsing/building values is not implemented: the first use stops at
-  that import with its name.
+- **`sce::Json` (libSceJson2, a firmware library; only `libSceNpCppWebApi` imports it)**:
+  `src/runtime_json.c`, values/objects/arrays/strings, `Parser::parse` (static) and
+  `Value::serialize`; each guest object holds one pointer to host memory. Type numbers come
+  from the library's own `set(6)`/`set(7)` before `referArray`/`referObject`.
+- **Movies**: `sceVideodec2*` in `src/runtime_videodec.c` with the same FFmpeg decoder as
+  libSceVideodec (layouts and error codes from shadPS4; picture information after each picture).
+- **Others**: Rtc RFC 3339/2822/asctime parsing and RFC 3339 formatting,
+  `sceSaveDataTransferringMount` (another title's save, read-only: not found unless present),
+  `sceSigninDialogGetResult` (cancelled: signed out), `sceImeDialogGetPanelSizeExtended`,
+  `sceHttpUriEscape`, `sceAjmStrError`, DiscMap `7C980FFB0AA27E7A`, ulobjmgr register/unregister.
 - **NID names**: `src/import_names.inc` maps NIDs to names for the runtime's lookup; ~340 were
   added. POSIX imports are looked up as `#libkernel` (runtime.c canonical_name): name them so.
 
-Still missing (stop when first called): `sceVideodec2*` (movies: an FFmpeg backend like
-`runtime_videodec.c` is needed), the rest of `sce::Json`, `sceSaveDataTransferringMount`,
-`sceImeDialogGetPanelSizeExtended`, `sceAjmStrError`, one DiscMap and two `ulobjmgr` NIDs.
+Nothing is missing any more; unit tests: `bash build.sh --test` (videodec, rtc, json, ...).
 
 ## Performance work
 

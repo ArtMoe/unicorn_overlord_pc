@@ -80,7 +80,8 @@ and what is open. `docs/odin/HANDOFF.md` and `docs/unicorn/HANDOFF.md` cover the
    - Removed in the cleanup (2026-10-14): the opt-in texture binding helper (with early draw
      inputs, bit 35), hot pages and async fences, measured neutral or slower.
 2. Run the Windows script on the Windows PC and fix what it reports.
-3. UO: movies (`sceVideodec2*`), `sce::Json`, saving; see its handoff.
+3. UO: all imports are implemented and saving works (2026-10-13); next is playing further
+   (first real battle to the world map, loading a save, a movie); see its handoff.
 
 ## Build notes
 
