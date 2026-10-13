@@ -11,9 +11,9 @@ Read `docs/odin/HANDOFF.md` first for building on Linux, the run scripts and the
   through the EN patch), starts a new game, plays the prologue story scenes and the first battle
   (defence of the capital): tutorial, unit movement, unit panels, text log, minimap all work.
 - Not reached yet: the end of the first battle, the world map, saving, full-motion video.
-- Performance on the test laptop (Ryzen 5 2500U, the game on the discrete RX 560X): battle map
-  ~19 FPS at first, **~27 FPS** after the draw-pipe batching (below). CPU-bound, the GPU is
-  15-20% busy. Goal: 60.
+- Performance on the test laptop (Ryzen 5 2500U, the game on the discrete RX 560X, AC power):
+  first battle map ~19 FPS at first, ~27 after the draw-pipe batching, **~53 FPS** after the
+  2026-10-13/14 work (below; frames take one or two 60 Hz vblanks). Goal: a steady 60.
 
 ## The dump
 
@@ -121,29 +121,19 @@ published every 16 (`VW_PIPE_BATCH`) and before A drains, waits for ring space, 
 (`YIELD` in liverpool.cpp) or ends a submission; the space check uses the last position seen.
 18.6 → 27.3 FPS. bbport (the project this port was forked from) still publishes per draw.
 
-Profile after that (perf, `--call-graph dwarf`):
-- Stage A (`GpuComm`): ProcessGraphics + register packets ~25%, Rasterizer::Draw/PostDraw ~20%,
-  waiting for B (DrainDrawPipe) ~12%, CollectRingBindings ~4%, TryPreparedPipeline ~2%.
-  The prepared-draw fast path (TryPreparedPipeline) misses for most sprites: it requires the
-  whole register checksum to match, and every sprite changes its user data (texture, vertex
-  pointers); the regular path then rebuilds StageSpecialization (zeroed inline arrays of 32+16+
-  16+16 entries and a fetch shader parse) per draw.
-- Stage B (`DrawRec`): ~27% spin-waiting, ~69% work: ResolveVertexBuffers 21% (every 128-byte
-  sprite quad goes through BufferCache::ObtainBuffer and a small guest copy), BindResources 14%,
-  BindTextures 8%.
+Then (2026-10-13/14, details in `docs/parallel_gpu.md`, sections from "Constant engine dumps
+without a drain" on): constant engine dumps no longer drain the draw pipe (31 → 39 FPS);
+TLS model, inlined per-packet calls, vertex input memo, no locked add per draw, false-sharing
+fixes, vertex streams through the constant ring, a guest-mapping memo and prepared-draw
+prefetch (39 → ~53 FPS). Benchmark: `drive_battle.sh` to the first battle map in its
+tutorial state (the units wait), then `ab.sh` (toggle A/B in one run; FPS and stage A/B µs
+per draw).
 
-Next steps, by expected gain:
-1. Stage B: a fast path for small per-frame vertex buffers (copy into the stream buffer instead
-   of the buffer cache lookup); skip rebinding resources/textures identical to the previous draw.
-2. Stage A: a pipeline fast path keyed on the pipeline-relevant state and the specialization
-   inputs only (not user data addresses); cheaper register packet application.
-3. Toggle bits 35-37 (EarlyDrawInputs, ConstantRing, DrawPipeline; Odin Sphere needs them
-   off: black/partial frames and flicker), one at a time, checking the battle and menus.
-4. FPS measurement: `VW_FPS_LOG=1` prints `[fps] X (Y ms)` once a second.
-
-UO performance work is paused (2026-10-13): a fetch-V# snapshot and a draw-merge diagnostic
-gave no gain (git stash "uo session 2026-10-13", kept for reference). The next question is
-why only two threads are busy on a 4-core/8-thread CPU (see the cleanup handoff).
+Where it stands: stage A ~4.5 µs/draw, stage B ~4.0 µs/draw, GPU ~12.8 ms busy per ~18 ms
+frame. The game paces its frames on end-of-pipe interrupts (`Guest equeue waits`), and stage
+A reaches a frame's EOPs ~9 ms after the game submits (`EOP latency`): stage A's serial
+decoding (~15 ms of work per frame) sets the frame rate. Next: split stage A's work across
+threads (see the cleanup handoff, Open item 1).
 
 ## Test machine notes
 
