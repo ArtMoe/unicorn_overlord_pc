@@ -7,7 +7,6 @@
 #include "common/shared_first_mutex.h"
 #include "video_core/buffer_cache/buffer_cache.h"
 #include "video_core/page_manager.h"
-#include "video_core/renderer_vulkan/vk_bind_helper.h"
 #include "video_core/renderer_vulkan/vk_constant_ring.h"
 #include "video_core/renderer_vulkan/vk_draw_pipe.h"
 #include "video_core/renderer_vulkan/vk_draw_prep.h"
@@ -240,10 +239,8 @@ private:
     void BindBuffers(const Shader::Info& stage, const PreparedStage* prepared,
                      Shader::Backend::Bindings& binding,
                      Shader::PushData& push_data, u32& write_index);
-    /// `on_helper`: run by the texture binding helper; out-of-date images are not refreshed.
     void BindTextures(const Shader::Info& stage, const PreparedStage* prepared,
-                      Shader::Backend::Bindings& binding, u32& write_index, bool& barrier,
-                      bool on_helper = false);
+                      Shader::Backend::Bindings& binding, u32& write_index, bool& barrier);
     bool BindResources(const Pipeline* pipeline);
     void BindSamplers(const Shader::Info& stage, const PreparedStage* prepared,
                       Shader::Backend::Bindings& binding, u32& write_index);
@@ -272,14 +269,6 @@ private:
                              u32 first_image_idx, bool& barrier, TextureSet*& slot);
     /// The prepared sharps of `stage` in the current prepared draw, if they fit it.
     const PreparedStage* FindPreparedStage(const Shader::Info& stage) const;
-    /// Whether the helper may bind textures for this pipeline at all (fixed descriptor layout,
-    /// no storage writes that invalidate cached images).
-    bool HelperEligible(const Pipeline* pipeline) const;
-    /// Whether every texture of `stage` takes the memoized path without refreshing, creating or
-    /// redirecting anything that records commands or touches the buffer cache.
-    bool TexturesBindableOnHelper(const Shader::Info& stage, const PreparedStage* prepared);
-    static void RunTextureTask(void* rasterizer);
-    static void JoinBindHelper(void* rasterizer);
 
     /// VW_GPU_PROFILE: a timestamp where a render pass starts (vk_gpu_profiler.h).
     void MarkPass(const GraphicsPipeline* pipeline, const RenderState& state);
@@ -413,32 +402,6 @@ private:
         u64 offset;
         vk::IndexType type;
     } index_bind{};
-    /// The direct draw whose vertex/index buffers BindResources may resolve early.
-    struct DrawInputs {
-        const GraphicsPipeline* pipeline;
-        const PreparedDraw* prepared;
-        u32 index_offset;
-        bool is_indexed;
-        bool pending;
-        bool resolved;
-    } draw_inputs{};
-    // vw: textures of a draw bound on the helper thread while this thread binds buffers.
-    static bool BindHelperWanted();
-    BindHelper bind_helper{BindHelperWanted()};
-    struct TextureTask {
-        struct Stage {
-            const Shader::Info* info;
-            const PreparedStage* prepared;
-            Shader::Backend::Bindings binding;
-            u32 write_index;
-        };
-        std::array<Stage, Shader::MaxStageTypes> stages;
-        u32 count = 0;
-        u32 completed = 0; ///< stages the helper bound; the rest are bound after the join
-        bool barrier = false;
-    } texture_task;
-    /// Draws whose textures the helper bound completely, partly or not at all (VW_FRAME_STATS).
-    u64 helper_full = 0, helper_partial = 0, helper_serial = 0;
     /// The memoized cache entry of each image binding (FindImage memo taken), else null.
     boost::container::static_vector<ImageDescCacheEntry*, Shader::NUM_IMAGES> image_binding_entries;
     bool fault_process_pending{};

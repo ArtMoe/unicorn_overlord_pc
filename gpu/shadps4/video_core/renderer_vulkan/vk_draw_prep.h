@@ -39,8 +39,6 @@ inline u64 g_prep_outcomes[NumPrepOutcomes]{};
 /// Why draw-preparation workers gave up on a draw (all workers, relaxed).
 enum PrepFailure : u32 { FailNoProgram, FailFault, FailNoVariant, FailOther, NumPrepFailures };
 inline std::atomic<u64> g_prep_failures[NumPrepFailures]{};
-/// For "no variant": the field where the closest compiled variant differs (FirstDifference).
-inline std::atomic<u64> g_prep_variant_diff[9]{};
 
 
 struct PreparedStage {

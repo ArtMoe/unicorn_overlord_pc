@@ -615,14 +615,6 @@ void DrawPreparation::Count(bool was_used) {
         std::printf(" %s=%llu", failures[i],
                     static_cast<unsigned long long>(g_prep_failures[i].exchange(0)));
     }
-    static constexpr const char* fields[] = {"vs_attribs", "runtime_info", "fetch", "fmasks",
-                                             "start", "buffers", "images", "samplers", "equal"};
-    std::printf("; variant differs in:");
-    for (u32 i = 0; i < 9; ++i) {
-        if (const u64 n = g_prep_variant_diff[i].exchange(0)) {
-            std::printf(" %s=%llu", fields[i], static_cast<unsigned long long>(n));
-        }
-    }
     std::printf("\n");
 }
 

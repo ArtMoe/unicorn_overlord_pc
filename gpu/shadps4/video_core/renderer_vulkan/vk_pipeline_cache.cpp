@@ -1160,16 +1160,11 @@ PipelineCache::Result PipelineCache::GetProgram(PipelineSelection& sel, HwStage 
             // The vertex V#s this worker read may be stale (their table is written by the
             // constant engine in stream order); the GPU thread verifies them.
             it = std::ranges::find_if(program->modules, [&](const Program::Module& module) {
-                return spec.FirstDifference(module.spec, true) == 8;
+                return spec.Matches(module.spec, false);
             });
         }
         if (it == program->modules.end()) {
             g_prep_failures[FailNoVariant].fetch_add(1, std::memory_order_relaxed);
-            u32 closest = 0;
-            for (const auto& module : program->modules) {
-                closest = std::max(closest, spec.FirstDifference(module.spec));
-            }
-            g_prep_variant_diff[closest].fetch_add(1, std::memory_order_relaxed);
             worker.failed = true;
             return {};
         }

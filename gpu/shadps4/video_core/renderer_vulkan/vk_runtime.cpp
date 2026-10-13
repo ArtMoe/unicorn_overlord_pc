@@ -194,7 +194,6 @@ void Runtime::InlineData(VideoCore::Buffer* dst, u64 offset, u32 value) {
 bool Runtime::Transit(VideoCore::Image* image, vk::ImageLayout dst_layout,
                       vk::PipelineStageFlags2 dst_stage, vk::AccessFlags2 dst_access,
                       std::optional<VideoCore::SubresourceRange> subres_range) {
-    BeforeImageAccess();
     const size_t prev_num_barriers = static_cast<size_t>(image_barriers.size());
     image->GetBarriers(image_barriers, dst_layout, dst_access, dst_stage, subres_range);
     return image_barriers.size() != prev_num_barriers;
@@ -705,7 +704,6 @@ void Runtime::ClearImage(VideoCore::Image* dst, const VideoCore::SubresourceRang
 }
 
 void Runtime::SetBackingSamples(VideoCore::Image* image, u32 num_samples, bool copy_backing) {
-    BeforeImageAccess();
     auto& backing = image->backing;
     auto& backing_images = image->backing_images;
     const auto& info = image->info;
@@ -853,7 +851,6 @@ void Runtime::AccessBuffer(const VideoCore::Buffer* handle, u64 offset, u64 size
 }
 
 void Runtime::FlushBarriers() {
-    BeforeImageAccess();
     vk::DependencyInfo dep_info{};
 
     if (memory_barrier.srcStageMask) {

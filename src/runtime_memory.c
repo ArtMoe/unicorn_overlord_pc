@@ -699,10 +699,8 @@ void *runtime_low_map(size_t size, int prot) {
  * 4096 resource sharps read by the draw-preparation workers,
  * 8192 prepared draws from the draw-preparation workers,
  * 16384 small read-only buffer copies on the recording thread,
- * 32768 hot pages (opt-in with VW_HOT_PAGES=1),
  * 65536 unprotect the 256 KiB window around a guest write fault (VW_FAULT_WINDOW KiB),
  * 131072 large guest memory copies split across copy threads (VW_COPY_THREADS),
- * 262144 with VW_ASYNC_FENCES=1: wait for guest copies at fences again,
  * 524288 small guest copies batched for the copy threads instead of the recording thread,
  * 1073741824 the lock-free UpdateImage path for clean, tracked images. */
 /* Bits 32 and up: the draw pipeline and related GPU thread work (gpu/shim/vw_toggles.h). */
