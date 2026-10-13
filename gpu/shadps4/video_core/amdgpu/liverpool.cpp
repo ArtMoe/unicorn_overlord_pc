@@ -425,11 +425,11 @@ Liverpool::Task Liverpool::ProcessCeUpdate(std::span<const u32> ccb) {
             break;
         }
         case PM4ItOpcode::DumpConstRam: {
-            // vw: earlier draws on the recording thread may still read constants here.
-            if (rasterizer) {
-                rasterizer->DrainDrawPipe(Vulkan::DrawPipe::ReasonConstRam);
-            }
             const auto* dump_const = reinterpret_cast<const PM4DumpConstRam*>(header);
+            // vw: earlier draws on the recording thread may still read the memory written here.
+            if (rasterizer) {
+                rasterizer->BeforeConstRamDump(dump_const->Address<VAddr>(), dump_const->Size());
+            }
             memcpy(dump_const->Address<void*>(),
                    cblock.constants_heap.data() + dump_const->Offset(), dump_const->Size());
             break;

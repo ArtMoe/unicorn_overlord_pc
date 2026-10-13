@@ -113,6 +113,9 @@ public:
     /// Stage A: guest memory the recording thread will write for work handed to it (storage
     /// buffers, DMA, WriteData, fences); constants overlapping it are bound there, not copied here.
     void NotePendingGpuWrite(VAddr address, u64 size);
+    /// Stage A, before a constant engine dump writes guest memory: waits for the recording
+    /// thread only if a draw it has not recorded yet reads guest memory a dump writes.
+    void BeforeConstRamDump(VAddr address, u64 size);
     /// At a flip, in draw order: closes the frame for VW_GPU_PROFILE and VwStats::gpu_frames.
     void NoteFrameStart();
     /// Before a guest-visible write: fences deferred earlier are written first.
@@ -226,7 +229,7 @@ private:
     const AmdGpu::ComputeProgram& CsRegs() const;
     static void RunDrawPacket(void* rasterizer, const u8* packet, u32 size);
     struct RingBinding;
-    void CollectRingBindings(const Shader::Info& stage, const PreparedDraw* prepared,
+    bool CollectRingBindings(const Shader::Info& stage, const PreparedDraw* prepared,
                              boost::container::static_vector<RingBinding, Shader::NUM_BUFFERS>& out);
     void PrintPipeStats();
     /// The registers of the draw being recorded: stage B's copy there, else Liverpool's.
@@ -465,6 +468,13 @@ private:
     VAddr pending_min = ~VAddr{0}, pending_max = 0; ///< bounds of pending_writes
     u32 pending_checks = 0;
     bool PendingWriteOverlaps(VAddr address, u64 size);
+    /// Stage A: guest memory constant engine dumps wrote (merged ranges), and the draw pipe
+    /// position after the last packet whose recording reads some of it from guest memory
+    /// (buffers outside the constant ring, vertex streams).
+    std::vector<std::pair<VAddr, VAddr>> const_ram_targets;
+    VAddr const_ram_min = ~VAddr{0}, const_ram_max = 0;
+    u64 const_ram_reader = 0;
+    bool ConstRamTargetOverlaps(VAddr address, u64 size) const;
     /// Stage B: the ring bindings of the stages of the packet being recorded.
     struct RingStage {
         const Shader::Info* info;

@@ -13,6 +13,11 @@ namespace Shader::Gcn {
 
 namespace {
 thread_local const FetchShaderSnapshot* compiler_snapshot = nullptr;
+thread_local const VertexSharps* vertex_sharps = nullptr;
+}
+
+void SetVertexSharps(const VertexSharps* sharps) {
+    vertex_sharps = sharps;
 }
 
 AmdGpu::Buffer VertexAttribute::GetSharp(const Shader::Info& info) const noexcept {
@@ -24,6 +29,14 @@ AmdGpu::Buffer VertexAttribute::GetSharp(const Shader::Info& info) const noexcep
             }
         }
         UNREACHABLE_MSG("Fetch attribute missing from compiler snapshot");
+    }
+    if (vertex_sharps && vertex_sharps->info == &info) {
+        const size_t index = (reinterpret_cast<uintptr_t>(this) -
+                              reinterpret_cast<uintptr_t>(vertex_sharps->attributes)) /
+                             sizeof(VertexAttribute);
+        if (index < vertex_sharps->count) {
+            return vertex_sharps->buffers[index];
+        }
     }
     auto buffer = info.ReadUdReg<AmdGpu::Buffer>(sgpr_base, dword_offset);
     buffer.base_address += inst_offset;

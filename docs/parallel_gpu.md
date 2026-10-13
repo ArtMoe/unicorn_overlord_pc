@@ -528,3 +528,36 @@ now reads guest memory for the constant ring, is not treated as a GPU-side threa
 (`IsGpuSideThreadId` accepts only stage B). Next: a run with `VW_WRITE_LOG=1` that crashes
 prints which logged write landed near the corrupted block; bisect the pipeline toggles
 (38 tasks, 39 pending fence waits, 41 recorder fences, 42 memory writes, 36 constant ring).
+
+## Constant engine dumps without a drain (2026-10-13, Unicorn Overlord)
+
+Measured in UO's first battle on the 4-core/8-thread laptop (Ryzen 5 2500U, RX 560X, AC power,
+`VW_FRAME_STATS=1`): ~31 FPS, ~5500 draws/frame. Per thread (`top -H`): `shadPS4:GpuComm` 97%,
+`vw:DrawRec` 82%, `vw:VkRecorder` 48%, the four `vw:DrawPrep` workers ~15% each; the game's own
+threads ~10% or less. Neither pipeline stage was saturated by work: stage A waited 34% of its
+time and stage B was 59% busy. Almost all of the wait came from one drain, `DumpConstRam` in
+`ProcessCeUpdate`: ~3500 per second (~113 per frame), each waiting for stage B to finish every
+earlier draw.
+
+Skipping the drain (measurement only) gave 31.7 → 40 FPS and then the assertion
+`SurfaceFormat: Unknown data_format=9 and num_format=7` on stage B. The cause:
+`VertexAttribute::GetSharp` read the vertex V#s through the user data pointer (`ReadUdReg`) in
+guest memory when stage B recorded the draw, and the constant engine had already dumped a later
+draw's table there. Textures, samplers and buffers come from the flattened user data snapshot
+in the packet and were not affected.
+
+Now:
+- Stage A reads the fetch shader's V#s in stream order and puts them in the draw packet. Stage B
+  installs them (`Shader::Gcn::SetVertexSharps`) while it records the draw.
+- `Rasterizer::BeforeConstRamDump` replaces the drain. Stage A keeps the merged ranges the dumps
+  write and the pipe position of the last packet that binds a buffer outside the constant ring,
+  or a vertex stream, overlapping them (`const_ram_reader`). A dump waits only if stage B has
+  not passed that packet, or if it writes a range not seen before.
+- Toggle 1 << 47 (`ConstRamGuard`) brings back the drain at every dump.
+
+A/B in one run, battle map, 3 × 20 s per mode: 39.1 / 38.8 / 39.5 FPS with the guard,
+31.1 / 30.7 / 31.4 with the drain (+26%). ConstRam drains ~3500/s → ~0; stage A waits ~2%,
+stage B ~76% busy. Screenshots in both modes differ no more than two shots in the same mode
+(rain, animated lighting). Combat scenes: 25-46 FPS, stage B 75-84% busy, so stage B is the
+next limit. The 1440p/4K modes and Odin Sphere gameplay were not measured; Odin Sphere boots to
+its menus without errors.
