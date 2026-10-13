@@ -452,13 +452,10 @@ bool Rasterizer::ConstRamTargetOverlaps(VAddr address, u64 size) const {
     if (address >= const_ram_max || address + size <= const_ram_min) {
         return false;
     }
-    const VAddr end = address + size;
-    for (const auto& [begin, target_end] : const_ram_targets) {
-        if (address < target_end && begin < end) {
-            return true;
-        }
-    }
-    return false;
+    // Sorted, disjoint ranges: the first one ending after `address`.
+    const auto it = std::ranges::upper_bound(const_ram_targets, address, {},
+                                             &std::pair<VAddr, VAddr>::second);
+    return it != const_ram_targets.end() && it->first < address + size;
 }
 
 void Rasterizer::BeforeConstRamDump(VAddr address, u64 size) {
@@ -469,25 +466,21 @@ void Rasterizer::BeforeConstRamDump(VAddr address, u64 size) {
     // only draws that bind other buffers in dumped memory read it when recorded. A range not
     // seen before was not checked for earlier packets: drain once for it.
     const VAddr end = address + size;
-    bool known = false;
-    for (const auto& [begin, target_end] : const_ram_targets) {
-        if (begin <= address && end <= target_end) {
-            known = true;
-            break;
-        }
-    }
+    auto first = std::ranges::lower_bound(const_ram_targets, address, {},
+                                          &std::pair<VAddr, VAddr>::second);
+    const bool known = first != const_ram_targets.end() && first->first <= address &&
+                       end <= first->second;
     if (!known) {
-        const_ram_targets.emplace_back(address, end);
-        std::ranges::sort(const_ram_targets);
-        std::vector<std::pair<VAddr, VAddr>> merged;
-        for (const auto& range : const_ram_targets) {
-            if (!merged.empty() && range.first <= merged.back().second) {
-                merged.back().second = std::max(merged.back().second, range.second);
-            } else {
-                merged.push_back(range);
-            }
+        // Merge with every range it touches.
+        auto last = first;
+        VAddr begin = address, merged_end = end;
+        while (last != const_ram_targets.end() && last->first <= end) {
+            begin = std::min(begin, last->first);
+            merged_end = std::max(merged_end, last->second);
+            ++last;
         }
-        const_ram_targets = std::move(merged);
+        first = const_ram_targets.erase(first, last);
+        const_ram_targets.insert(first, {begin, merged_end});
         const_ram_min = const_ram_targets.front().first;
         const_ram_max = const_ram_targets.back().second;
     }
@@ -925,6 +918,7 @@ void Rasterizer::PrintPipeStats() {
             }
         }
     }
+    std::printf(" const RAM targets=%zu", const_ram_targets.size());
     std::printf("\n  stage A waits over 0.5%%:");
     for (const auto& [function, lines] : drain_sites) {
         for (const auto& [line, waited] : lines) {
