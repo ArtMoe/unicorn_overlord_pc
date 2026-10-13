@@ -656,3 +656,8 @@ Script: phases of 12 s alternating toggle masks, FPS and stage B µs per draw
   is unchanged (`runtime_memory_generation`); toggle bit 1 (region cache) turns it off with the
   runtime's own cache. Stage A 4.95 → 4.58 µs/draw, 52.1 FPS; frames over 1.5x the median
   52 → 38 per window.
+- **Prepared-draw prefetch, ring allocation without std::optional.** `TryPreparedPipeline`'s
+  main cost was cache misses on the prepared draw a worker wrote (state, key, stages);
+  `NextDraw` now prefetches the next two draws' first lines. `ConstantRing::Allocate` returns
+  `NoSpace` instead of an optional (its two stores and 16-byte reload stalled store
+  forwarding in `PostDraw`). Stage A 4.58 → 4.50 µs/draw, 52.5 FPS.
