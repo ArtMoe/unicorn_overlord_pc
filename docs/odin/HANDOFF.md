@@ -31,8 +31,9 @@ Changes on top of gow3_pc:
 - `src/runtime_savedata.c`: `sceSaveDataGetMountInfo`.
 - `src/import_names.inc`: 31 NIDs added (names from shadPS4 `aerolib.inl`).
 - `src/runtime_memory.c` + `run.py`: `VW_DISABLED_OPTIMIZATIONS=<mask>` disables GPU
-  optimizations for the whole run; run.py sets bits **35 EarlyDrawInputs, 36 ConstantRing,
-  37 DrawPipeline** for CUSA05083. Found by bisecting `VW_TOGGLE_FILE`: 37 makes the window show
+  optimizations for the whole run; run.py sets bits **36 ConstantRing, 37 DrawPipeline** for
+  CUSA05083 (bit 35, EarlyDrawInputs, was set too; it was removed with the texture binding
+  helper on 2026-10-14). Found by bisecting `VW_TOGGLE_FILE`: 37 makes the window show
   black/partial frames while frame dumps are correct (presentation happens before pipelined draws
   are recorded); 35/36 flicker. Root cause not fixed yet — fixing it and re-enabling is a
   performance task for later.
@@ -46,7 +47,8 @@ Changes on top of gow3_pc:
 **Phase 2 (in game, Linux) — started 2026-10-12.** On Linux (CachyOS, AMD Raven Ridge, KDE
 Wayland) the game runs New Game → voice language → attic → "Valkyrie" prologue → cutscenes
 (Options → SKIP ALL) → Gwendolyn's first stage (Storming Battlefields) with movement, jump,
-attack, HUD, minimap and area wipes correct, all GPU optimizations except 35-37 on.
+attack, HUD, minimap and area wipes correct, all GPU optimizations except 35-37 on (35 has
+since been removed).
 
 Fixed: character sprites (Alice, Socrates, the book; every multi-part sprite) drew as scrambled
 blocks. Draw preparation (toggle bits 4096/8192) read the fetch shader's V#s from the table the
@@ -150,7 +152,7 @@ Key finding: frame limiter `FUN_006b3eb0` — waits `sceVideoOutWaitVblank`, the
 ## Per-game settings, saves, GPU workarounds (review 2026-10-12)
 
 - `scripts/game_profiles.py`: one place for a game's launch settings, read by run.py
-  (Odin Sphere: optimizations 35-37 off, linear readbacks, no readback shortcuts).
+  (Odin Sphere: optimizations 36-37 off, linear readbacks, no readback shortcuts).
 - Saves (`/savedataN`) opened for writing go through a temporary copy (`<name>.<n>.vwsave`),
   synced and renamed over the file on close: a crash mid-save keeps the old save (from bbport,
   its #64; Windows: `_commit` + `MoveFileEx`). Leftover copies are removed when saves mount.

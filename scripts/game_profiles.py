@@ -11,9 +11,9 @@ each game (src/odin_render_scale.h, src/unicorn_render_scale.h).
 PROFILES = {
     'CUSA05083': {  # Odin Sphere Leifthrasir
         'defaults': {
-            # The draw pipeline (bit 37) presents black/partial frames; early draw inputs and
-            # the constant ring (bits 35, 36) flicker.
-            'VW_DISABLED_OPTIMIZATIONS': str((1 << 35) | (1 << 36) | (1 << 37)),
+            # The draw pipeline (bit 37) presents black/partial frames; the constant ring
+            # (bit 36) flickers.
+            'VW_DISABLED_OPTIMIZATIONS': str((1 << 36) | (1 << 37)),
             'VW_READBACK_LINEAR': '1',
         },
         'forced': {

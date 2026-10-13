@@ -35,15 +35,11 @@ enum : std::uint64_t {
     PreparedResources = 4096,
     DrawPreparation = 8192,
     DeferredStreamCopies = 16384,
-    HotPages = 32768,
     FaultWindow = 65536,
     ParallelCopies = 131072,
-    AsyncFences = 262144,
     PoolSmallCopies = 524288,
     RecordPrefetch = 1ull << 32,
     TextureViewMemo = 1ull << 33,
-    TextureBindHelper = 1ull << 34,
-    EarlyDrawInputs = 1ull << 35,
     ConstantRing = 1ull << 36,
     DrawPipeline = 1ull << 37,
     PipelinedTasks = 1ull << 38,
@@ -57,10 +53,10 @@ enum : std::uint64_t {
     PipelinedIndirectDraws = 1ull << 46,
     ConstRamGuard = 1ull << 47,
     PreparedVertexMatch = 1ull << 48,
+    OrderedGuestWrites = 1ull << 49,
     ChunkedPreparation = 1ull << 50,
     VertexInputMemo = 1ull << 51,
     VertexRing = 1ull << 52,
-    OrderedGuestWrites = 1ull << 49,
     UpdateImageFastPath = 1u << 30,
 };
 inline bool Disabled(std::uint64_t bit) {
@@ -69,9 +65,8 @@ inline bool Disabled(std::uint64_t bit) {
 } // namespace VwToggle
 
 namespace VwStats {
-/// Guest writes caught by page protection, and pages currently left unprotected as hot.
+/// Guest writes caught by page protection.
 inline std::atomic<std::uint64_t> tracker_faults{0};
-inline std::atomic<std::int64_t> hot_pages{0};
 /// Stall diagnostics (VW_FRAME_STATS): per-frame deltas printed for frames over 40 ms.
 inline std::atomic<std::uint64_t> images_registered{0};
 inline std::atomic<std::uint64_t> image_upload_bytes{0};

@@ -323,16 +323,7 @@ void RunEventWriteEop(Vulkan::Rasterizer& rasterizer, const u8* data) {
     const auto eop = *reinterpret_cast<const PM4CmdEventWriteEop*>(data);
     rasterizer.ProcessDownloadImages();
     // Guest memory copies on the copy threads precede the fence the guest sees.
-    // VW_ASYNC_FENCES=1 writes it once they are done instead of waiting for them; measured
-    // slower (79 vs 83 FPS): the guest waits on these fences, and later fences stall it more
-    // than the wait costs.
-    static const bool async_fences = [] {
-        const char* env = std::getenv("VW_ASYNC_FENCES");
-        return env && env[0] == '1';
-    }();
-    if (async_fences && !VwToggle::Disabled(VwToggle::AsyncFences)) {
-        VwCopy::AfterCopies([eop] { SignalEop(eop); });
-    } else if (Vulkan::DrawPipe::OnStageB() && !VwToggle::Disabled(VwToggle::RecorderFences)) {
+    if (Vulkan::DrawPipe::OnStageB() && !VwToggle::Disabled(VwToggle::RecorderFences)) {
         // The draw recording thread does not wait: the Vulkan recording thread signals the
         // fence after the copies queued before it.
         rasterizer.SignalAfterHostCopies([eop] { SignalEop(eop); });

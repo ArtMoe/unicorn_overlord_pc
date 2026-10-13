@@ -689,3 +689,11 @@ Tried and reverted tonight: reusing stage A's V# reads between `TryPreparedPipel
 on its own cache line (no change); the Gnmx fill shader (`2ba388c6`, 21 dispatches of 8 MiB
 per frame) as `vkCmdFillBuffer` (GPU time −0.2 ms, frame rate unchanged: the fill is
 bandwidth-bound either way).
+
+## Cleanup (2026-10-14)
+
+Removed, all opt-in and measured neutral or slower above: the texture binding helper
+(`VW_TEXTURE_HELPER`, `vk_bind_helper.h`, toggles 1 << 34 and 1 << 35 early draw inputs, the
+runtime's image access hook), hot pages (`VW_HOT_PAGES`, toggle 32768) and async fences
+(`VW_ASYNC_FENCES`, toggle 262144). Kept: userfaultfd tracking (`VW_UFFD`, upstream's
+implementation). Benchmark afterwards: 53.5 FPS, stage B 4.02 µs/draw (no regression).
