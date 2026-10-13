@@ -603,10 +603,6 @@ static ABI int32_t error_dialog_open(const ErrorDialogParam *param) {
     error_dialog_status=3; return 0;
 }
 static ABI int32_t error_dialog_update(void) { return error_dialog_status; }
-/* sce::Json (libSceJson2, a firmware library): set-up only. MemAllocator's base constructor
- * leaves the vtable to the game's derived class; Initializer has nothing to set up here.
- * Parsing and building values are not implemented: the first use stops at that import. */
-static ABI int32_t json_noop(void *self) { (void)self; return 0; }
 /* Sign-in dialog: offline, it finishes at once (the player stays signed out). */
 static int32_t signin_status=0;
 static ABI int32_t signin_init(void) { signin_status=1; return 0; }
@@ -762,9 +758,6 @@ static const RuntimeExport exports[]={
     {"sceErrorDialogInitialize",error_dialog_init}, {"sceErrorDialogOpen",error_dialog_open},
     {"sceErrorDialogUpdateStatus",error_dialog_update}, {"sceErrorDialogTerminate",error_dialog_term},
     {"sceErrorDialogGetStatus",error_dialog_update},
-    {"_ZN3sce4Json12MemAllocatorC2Ev",json_noop}, {"_ZN3sce4Json12MemAllocatorD2Ev",json_noop},
-    {"_ZN3sce4Json11InitializerC1Ev",json_noop}, {"_ZN3sce4Json11InitializerD1Ev",json_noop},
-    {"_ZN3sce4Json11Initializer10initializeEPKNS0_13InitParameterE",json_noop},
     {"sceSigninDialogInitialize",signin_init}, {"sceSigninDialogOpen",signin_open},
     {"sceSigninDialogUpdateStatus",signin_update}, {"sceSigninDialogGetResult",signin_result}, {"sceSigninDialogTerminate",signin_term},
     {"sceShareUtilityAdvanceInitialize",ok_void}, {"sceShareUtilityAdvanceTerminate",ok_void},

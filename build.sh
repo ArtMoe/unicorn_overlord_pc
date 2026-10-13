@@ -108,6 +108,8 @@ if [[ ${1:-} == --test ]]; then
     out/videodec-test tests/data/tiny.h264
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -I. -Isrc tests/test_rtc.c -o out/rtc-test
     out/rtc-test
+    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -I. -Isrc tests/test_json.c -lm -o out/json-test
+    out/json-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_services.c -o out/services-test
     out/services-test
 fi
