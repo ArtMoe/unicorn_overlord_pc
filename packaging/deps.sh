@@ -8,6 +8,11 @@
 set -euo pipefail
 cd -- "$(dirname -- "$0")/.."
 DEPS=$PWD/out/deps
+# pkg-config files and FFmpeg's configure split paths at spaces.
+if [[ $PWD == *' '* ]]; then
+    echo "deps: the checkout path has a space ($PWD); release builds need a path without spaces." >&2
+    exit 1
+fi
 PREFIX=$DEPS/prefix
 JOBS=$(nproc 2>/dev/null || echo 4)
 mkdir -p "$DEPS/src" "$DEPS/build" "$PREFIX"
@@ -22,8 +27,13 @@ else
     export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig
 fi
 export PATH=$PREFIX/bin:$PATH
-CC=${CC:-$(command -v clang || command -v cc)}
-CXX=${CXX:-$(command -v clang++ || command -v c++)}
+if [[ $WINDOWS == 1 ]]; then
+    # Native CMake and configure want a compiler name, or a path ending in .exe.
+    CC=${CC:-clang} CXX=${CXX:-clang++}
+else
+    CC=${CC:-$(command -v clang || command -v cc)}
+    CXX=${CXX:-$(command -v clang++ || command -v c++)}
+fi
 CMAKE=(cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$NATIVE" -DCMAKE_PREFIX_PATH="$NATIVE"
        -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_POSITION_INDEPENDENT_CODE=ON
        -DBUILD_SHARED_LIBS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5)
@@ -104,6 +114,7 @@ if needs zydis; then
     quiet zydis ninja -C "$src/out" install
     src=$(unpack zydis)
     quiet zydis "${CMAKE[@]}" -S "$src" -B "$src/out" -DZYAN_SYSTEM_ZYCORE=ON -DZYDIS_BUILD_TOOLS=OFF \
+        -DCMAKE_C_FLAGS="-I$NATIVE/include" \
         -DZYDIS_BUILD_EXAMPLES=OFF -DZYDIS_BUILD_DOXYGEN=OFF -DZYDIS_BUILD_MAN=OFF
     quiet zydis ninja -C "$src/out" install
     done_ zydis

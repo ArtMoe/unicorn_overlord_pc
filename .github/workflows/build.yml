@@ -1,0 +1,169 @@
+# Builds the release packages for every pull request and every merge to main:
+#   Linux:   Unicorn-Overlord-x86_64.AppImage (built on Ubuntu 22.04: runs on glibc 2.35 and newer)
+#   Windows: Unicorn Overlord.exe (MSYS2 CLANG64, one file)
+# On main, the "latest" pre-release is replaced with the new files.
+# The job names (Linux, Windows) are the required status checks of the main branch protection.
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  GAME: unicorn
+  TITLE: Unicorn Overlord
+  # Pinned to the versions the port is developed with.
+  VULKAN_HEADERS: v1.4.357
+  GLSLANG: 16.0.0
+  VMA: v3.4.0
+  ROBIN_MAP: v1.4.0
+  BOOST: 1.86.0  # headers only; Ubuntu's 1.74 small_vector does not convert to std::span
+
+jobs:
+  linux:
+    name: Linux
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install the toolchain
+        run: |
+          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14 ninja-build pkg-config nasm python3-venv python3-tk \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev \
+            libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl-dev libgl-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libvulkan-dev
+          pip install --user 'cmake>=3.28'
+          echo "CC=gcc-14" >> "$GITHUB_ENV"
+          echo "CXX=g++-14" >> "$GITHUB_ENV"
+
+      - name: Cache the header libraries and the static dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/prefix
+            out/deps
+          key: linux-${{ env.BOOST }}-${{ env.VULKAN_HEADERS }}-${{ env.GLSLANG }}-${{ env.VMA }}-${{ env.ROBIN_MAP }}-${{ hashFiles('packaging/deps.sh') }}
+
+      - name: Vulkan headers, glslang, VMA, robin-map
+        run: |
+          prefix=$HOME/prefix
+          if [ ! -f "$prefix/.done" ]; then
+            build() {  # repo tag [cmake options]
+              git clone -q --depth 1 --branch "$2" "https://github.com/$1" "src-${1##*/}"
+              cmake -S "src-${1##*/}" -B "build-${1##*/}" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX="$prefix" "${@:3}"
+              cmake --build "build-${1##*/}" --target install
+            }
+            build KhronosGroup/Vulkan-Headers "$VULKAN_HEADERS"
+            build KhronosGroup/glslang "$GLSLANG" -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF
+            build GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator "$VMA"
+            build Tessil/robin-map "$ROBIN_MAP"
+            curl -fsSL "https://archives.boost.io/release/$BOOST/source/boost_${BOOST//./_}.tar.gz" | \
+              tar -xz -C "$prefix/include" --strip-components=1 "boost_${BOOST//./_}/boost"
+            touch "$prefix/.done"
+          fi
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          echo "CMAKE_PREFIX_PATH=$prefix" >> "$GITHUB_ENV"
+          echo "CPATH=$prefix/include" >> "$GITHUB_ENV"
+
+      - name: Package
+        run: |
+          # build.sh looks for SDL3 and FFmpeg through pkg-config before its --static branch:
+          # build the static ones first (Ubuntu 22.04 has no SDL3 package).
+          bash packaging/deps.sh
+          export PKG_CONFIG_PATH=$PWD/out/deps/prefix/lib/pkgconfig:$PWD/out/deps/prefix/share/pkgconfig
+          VW_VERSION=$(git describe --always --tags) python3 packaging/package.py "$GAME"
+          bash packaging/linux/appimage.sh "$TITLE"
+
+      - name: Tests
+        run: python3 -m unittest discover -s tests
+
+      - name: Keep the build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-logs
+          path: |
+            out/*.log
+            out/deps/*.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: true
+          path-type: inherit  # packaging needs the runner's python.org Python (py)
+
+      - name: Cache the static dependencies
+        uses: actions/cache@v4
+        with:
+          path: out/deps
+          key: windows-${{ hashFiles('packaging/deps.sh') }}
+
+      - name: Build and package
+        run: VW_VERSION=$(git describe --always --tags) bash packaging/windows/build.sh "$GAME"
+
+      - name: Keep the build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-logs
+          path: |
+            out/*.log
+            out/deps/*.log
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/${{ env.TITLE }} PC/${{ env.TITLE }}.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Replace the "latest" pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create latest --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Latest build ($(echo "$GITHUB_SHA" | cut -c1-7))" \
+            --notes "Built from ${GITHUB_SHA} by the Build workflow. Test build: no game files included." \
+            linux/*.AppImage "windows/$TITLE.exe"

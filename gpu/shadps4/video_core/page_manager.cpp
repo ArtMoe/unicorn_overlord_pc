@@ -27,6 +27,14 @@
 #include <thread>
 #include <fcntl.h>
 #include <linux/userfaultfd.h>
+// vw: Linux 6.7 feature bits, for older kernel headers (release builds on Ubuntu 22.04); the
+// running kernel still decides through UFFDIO_API.
+#ifndef UFFD_FEATURE_WP_HUGETLBFS_SHMEM
+#define UFFD_FEATURE_WP_HUGETLBFS_SHMEM (1 << 12)
+#endif
+#ifndef UFFD_FEATURE_WP_UNPOPULATED
+#define UFFD_FEATURE_WP_UNPOPULATED (1 << 13)
+#endif
 #include <poll.h>
 #include <unordered_set>
 #include <cstdio>

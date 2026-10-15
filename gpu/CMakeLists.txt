@@ -58,6 +58,8 @@ endif()
 set(VW_DEPS "" CACHE PATH "Prefix of the static dependencies (packaging/deps.sh)")
 if (VW_DEPS)
     list(PREPEND CMAKE_PREFIX_PATH ${VW_DEPS})
+    # Zydis' package names its Zycore dependency without a path.
+    link_directories(${VW_DEPS}/lib)
 endif()
 
 find_package(Vulkan REQUIRED)
