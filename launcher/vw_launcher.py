@@ -401,8 +401,7 @@ class Launcher:
         for line in process.stdout:
             self.log_lines.append(line.rstrip('\n'))
             del self.log_lines[:-4000]
-        code = process.wait()
-        (self.data / 'last_run.log').write_text('\n'.join(self.log_lines) + '\n', encoding='utf-8')
+        code = process.wait()  # run.py writes logs/ and last_run.log
         self.root.after(0, self.finished, code)
 
     def finished(self, code):
