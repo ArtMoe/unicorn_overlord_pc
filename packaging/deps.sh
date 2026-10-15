@@ -8,6 +8,11 @@
 set -euo pipefail
 cd -- "$(dirname -- "$0")/.."
 DEPS=$PWD/out/deps
+# pkg-config files and FFmpeg's configure split paths at spaces.
+if [[ $PWD == *' '* ]]; then
+    echo "deps: the checkout path has a space ($PWD); release builds need a path without spaces." >&2
+    exit 1
+fi
 PREFIX=$DEPS/prefix
 JOBS=$(nproc 2>/dev/null || echo 4)
 mkdir -p "$DEPS/src" "$DEPS/build" "$PREFIX"

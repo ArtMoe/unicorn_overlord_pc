@@ -32,8 +32,10 @@ WINDOWS = os.name == 'nt'
 
 
 def data_dir(game):
-    """data/ beside a packaged launcher; in the source tree the game's run directory."""
-    default = HERE / 'data' if FROZEN else RUNTIME / game['run_dir']
+    """data/ beside a packaged launcher (or its .AppImage: the AppImage itself is read-only); in the
+    source tree the game's run directory."""
+    beside = Path(os.environ['APPIMAGE']).parent if os.environ.get('APPIMAGE') else HERE
+    default = beside / 'data' if FROZEN else RUNTIME / game['run_dir']
     return Path(os.environ.get('VW_DATA_DIR', default))
 
 

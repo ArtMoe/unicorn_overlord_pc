@@ -89,7 +89,12 @@ def freeze(python, key, game, binaries):
     hidden = [arg for module in [*stdlib_imports(), 'PIL._tkinter_finder'] for arg in ('--hidden-import', module)]
     # vwport and its DLLs as data: PyInstaller must not bundle what they load from the system
     # (the Vulkan loader, libc).
-    data = [arg for source, target in ((ROOT / 'run.py', 'runtime'), (ROOT / 'scripts', 'runtime/scripts'),
+    # VERSION: run.py prints it at the top of every run log (CI sets VW_VERSION).
+    version = os.environ.get('VW_VERSION') or subprocess.run(
+        ['git', 'describe', '--always', '--dirty', '--tags'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    (OUT / 'VERSION').write_text((version or 'unknown') + '\n', encoding='utf-8')
+    data = [arg for source, target in ((ROOT / 'run.py', 'runtime'), (OUT / 'VERSION', 'runtime'),
+                                       (ROOT / 'scripts', 'runtime/scripts'),
                                        (ROOT / 'patches', 'runtime/patches'), (binaries, 'runtime/bin'))
             for arg in ('--add-data', f'{source}{os.pathsep}{target}')]
     run(python, '-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN', '--onefile',
