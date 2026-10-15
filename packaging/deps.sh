@@ -114,6 +114,7 @@ if needs zydis; then
     quiet zydis ninja -C "$src/out" install
     src=$(unpack zydis)
     quiet zydis "${CMAKE[@]}" -S "$src" -B "$src/out" -DZYAN_SYSTEM_ZYCORE=ON -DZYDIS_BUILD_TOOLS=OFF \
+        -DCMAKE_C_FLAGS="-I$NATIVE/include" \
         -DZYDIS_BUILD_EXAMPLES=OFF -DZYDIS_BUILD_DOXYGEN=OFF -DZYDIS_BUILD_MAN=OFF
     quiet zydis ninja -C "$src/out" install
     done_ zydis

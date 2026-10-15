@@ -89,6 +89,15 @@ jobs:
       - name: Tests
         run: python3 -m unittest discover -s tests
 
+      - name: Keep the build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-logs
+          path: |
+            out/*.log
+            out/deps/*.log
+
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -121,6 +130,15 @@ jobs:
 
       - name: Build and package
         run: VW_VERSION=$(git describe --always --tags) bash packaging/windows/build.sh "$GAME"
+
+      - name: Keep the build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-logs
+          path: |
+            out/*.log
+            out/deps/*.log
 
       - uses: actions/upload-artifact@v4
         with:

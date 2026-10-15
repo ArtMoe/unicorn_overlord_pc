@@ -24,7 +24,7 @@ MINGW*|MSYS*)
         -DVW_LTO="${VW_LTO:-OFF}" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DVW_DEPS="$deps" >/dev/null
     echo "GPU library and loader: LTO ${VW_LTO:-OFF}"
     if ! ninja -C out/gpu vwport > out/gpu-build.log 2>&1; then
-        grep -v '^\[' out/gpu-build.log | tail -40 >&2
+        grep -v '^[[]' out/gpu-build.log | tail -40 >&2
         echo 'Build failed (full log: out/gpu-build.log)' >&2; exit 1
     fi
     cp out/gpu/vwport.exe out/
@@ -71,7 +71,7 @@ if [[ ${1:-} == --static ]]; then
         -DVW_LTO="${VW_LTO:-ON}" -DVW_PGO_DIR="$PWD/pgo" -DCMAKE_C_COMPILER="$CC" \
         -DVW_DEPS="$PWD/out/deps/prefix" >/dev/null
     if ! ninja -C out/static vwport > out/static-build.log 2>&1; then
-        grep -v '^\[' out/static-build.log | tail -40 >&2
+        grep -v '^[[]' out/static-build.log | tail -40 >&2
         echo 'Static build failed (full log: out/static-build.log)' >&2; exit 1
     fi
     echo "Built $PWD/out/static/vwport"
@@ -82,7 +82,7 @@ cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVW_PGO="$pg
 echo "GPU library: PGO $pgo, LTO ${VW_LTO:-ON}"
 # A failed GPU build must stop here: an older libvwgpu.so would otherwise be used silently.
 if ! ninja -C out/gpu vwgpu > out/gpu-build.log 2>&1; then
-    grep -v '^\[' out/gpu-build.log | tail -40 >&2
+    grep -v '^[[]' out/gpu-build.log | tail -40 >&2
     echo 'GPU library build failed (full log: out/gpu-build.log)' >&2; exit 1
 fi
 # $ORIGIN/gpu: packaged copies keep the library next to the binary without patching it.
