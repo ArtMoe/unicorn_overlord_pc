@@ -19,3 +19,7 @@ launcher.json
 out_odin/
 run/
 run_uo/
+
+# Game dumps and packages (never commit; see CONTRIBUTING.md)
+*.pkg
+/CUSA*/

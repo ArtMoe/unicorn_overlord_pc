@@ -39,6 +39,9 @@ In game, **Insert** (R3+L2 on a controller) opens the port's menu. It has three 
 
 Settings are kept in `vw.ini` in the data directory and are shared with the launcher.
 
+Something wrong? See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Every run writes a log
+to `logs/` in the data directory (the launcher's **Log** button shows the newest).
+
 ### Render resolution
 
 Both games render at 1920×1080 by default. A higher render resolution draws the game larger
