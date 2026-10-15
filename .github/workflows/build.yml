@@ -42,7 +42,7 @@ jobs:
         run: |
           sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
           sudo apt-get update
-          sudo apt-get install -y gcc-14 g++-14 ninja-build pkg-config nasm python3-venv python3-tk \
+          sudo apt-get install -y gcc-14 g++-14 ninja-build pkg-config nasm python3-venv python3-tk desktop-file-utils \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev \
             libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
             libegl-dev libgl-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libvulkan-dev
