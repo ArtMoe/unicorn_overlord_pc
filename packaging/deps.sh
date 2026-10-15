@@ -27,8 +27,13 @@ else
     export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig:$PREFIX/share/pkgconfig
 fi
 export PATH=$PREFIX/bin:$PATH
-CC=${CC:-$(command -v clang || command -v cc)}
-CXX=${CXX:-$(command -v clang++ || command -v c++)}
+if [[ $WINDOWS == 1 ]]; then
+    # Native CMake and configure want a compiler name, or a path ending in .exe.
+    CC=${CC:-clang} CXX=${CXX:-clang++}
+else
+    CC=${CC:-$(command -v clang || command -v cc)}
+    CXX=${CXX:-$(command -v clang++ || command -v c++)}
+fi
 CMAKE=(cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$NATIVE" -DCMAKE_PREFIX_PATH="$NATIVE"
        -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_POSITION_INDEPENDENT_CODE=ON
        -DBUILD_SHARED_LIBS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5)

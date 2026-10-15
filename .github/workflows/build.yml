@@ -79,7 +79,10 @@ jobs:
 
       - name: Package
         run: |
-          echo "VW_VERSION=$(git describe --always --tags)" >> "$GITHUB_ENV"
+          # build.sh looks for SDL3 and FFmpeg through pkg-config before its --static branch:
+          # build the static ones first (Ubuntu 22.04 has no SDL3 package).
+          bash packaging/deps.sh
+          export PKG_CONFIG_PATH=$PWD/out/deps/prefix/lib/pkgconfig:$PWD/out/deps/prefix/share/pkgconfig
           VW_VERSION=$(git describe --always --tags) python3 packaging/package.py "$GAME"
           bash packaging/linux/appimage.sh "$TITLE"
 
