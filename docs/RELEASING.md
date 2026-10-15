@@ -6,7 +6,7 @@
 
 | Job | Runner | Result |
 |---|---|---|
-| Linux | Ubuntu 22.04, GCC 13 | `Unicorn-Overlord-x86_64.AppImage` (runs on glibc 2.35 and newer: Ubuntu 22.04+, Debian 12+, SteamOS 3.5+) |
+| Linux | Ubuntu 22.04, GCC 14 | `Unicorn-Overlord-x86_64.AppImage` (runs on glibc 2.35 and newer: Ubuntu 22.04+, Debian 12+, SteamOS 3.5+) |
 | Windows | MSYS2 CLANG64 | `Unicorn Overlord.exe` (one file; vwport and its libraries inside) |
 | Publish latest | main only | Replaces the `latest` pre-release with both files |
 
