@@ -26,5 +26,5 @@ OS / GPU / driver:
 - [ ] One topic in this PR
 - [ ] No game files, saves, keys or dumps (`git status` checked)
 - [ ] New logic has a test in `tests/`
-- [ ] Docs updated (README, docs/MODS.md, docs/unicorn/HANDOFF.md) if behaviour or options changed
+- [ ] Docs updated (README, docs/MODS.md, docs/dev/unicorn/HANDOFF.md) if behaviour or options changed
 - [ ] Commit subjects follow `Area: what changed`

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!-- odin_sphere_pc: CUSA05083 v01.01 eboot.bin with sha256
      2865b6cec33f2515def173c1ed0c03afc27a1cd5fad1b0d0f516b4527aba9a88 (scripts/patches.py checks it).
-     Addresses are eboot vaddr + 0x400000; see docs/odin/RE_NOTES.md. -->
+     Addresses are eboot vaddr + 0x400000; see docs/dev/odin/RE_NOTES.md. -->
 <Patch>
     <TitleID>
         <ID>CUSA05083</ID>

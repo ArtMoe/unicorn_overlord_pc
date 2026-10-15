@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 
-/* Unicorn Overlord CUSA36381 v01.04: render above 1920x1080 (docs/unicorn/HANDOFF.md).
+/* Unicorn Overlord CUSA36381 v01.04: render above 1920x1080 (docs/dev/unicorn/HANDOFF.md).
  * On a PS4 Pro (sceKernelIsNeoMode, cached by FUN_00218680) the game draws natively at
  * 3840x2160 with its Font_4K/ fonts. Its screen size getters FUN_0003e2b0 (width) and
  * FUN_0003e2d0 (height), and their two inlined copies in FUN_0003cb60 (the MAIN BUFFER color
