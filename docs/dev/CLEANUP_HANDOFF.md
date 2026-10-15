@@ -1,7 +1,7 @@
 # Cleanup and release handoff (2026-10-13)
 
 The "rename, clean up, package" pass on both games is finished. This file records what it changed
-and what is open. `docs/odin/HANDOFF.md` and `docs/unicorn/HANDOFF.md` cover the ports themselves.
+and what is open. `docs/dev/odin/HANDOFF.md` and `docs/dev/unicorn/HANDOFF.md` cover the ports themselves.
 
 ## Branches
 
@@ -36,7 +36,7 @@ and what is open. `docs/odin/HANDOFF.md` and `docs/unicorn/HANDOFF.md` cover the
   and is gone.
 - **Unicorn Overlord render resolution:** `VW_RENDER_SCALE=1440p|1800p|4K` uses the game's PS4 Pro
   path. Checked at 4K and at 1440p (title, menu, battle). The Ghidra survey of the game's
-  graphics options is in `docs/unicorn/HANDOFF.md`. The only switch is the Pro check, which
+  graphics options is in `docs/dev/unicorn/HANDOFF.md`. The only switch is the Pro check, which
   also loads 4K fonts and UI art.
 - **Launcher:** `launcher/vw_launcher.py` is themed per game (`GAMES`). The entry scripts are
   `odin_launcher.py` and `unicorn_launcher.py` (UO: navy and gold, the war-table backdrop). It has
@@ -69,7 +69,7 @@ and what is open. `docs/odin/HANDOFF.md` and `docs/unicorn/HANDOFF.md` cover the
    copies and recording to helper threads, which this port has (stages A/B); RPCS3 gets 5-10%
    from a transfer thread ([PR #6112](https://github.com/RPCS3/rpcs3/pull/6112)); no emulator
    found that splits one PM4 stream across threads.
-   - Done (UO first battle map 31 → ~53 FPS, `docs/parallel_gpu.md` from "Constant engine
+   - Done (UO first battle map 31 → ~53 FPS, `docs/dev/parallel_gpu.md` from "Constant engine
      dumps without a drain"): the two stages were waiting on each other (`DumpConstRam`
      drains), then a series of per-draw cuts on both stages.
    - Now: the game paces its frames on end-of-pipe interrupts, and stage A reaches them ~9 ms

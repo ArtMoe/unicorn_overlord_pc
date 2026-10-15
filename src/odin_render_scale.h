@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 
-/* Odin Sphere Leifthrasir CUSA05083 v01.01: render above 1920x1080 (docs/odin/RE_NOTES.md).
+/* Odin Sphere Leifthrasir CUSA05083 v01.01: render above 1920x1080 (docs/dev/odin/RE_NOTES.md).
  * The game sizes its render targets and full-screen viewports with 1920/1080 immediates; views
  * (projection built from the screen config's 1920x1080 floats, untouched) set their viewport
  * from float rects at view+0x284..0x290 in FUN_006b5f80. Scaling the targets, those viewports and

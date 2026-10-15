@@ -8,7 +8,7 @@ Repository `hachi23/unicorn_overlord_pc` (branch `main`; also kept as branch `un
 (`git push unicorn unicorn-overlord:main`). A new worktree needs
 `git submodule update --init`. Same method as Odin Sphere: the game's x86-64 code runs natively,
 `src/runtime_*.c` replaces the PS4 libraries, `gpu/shadps4` translates the GPU to Vulkan.
-Read `docs/odin/HANDOFF.md` first for building on Linux, the run scripts and the tooling.
+Read `docs/dev/odin/HANDOFF.md` first for building on Linux, the run scripts and the tooling.
 
 ## State (2026-10-13)
 
@@ -54,7 +54,7 @@ VW_GAME_DIR=$HOME/Downloads/game_dump/CUSA36381 VW_DATA_DIR=$HOME/unicorn_overlo
 python3 launcher/unicorn_launcher.py          # the launcher (data: run_uo/)
 python3 packaging/package.py unicorn          # dist/Unicorn Overlord PC/: launcher + LICENSE
 ```
-(with the shell environment cleaned as in docs/odin/HANDOFF.md). Saves, caches and vw.ini are
+(with the shell environment cleaned as in docs/dev/odin/HANDOFF.md). Saves, caches and vw.ini are
 in `run_uo/`. `run.sh` builds and then runs `run.py`, so since 2026-10-13 UO runs with run.py's
 defaults: deferred and stale readbacks on (graphics options in vw.ini). The battle rendered
 correctly with them; switch them off in the menu if something looks wrong.
@@ -151,7 +151,7 @@ published every 16 (`VW_PIPE_BATCH`) and before A drains, waits for ring space, 
 (`YIELD` in liverpool.cpp) or ends a submission; the space check uses the last position seen.
 18.6 → 27.3 FPS. bbport (the project this port was forked from) still publishes per draw.
 
-Then (2026-10-13/14, details in `docs/parallel_gpu.md`, sections from "Constant engine dumps
+Then (2026-10-13/14, details in `docs/dev/parallel_gpu.md`, sections from "Constant engine dumps
 without a drain" on): constant engine dumps no longer drain the draw pipe (31 → 39 FPS);
 TLS model, inlined per-packet calls, vertex input memo, no locked add per draw, false-sharing
 fixes, vertex streams through the constant ring, a guest-mapping memo and prepared-draw

@@ -73,7 +73,7 @@ The template (`.github/pull_request_template.md`) asks for these. A PR missing t
 - **How it was tested**: which test commands, which game scene, which OS and GPU.
 - **Before/after** numbers or screenshots for visual and performance changes.
 - **Risk**: what could break, and whether saves, `vw.ini` or the `out/` layout change.
-- **Docs**: update `README.md`, `docs/MODS.md` or `docs/unicorn/HANDOFF.md` when behaviour,
+- **Docs**: update `README.md`, `docs/MODS.md` or `docs/dev/unicorn/HANDOFF.md` when behaviour,
   options or the state of the port changes.
 
 Not accepted: game files, mass reformatting, vendored copies of libraries that are available as
@@ -108,6 +108,6 @@ Use the bug report template. The most useful report has:
 | `tools/ab.sh` | A/B toggle in one run with FPS and per-draw stage timings |
 | `perf` | User-space profiling of `out/vwport` and `out/gpu/libvwgpu.so` |
 
-Background on the GPU pipeline is in `docs/parallel_gpu.md`; the port's state, open problems and
-lessons are in `docs/unicorn/HANDOFF.md` and `docs/CLEANUP_HANDOFF.md`. Read the handoff before
-starting on performance work: several approaches were tried and rejected there.
+Background on the GPU pipeline is in `docs/dev/parallel_gpu.md`; the port's state, open
+problems and lessons are in `docs/dev/unicorn/HANDOFF.md` and `docs/dev/CLEANUP_HANDOFF.md`.
+Read the handoff before starting on performance work: several approaches were tried and rejected there.

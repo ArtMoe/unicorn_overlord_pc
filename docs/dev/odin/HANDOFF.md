@@ -9,7 +9,7 @@ A fork of [gow3_pc](https://github.com/FelipePrado0/gow3_pc) (itself from bloodb
 natively on x86-64; `src/runtime_*.c` replaces the PS4 system libraries; `gpu/shadps4` (shadPS4
 video core) translates GPU work to Vulkan. Branch: `odin-sphere`. The God of War III parts
 (cheats, temporal upscalers, its launcher) were removed on 2026-10-13; see
-`docs/CLEANUP_HANDOFF.md`.
+`docs/dev/CLEANUP_HANDOFF.md`.
 
 Game files are **not** in the repo and must never be committed (copyright; GitHub size limits).
 `out_odin/` and `out/` hold dump-derived binaries and are git-ignored.

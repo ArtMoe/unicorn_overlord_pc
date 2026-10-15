@@ -1,0 +1,10 @@
+# Shell scripts must keep LF endings, or bash fails on Windows checkouts ($'\r': command not found).
+*.sh text eol=lf
+*.py text eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+# Test media and icons are binary.
+*.mp3 binary
+*.h264 binary
+*.ico binary
+*.ttf binary

@@ -1,18 +1,33 @@
-# vwport: native PC ports of PS4 games
+# Unicorn Overlord PC (vwport)
 
-Native Linux and Windows ports of two Vanillaware games for the PlayStation 4:
+[![Build](https://github.com/hachi23/unicorn_overlord_pc/actions/workflows/build.yml/badge.svg)](https://github.com/hachi23/unicorn_overlord_pc/actions/workflows/build.yml)
+[![License: GPL v2+](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
+
+A native Linux and Windows port of the PlayStation 4 version of **Unicorn Overlord**. The same
+engine also runs **Odin Sphere Leifthrasir** (branch `odin-sphere`).
 
 | Game | Dump | Branch | State |
 |---|---|---|---|
+| Unicorn Overlord | CUSA36381 (Asia, English patch), app 01.04 | `main` | Prologue, chapter 1 and its first battle played; saving works; every system function the game imports is implemented |
 | Odin Sphere Leifthrasir | CUSA05083 (US), app 01.01 | `odin-sphere` | Playable |
-| Unicorn Overlord | CUSA36381 (Asia, English patch), app 01.04 | `unicorn-overlord` (this repository's `main`) | Prologue, chapter 1 and its first battle played; saving works; every system function the game imports is implemented |
 
 The game's own executable runs directly on the PC's processor (the PS4 uses the same x86-64
 architecture). A runtime written for these games replaces the PS4 system libraries, and the
 shadPS4 video core translates the graphics to Vulkan. It is not a general emulator.
 
 > **No game files are included.** You need a dump of your own copy. This project is not
-> affiliated with Sony Interactive Entertainment, Atlus or Vanillaware.
+> affiliated with Sony Interactive Entertainment, Atlus, Sega or Vanillaware.
+
+## Download
+
+Test builds of `main` are on the [`latest` pre-release](https://github.com/hachi23/unicorn_overlord_pc/releases/tag/latest):
+
+- **Linux:** `Unicorn-Overlord-x86_64.AppImage`. Make it executable (`chmod +x`) and run it. It
+  keeps its `data/` folder next to the `.AppImage`.
+- **Windows:** `Unicorn Overlord.exe`. Put it in its own folder; it keeps `data/` beside itself.
+
+These are untested builds of the newest code. See [docs/RELEASING.md](docs/RELEASING.md) for how
+builds and releases are made.
 
 ## Requirements
 
@@ -28,7 +43,7 @@ Packaged builds contain the launcher and the game executable. From the
 source tree:
 
 ```bash
-python launcher/odin_launcher.py      # Unicorn Overlord: launcher/unicorn_launcher.py
+python launcher/unicorn_launcher.py   # Odin Sphere: launcher/odin_launcher.py
 ```
 
 In game, **Insert** (R3+L2 on a controller) opens the port's menu. It has three tabs:
@@ -124,14 +139,20 @@ out/vwport out/boot-linked.bin --app0 <game folder> --check-imports
 | Preparation | `scripts/` | Reads `eboot.bin`, applies its relocations and links the game's own system modules into one image |
 | Loader | `src/probe.c` | Loads the image, applies the per-game code patches (render resolution) and starts the game's code |
 | Runtime | `src/runtime_*.c` | The PS4 system functions: memory, threads, files, audio, video, controller, saves and services |
-| GPU | `gpu/shadps4/` | The shadPS4 video core with this port's threaded draw pipeline ([notes](docs/parallel_gpu.md)) |
+| GPU | `gpu/shadps4/` | The shadPS4 video core with this port's threaded draw pipeline ([notes](docs/dev/parallel_gpu.md)) |
 | In-game menu | `gpu/shim/vw_overlay.cpp` | The Dear ImGui menu and FPS overlay; settings in `gpu/shim/vw_settings.cpp` |
 | Per-game settings | `scripts/game_profiles.py` | Launch defaults and GPU workarounds for each title |
 | Mods and patches | `scripts/mods.py`, `scripts/patches.py` | Loose-file mods and shadPS4 XML patches ([docs](docs/MODS.md)) |
 | Launcher | `launcher/` | Game folder, graphics options and the Play button |
 
-Per-game notes: [Odin Sphere](docs/odin/HANDOFF.md), [Unicorn Overlord](docs/unicorn/HANDOFF.md)
-(on its branch).
+Developer notes (state, open problems, reverse-engineering findings) are in
+[docs/dev/](docs/dev/): [Unicorn Overlord](docs/dev/unicorn/HANDOFF.md),
+[Odin Sphere](docs/dev/odin/HANDOFF.md), [GPU pipeline](docs/dev/parallel_gpu.md).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Bugs: open an issue with the bug report template and
+attach the run log.
 
 ## Credits
 
