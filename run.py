@@ -10,19 +10,82 @@ The in-game "Apply and restart" runs this script again through VW_RESTART_COMMAN
 import ctypes
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import sys
+import time
 
 PORT = Path(__file__).resolve().parent
+WINDOWS = os.name == 'nt'
+LOG_KEEP = 10  # run logs kept in <data>/logs
+
+
+class RunLog:
+    """Everything a run prints (this script, the preparation scripts, vwport) goes to the console
+    and to <data>/logs/run-<date>-<time>.log with the seconds since the start; the newest
+    LOG_KEEP logs are kept and last_run.log is a copy of the newest (the launcher's Log button)."""
+
+    def __init__(self):
+        self.file = None
+        self.start = time.monotonic()
+
+    def open(self, data):
+        logs = data / 'logs'
+        logs.mkdir(parents=True, exist_ok=True)
+        self.path = logs / time.strftime('run-%Y%m%d-%H%M%S.log')
+        self.file = open(self.path, 'a', encoding='utf-8', errors='replace', buffering=1)
+        for old in sorted(logs.glob('run-*.log'))[:-LOG_KEEP]:
+            old.unlink(missing_ok=True)
+        self.last = data / 'last_run.log'
+
+    def write(self, line, console=True):
+        if console:
+            print(line, flush=True)
+        if self.file:
+            self.file.write(f'[{time.monotonic() - self.start:9.3f}] {line}\n')
+
+    def run(self, command, **kwargs):
+        """Runs command with its output (stdout and stderr) through the log; returns its exit code."""
+        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT, text=True, errors='replace', bufsize=1, **kwargs)
+        for line in process.stdout:
+            self.write(line.rstrip('\n'))
+        return process.wait()
+
+    def close(self, code):
+        if not self.file:
+            return
+        self.write(f'Exit code {code}', console=False)
+        self.file.close()
+        self.file = None
+        try:
+            shutil.copyfile(self.path, self.last)
+        except OSError:
+            pass
+
+
+LOG = RunLog()
+
+
+def port_version():
+    """VERSION (written by packaging/package.py), else git describe, else 'unknown'."""
+    try:
+        return (PORT / 'VERSION').read_text(encoding='utf-8').strip()
+    except OSError:
+        pass
+    try:
+        return subprocess.run(['git', 'describe', '--always', '--dirty', '--tags'], cwd=PORT, capture_output=True,
+                              text=True, timeout=5, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+                              ).stdout.strip() or 'unknown'
+    except (OSError, subprocess.SubprocessError):
+        return 'unknown'
 
 
 def fail(message):
+    LOG.write(message, console=False)
     print(message, file=sys.stderr)
     sys.exit(1)
-
-
-WINDOWS = os.name == 'nt'
 
 
 def wait_for(pid):
@@ -64,11 +127,10 @@ def run_script(name, *args, capture=False):
         if result.returncode:
             sys.exit(result.returncode)
         return result.stdout
-    # stdin given: the output handles are passed explicitly (a windowed launcher child would
-    # get none otherwise).
-    result = subprocess.run(command, stdin=subprocess.DEVNULL, creationflags=no_console())
-    if result.returncode:
-        sys.exit(result.returncode)
+    code = LOG.run(command, creationflags=no_console())
+    if code:
+        LOG.write(f'{name} failed (exit code {code})')
+        sys.exit(code)
     return None
 
 
@@ -91,6 +153,9 @@ def main():
     data = Path(env.get('VW_DATA_DIR', PORT))
     out = data / 'out'
     out.mkdir(parents=True, exist_ok=True)
+    LOG.open(data)
+    LOG.write(f'vwport {port_version()} · {time.strftime("%Y-%m-%d %H:%M:%S %z")} · {platform.platform()} · '
+              f'Python {platform.python_version()}')
     env.setdefault('VW_CONFIG', str(data / 'vw.ini'))
     # Values this script derived on the previous start ("Apply and restart" inherits them) are
     # derived again from the new options.
@@ -101,7 +166,7 @@ def main():
     import graphics_options
     graphics, reverted = graphics_options.prepare(env['VW_CONFIG'], out / 'graphics_state.json')
     if reverted:
-        print('Graphics: the last restart never reached the game; previous options restored', flush=True)
+        LOG.write('Graphics: the last restart never reached the game; previous options restored')
     env.update(graphics_options.environment(graphics))
 
     probe = Path(env['VW_PROBE']) if env.get('VW_PROBE') else find_executable('vwport.exe' if WINDOWS else 'vwport')
@@ -115,8 +180,10 @@ def main():
         if clang64.is_dir():
             env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
     import game_profiles
-    if game_profiles.radv_nohiz(env, game_profiles.device_name(probe)):
-        print('RADV: RADV_DEBUG=nohiz for this GPU (VW_AUTO_NOHIZ=0: off)', flush=True)
+    gpu = game_profiles.device_name(probe)
+    LOG.write(f'GPU: {gpu or "unknown"}')
+    if game_profiles.radv_nohiz(env, gpu):
+        LOG.write('RADV: RADV_DEBUG=nohiz for this GPU (VW_AUTO_NOHIZ=0: off)')
 
     if not env.get('VW_GAME_DIR'):
         fail('Set VW_GAME_DIR to the game folder (eboot.bin, sce_module, ...).')
@@ -138,6 +205,7 @@ def main():
         from patches import (eboot_matches, game_app_version, game_profile, game_title_id,
                              patch_requirements, selected_patches)
         profile = game_profile(game_title_id(game))
+        LOG.write(f'Game: {game_title_id(game)} v{game_app_version(game)} · {original_game}')
         patched = bool(profile) and ((game_app_version(game) == profile[2] and eboot_matches(game, profile))
                                      or bool(env.get('VW_FORCE_PATCHES')))
         # The window shows the game's icon (BMP: the format SDL loads without extra libraries).
@@ -176,9 +244,9 @@ def main():
         from save_backup import backup
         try:
             if made := backup(user_dir):
-                print(f'Saves backed up to {made}', flush=True)
+                LOG.write(f'Saves backed up to {made}')
         except OSError as error:
-            print(f'Save backup failed, starting anyway: {error}', flush=True)
+            LOG.write(f'Save backup failed, starting anyway: {error}')
         this = ['--run'] if getattr(sys, 'frozen', False) else [str(Path(__file__).resolve())]
         restart = [sys.executable, *this, '--after', str(os.getpid()), *args]
         if WINDOWS:
@@ -191,14 +259,20 @@ def main():
                    '--user', str(user_dir),
                    '--timeout', env.get('VW_TIMEOUT', '0'), *args]
         # No stdin: an inherited pipe (shells such as Git Bash) cost the game its console output.
-        return subprocess.run(command, stdin=subprocess.DEVNULL, creationflags=no_console()).returncode
+        return LOG.run(command, creationflags=no_console())
     finally:
         if mod_view:
             shutil.rmtree(mod_view, ignore_errors=True)
 
 
 if __name__ == '__main__':
+    code = 1
     try:
-        sys.exit(main())
+        code = main()
     except KeyboardInterrupt:
-        sys.exit(130)
+        code = 130
+    except SystemExit as stop:
+        code = stop.code
+    finally:
+        LOG.close(code)
+    sys.exit(code)
