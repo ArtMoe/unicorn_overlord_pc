@@ -6,6 +6,7 @@
 #pragma once
 
 #include <atomic>
+#include <string>
 
 namespace VwSettings {
 
@@ -43,6 +44,10 @@ struct Values {
 };
 
 Values& Get();
+
+/// Text settings: "key_map" and "pad_map" (button remapping, src/runtime_pad.c format).
+std::string Text(const std::string& key);
+void SetText(const std::string& key, const std::string& value);
 
 /// Reads the file, then the environment overrides. Called once at start.
 void Load();

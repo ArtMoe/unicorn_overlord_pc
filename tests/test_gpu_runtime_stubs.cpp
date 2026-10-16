@@ -18,6 +18,13 @@ void runtime_memory_set_gpu_hooks(void (*)(uintptr_t, uint64_t),
 void runtime_thread_attach_host(const char*) {}
 void runtime_memory_gpu_protect(uintptr_t, uint64_t, int, int) { std::abort(); }
 void runtime_restart() { std::abort(); }
+void runtime_restart_with(const char*) { std::abort(); }
+int runtime_pad_button_count() { return 0; }
+const char* runtime_pad_button_name(int) { return ""; }
+void runtime_pad_describe(int, int, char* out, size_t size) { if (size) out[0] = 0; }
+void runtime_pad_bind(int, int, int) {}
+void runtime_pad_reset(int) {}
+void runtime_pad_spec(int, char* out, size_t size) { if (size) out[0] = 0; }
 uint64_t runtime_process_time_counter() { return runtime_process_time_us() * 1000; }
 int32_t* runtime_errno() { std::abort(); }
 int runtime_memory_write_backing(uintptr_t, const void*, uint64_t) { std::abort(); }

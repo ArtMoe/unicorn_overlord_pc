@@ -254,6 +254,9 @@ def main():
         else:
             import shlex
             env['VW_RESTART_COMMAND'] = shlex.join(restart)
+        # The in-game "Change game folder": the start program (launcher/vw_launcher.py) again.
+        if env.get('VW_START_COMMAND'):
+            env['VW_CHOOSE_GAME_COMMAND'] = f"{env['VW_START_COMMAND']} --choose-game --after {os.getpid()}"
         command = [str(probe), str(out / 'boot-linked.bin'), '--content-profile', str(out / 'content.bin'),
                    '--patches', str(out / 'patches.bin'), '--app0', str(game),
                    '--user', str(user_dir),

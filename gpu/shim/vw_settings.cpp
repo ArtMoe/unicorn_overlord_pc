@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
+#include <mutex>
 #include <string>
 #include <string_view>
 
@@ -18,7 +20,18 @@ const char* Path() {
     return env && env[0] ? env : "vw.ini";
 }
 
+std::mutex text_mutex;
+std::map<std::string, std::string> texts; // key_map, pad_map
+constexpr const char* TextKeys[] = {"key_map", "pad_map"};
+
 void Set(Values& v, const std::string& key, const std::string& value) {
+    for (const char* text_key : TextKeys) {
+        if (key == text_key) {
+            std::scoped_lock lock{text_mutex};
+            texts[key] = value;
+            return;
+        }
+    }
     const int i = std::atoi(value.c_str());
     static const char* const overlay_keys[] = {"overlay_fps", "overlay_frametime", "overlay_resolution",
                                                "overlay_gpu", "overlay_cpu", "overlay_ram", "overlay_vram"};
@@ -46,7 +59,7 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         return;
     }
     if (key == "menu_tab") {
-        v.menu_tab = i >= 0 && i <= 2 ? i : 0;
+        v.menu_tab = i >= 0 && i <= 3 ? i : 0;
         return;
     }
     if (key == "show_fps") {
@@ -80,6 +93,17 @@ void Set(Values& v, const std::string& key, const std::string& value) {
 
 } // namespace
 
+std::string Text(const std::string& key) {
+    std::scoped_lock lock{text_mutex};
+    const auto it = texts.find(key);
+    return it == texts.end() ? std::string{} : it->second;
+}
+
+void SetText(const std::string& key, const std::string& value) {
+    std::scoped_lock lock{text_mutex};
+    texts[key] = value;
+}
+
 Values& Get() {
     static Values values;
     return values;
@@ -88,7 +112,7 @@ Values& Get() {
 void Load() {
     auto& v = Get();
     if (FILE* file = std::fopen(Path(), "r")) {
-        char line[256];
+        char line[1280];
         while (std::fgets(line, sizeof(line), file)) {
             std::string text{line};
             text.erase(text.find_last_not_of(" \t\r\n") + 1);
@@ -154,6 +178,14 @@ void Save() {
                      .data(),
                  int(v.deferred_readback.load()), int(v.stale_readback.load()),
                  int(v.restart_unconfirmed.load()));
+    {
+        std::scoped_lock lock{text_mutex};
+        for (const char* key : TextKeys) {
+            if (const auto it = texts.find(key); it != texts.end() && !it->second.empty()) {
+                std::fprintf(file, "%s=%s\n", key, it->second.c_str());
+            }
+        }
+    }
     std::fclose(file);
 }
 

@@ -530,13 +530,13 @@ static void apply_patches(const char *path, Segment *segments, uint64_t ns, cons
 /* Restarts the game through run.py (the settings menu: a new render resolution is a patch
  * applied at start). Descriptors are closed first so the old GPU device and its memory are
  * released before the new process opens its own. */
-void runtime_restart(void) {
+/* Ends this process and starts the command in the environment variable `name` (set by run.py). */
+void runtime_restart_with(const char *name) {
     fflush(NULL);
 #ifdef _WIN32
-    /* run.py sets VW_RESTART_COMMAND: the launch command line, started again (new patches). */
-    const char *command=getenv("VW_RESTART_COMMAND");
-    puts("Runtime: restarting through run.py");
-    if (!command || !*command) { fputs("runtime_restart: VW_RESTART_COMMAND is not set\n",stderr); _exit(1); }
+    const char *command=getenv(name);
+    printf("Runtime: restarting through %s\n",name);
+    if (!command || !*command) { fprintf(stderr,"runtime_restart: %s is not set\n",name); _exit(1); }
     char *line=_strdup(command);
     /* Same output handles: a launcher reading the game's log keeps reading the new launch. */
     STARTUPINFOA startup={.cb=sizeof(startup),.dwFlags=STARTF_USESTDHANDLES,
@@ -550,16 +550,18 @@ void runtime_restart(void) {
     /* The new launch waits for this process's GPU device to go away (run.py --after). */
     TerminateProcess(GetCurrentProcess(),0);
 #else
-    /* run.py sets VW_RESTART_COMMAND: the launch command line, started again (new patches). */
-    const char *command=getenv("VW_RESTART_COMMAND");
-    puts("Runtime: restarting through run.py");
-    if (!command || !*command) { fputs("runtime_restart: VW_RESTART_COMMAND is not set\n",stderr); _exit(1); }
+    const char *command=getenv(name);
+    printf("Runtime: restarting through %s\n",name);
+    if (!command || !*command) { fprintf(stderr,"runtime_restart: %s is not set\n",name); _exit(1); }
     syscall(SYS_close_range, 3u, ~0u, 0u);
     execl("/bin/sh", "sh", "-c", command, (char *)NULL);
     perror("runtime_restart: exec");
     _exit(1);
 #endif
 }
+
+/* run.py sets VW_RESTART_COMMAND: the launch command line, started again (new patches). */
+void runtime_restart(void) { runtime_restart_with("VW_RESTART_COMMAND"); }
 
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
