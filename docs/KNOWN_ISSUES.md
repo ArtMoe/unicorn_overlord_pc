@@ -3,6 +3,18 @@
 This is an early, work-in-progress port. What is listed here is known; please don't open a new
 issue for it unless you have new information (a log, a save, a way to reproduce it).
 
+## Test system
+
+All numbers and test results here come from one laptop:
+
+| Part | Model |
+|---|---|
+| CPU | AMD Ryzen 5 2500U (4 cores / 8 threads, 2.0-3.6 GHz) |
+| GPU | AMD Radeon RX 560X (Polaris 11, 4 GB, laptop), on AC power |
+| Integrated GPU | Radeon Vega 8 (not used by the game) |
+
+Results from other hardware are welcome in the issues.
+
 ## How far the game has been tested
 
 - Unicorn Overlord has been played through the prologue, into chapter 1 and its first real
@@ -21,8 +33,7 @@ issue for it unless you have new information (a log, a save, a way to reproduce 
 
 ## Performance
 
-- The first battle map runs at about **53 FPS** on the test laptop (Ryzen 5 2500U with a
-  Radeon RX 560X), not a steady 60. Large battles draw ~6000 sprites per frame.
+- The first battle map runs at about **53 FPS** on the test system above, not a steady 60. Large battles draw ~6000 sprites per frame.
 - The limit is the CPU, not the GPU: the PS4's GPU reads its command stream in hardware, the
   port decodes it in software on one thread ("stage A"). A faster CPU (higher single-core
   speed) helps most. Splitting that work across threads is the next planned step; see
@@ -32,9 +43,11 @@ issue for it unless you have new information (a log, a save, a way to reproduce 
 
 ## Graphics
 
-- The GPU readback options (deferred and stale readbacks) are **on by default** because they are
-  faster. If something looks wrong (black screen, missing or flickering graphics), turn them off
-  in the in-game menu (**Insert**, Performance tab) and restart.
+- The two GPU readback options are **on by default** because they are faster. If something
+  looks wrong (black screen, missing or flickering graphics, wrong lighting or shadows), turn
+  them off: in-game menu (**Insert**) → Performance → "Game reads GPU data without waiting" and
+  "Deferred GPU readbacks", then **Apply and restart**. If the game then fails to start, the
+  next start goes back to the previous options by itself.
 - A render resolution change in the in-game menu only applies after a restart.
 - Render resolutions above 1080p use the game's own PS4 Pro mode. Only 1440p and 4K have been
   checked (title, menu and battle); 1800p has not.
@@ -44,9 +57,6 @@ issue for it unless you have new information (a log, a save, a way to reproduce 
 
 ## Builds
 
-- The downloads on the `latest` pre-release are built automatically from `main` and have **not
-  been played by hand**. Windows in particular: the static Windows build is made by CI but
-  hasn't been tested by playing since the 2026-10-13 cleanup.
 - The download contains only this project's `LICENSE`, not the license texts of the bundled
   libraries (FFmpeg, SDL3, Dear ImGui and the others listed in the README). This is planned
   (first item of the roadmap in pull request #10).
