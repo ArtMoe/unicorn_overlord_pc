@@ -2,6 +2,7 @@
 
 For players:
 
+- [KNOWN_ISSUES.md](KNOWN_ISSUES.md): what is known not to work yet
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md): first steps when the game does not start or misbehaves
 - [MODS.md](MODS.md): loose-file mods and shadPS4 XML patches
 

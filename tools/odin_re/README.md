@@ -3,7 +3,7 @@
 Target: CUSA05083 (US, UP0177), app 01.01, eboot.bin sha256
 2865b6cec33f2515def173c1ed0c03afc27a1cd5fad1b0d0f516b4527aba9a88.
 
-Tools: Ghidra 12.1.2 + JDK 21 from `C:\Users\tusha\doax3-mod\toolchain` (shared, not copied).
+Tools: Ghidra 12.1.2 + JDK 21 (not included).
 
 ## Rebuild from scratch
 
