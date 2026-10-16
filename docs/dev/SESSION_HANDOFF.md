@@ -4,7 +4,28 @@ Read this first, then `docs/dev/unicorn/HANDOFF.md` (the port itself) and
 `docs/KNOWN_ISSUES.md`. The owner is new to GitHub: explain git and GitHub steps in plain words,
 and ask before anything outward-facing (push, merge, force-push, repo settings).
 
-## Where things are
+## Continuing on another computer
+
+The work continues on a different machine. Everything needed is on GitHub; the paths in the
+table below are the **previous** PC's and will differ.
+
+1. **Clone fresh** (the history was rewritten on 2026-10-16, so an older clone can't be pulled):
+   `git clone --recursive https://github.com/hachi23/unicorn_overlord_pc` then
+   `git switch feat/setup-and-ingame-settings` (this work; PR #11's docs are already on `main`).
+2. Set the repository-only git identity: `git config user.name hachi23` and
+   `git config user.email 88461786+hachi23@users.noreply.github.com`.
+3. Put your own CUSA36381 v01.04 dump (base + 1.04 EN patch, merged) somewhere and point
+   `VW_GAME_DIR`/the setup dialog at it. Game files are never committed.
+4. Windows: install MSYS2 and build (see "How to build" below; `packaging/windows/build.sh`
+   installs the packages). Linux: `bash build.sh` (`shell.nix` lists the packages).
+5. The Ghidra project is **not** in the repository. Recreate it: run `scripts/prepare.py`,
+   `link_libc.py`, `link_modules.py` on the dump with `--out <re>/out`, then
+   `python tools/odin_re/make_ghidra_elf.py . <re>/out <re>`, then the analyzeHeadless import
+   below with `-import <re>/eboot_ghidra.elf -postScript LabelImports.java <re>/imports.tsv` and
+   `GHIDRA_HEADLESS_MAXMEM=12G` (2 GB runs out of memory; analysis takes ~15 min).
+6. Update `tools/uo_drive.ps1`'s two paths (port folder, dump folder).
+
+## Where things are (previous PC)
 
 | What | Where |
 |---|---|
@@ -29,17 +50,18 @@ commits with the `Co-Authored-By` line the session gives you.
 
 | Branch | State |
 |---|---|
-| `main` | = origin/main (b6092be) |
-| `docs/public-release` | Pushed; **PR #11** open (not merged): README "What it is", credits, `docs/KNOWN_ISSUES.md`, test-system table, readback how-to, removed piracy file names/personal paths from dev notes |
-| `feat/setup-and-ingame-settings` | Local only, based on `docs/public-release`. Work in progress below (committed locally with this file; **not pushed**) |
+| `main` | Includes **PR #11** (merged 2026-10-16): README "What it is", credits, `docs/KNOWN_ISSUES.md`, test-system table, readback how-to |
+| `feat/setup-and-ingame-settings` | Pushed, no PR yet. The work in progress below. Open a PR into `main` once the open items are fixed |
 
 Other open PRs: #10 (roadmap doc from an earlier session), #6-#9 (Dependabot action bumps, CI
-green, safe to merge). No branch ruleset is applied yet (see `docs/RELEASING.md`).
+green, safe to merge; they may need "Update branch" after the history rewrite). No branch
+ruleset is applied yet (see `docs/RELEASING.md`).
 
-**Unresolved, needs the owner's decision:** old commits still contain the download file names
-(`...[DLPSGAME.COM].pkg`, the joe97tab EN-patch PKG) in `docs/dev/unicorn/HANDOFF.md` history.
-Removing them needs a history rewrite + force-push (breaks forks/clones; one outside
-contributor, yogesh1239). Recommended, not done.
+**History rewritten (2026-10-16, at the owner's request):** the download file names that were in
+old revisions of `docs/dev/unicorn/HANDOFF.md` were replaced in every commit of every branch and
+the `latest` tag, then force-pushed. All commit ids changed: old clones (also yogesh1239's fork)
+must re-clone or reset. GitHub still keeps the old commits behind closed pull requests
+(refs/pull/*), which only GitHub Support can purge.
 
 ## What the owner asked for (2026-10-16)
 
@@ -58,7 +80,7 @@ contributor, yogesh1239). Recommended, not done.
    unicorn/HANDOFF.md "Graphics options in the game code"). Lower priority; the owner did not
    tick it in the last question.
 
-## Done on `feat/setup-and-ingame-settings` (uncommitted until this handoff)
+## Done on `feat/setup-and-ingame-settings`
 
 ### Start program (launcher/vw_launcher.py rewritten)
 - No window. `main(key)`: reads `data/launcher.json` `game_dir`; if missing/invalid or
