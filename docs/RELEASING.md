@@ -7,7 +7,7 @@
 | Job | Runner | Result |
 |---|---|---|
 | Linux | Ubuntu 22.04, GCC 14 | `Unicorn-Overlord-x86_64.AppImage` (runs on glibc 2.35 and newer: Ubuntu 22.04+, Debian 12+, SteamOS 3.5+) |
-| Windows | MSYS2 CLANG64 | `Unicorn Overlord.exe` (one file; vwport and its libraries inside) |
+| Windows | MSYS2 CLANG64 | `Unicorn-Overlord-PC-windows.zip` (launcher, licenses and help) |
 | Publish latest | main only | Replaces the `latest` pre-release with both files |
 
 Every run keeps both files as workflow artifacts (Actions tab → the run → Artifacts), so a pull
@@ -17,6 +17,21 @@ request can be tested before it is merged. Both packages store their version (`g
 The Vulkan headers, glslang, VMA and robin-map versions are pinned in the workflow's `env:`
 block. The static libraries (FFmpeg, SDL3, ...) are pinned in `packaging/deps.sh`. Both are
 cached; changing a pin rebuilds it.
+
+Both jobs run the C++ tests and platform-specific native tests via
+`packaging/test-native.sh`, then Python unittest discovery. Linux also runs the C runtime
+and loader tests. No game dump or GPU is needed. Treat skipped tests separately from passes.
+
+Packaging fails if required dependency notices are missing. `packaging/notices.py` collects
+vendored, static-library, Python/Tcl/Tk and installed toolchain notices. When bumping header
+dependencies, update `packaging/licenses/` too. Inspect both final archives after dependency
+changes. The AppImage contains its notices; the Windows ZIP keeps them beside the executable.
+
+Matching native debug symbols (`*-symbols-<commit>.tar.gz`) and source
+(`*-source-<commit>.tar.gz`) are retained in CI artifacts and attached to the latest build.
+Keep the symbols for each versioned release too: `addr2line -e vwport.debug <module-offset>`
+can resolve the native offsets from a crash log. The source archive includes checked-out
+submodules and downloaded static dependency archives, with build recipes in the port source.
 
 Locally: `python3 packaging/package.py unicorn` then `bash packaging/linux/appimage.sh "Unicorn Overlord"`
 (Linux), or `bash packaging/windows/build.sh unicorn` in MSYS2 CLANG64.
@@ -62,7 +77,8 @@ with:
    ```bash
    git tag -a v0.1.0 -m "v0.1.0" <commit> && git push origin v0.1.0
    gh release create v0.1.0 --prerelease --title "v0.1.0" --notes-file notes.md \
-       Unicorn-Overlord-x86_64.AppImage "Unicorn Overlord.exe"
+       Unicorn-Overlord-x86_64.AppImage Unicorn-Overlord-PC-windows.zip \
+       unicorn-source-*.tar.gz unicorn-*-symbols-*.tar.gz
    ```
    Use the files from that commit's workflow run. Mark releases as pre-releases until the game
    is playable from start to end.

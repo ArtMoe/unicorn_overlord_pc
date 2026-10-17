@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+"""Collect notices from the exact checked-out/built dependencies; fail on omissions."""
+import importlib.metadata
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import sysconfig
+
+ROOT = Path(__file__).resolve().parent.parent
+VENDORED = {
+    'shadPS4': 'gpu/shadps4/LICENSE', 'LibAtrac9': 'third_party/LibAtrac9/LICENSE',
+    'imgui': 'gpu/third_party/imgui/LICENSE.txt', 'sirit': 'gpu/third_party/sirit/LICENSE.txt',
+    'SPIRV-Headers': 'gpu/third_party/sirit/externals/SPIRV-Headers/LICENSE',
+    'magic_enum': 'gpu/third_party/magic_enum/LICENSE', 'miniz': 'gpu/third_party/miniz/LICENSE',
+    'xbyak': 'gpu/third_party/xbyak/COPYRIGHT', 'half': 'gpu/third_party/half/LICENSE.txt',
+    'DejaVu': 'gpu/third_party/fonts/LICENSE-DejaVu.txt',
+}
+STATIC = ('zlib', 'xxhash', 'fmt', 'zycore', 'zydis', 'sdl3', 'ffmpeg')
+
+
+def copy_notices(source, destination):
+    candidates = sorted(p for p in source.iterdir() if p.is_file() and
+                        p.name.upper().startswith(('LICENSE', 'COPYING', 'COPYRIGHT', 'NOTICE')))
+    if not candidates:
+        raise FileNotFoundError(f'No license notices found in {source}')
+    destination.mkdir(parents=True, exist_ok=True)
+    for path in candidates:
+        shutil.copy2(path, destination / path.name)
+
+
+def collect_native(destination, root=ROOT):
+    destination = Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    for name, source in VENDORED.items():
+        shutil.copy2(root / source, destination / f'{name}.txt')
+    for name in STATIC:
+        copy_notices(root / 'out/deps/build' / name, destination / name)
+    shutil.copytree(root / 'packaging/licenses', destination / 'headers', dirs_exist_ok=True)
+    # Preserve the original inline notices in AMD's shader and register headers, including
+    # the extra portability-header attribution. These files contain no game data.
+    for source in ('gpu/shadps4/video_core/host_shaders/fsr/ffx_a.h',
+                   'gpu/shadps4/video_core/host_shaders/fsr/ffx_fsr1.h',
+                   'gpu/third_party/gcn/include/gcn/si_ci_vi_merged_offset.h',
+                   'gpu/third_party/gcn/include/gcn/si_ci_vi_merged_pm4_it_opcodes.h'):
+        shutil.copy2(root / source, destination / Path(source).name)
+
+
+def collect_python(destination):
+    destination = Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    python_notices = [Path(sys.base_prefix) / 'LICENSE.txt',
+                      Path(sysconfig.get_path('stdlib')) / 'LICENSE.txt',
+                      Path(f'/usr/share/doc/python{sys.version_info.major}.{sys.version_info.minor}/copyright')]
+    source = next((p for p in python_notices if p.is_file()), None)
+    if source is None:
+        raise FileNotFoundError('Python runtime license not found')
+    shutil.copy2(source, destination / 'Python.txt')
+    versions = {'Python': sys.version}
+    for name in ('Pillow', 'PyInstaller', 'pyinstaller-hooks-contrib'):
+        dist = importlib.metadata.distribution(name)
+        licenses = [p for p in (dist.files or []) if '.dist-info/' in str(p) and
+                    any(part.lower().startswith(('license', 'copying', 'notice')) for part in p.parts)]
+        if not licenses:
+            raise FileNotFoundError(f'{name} wheel has no license notices')
+        for index, path in enumerate(licenses):
+            source = Path(dist.locate_file(path))
+            if source.is_file():
+                shutil.copy2(source, destination / f'{name}-{index}-{path.name}')
+        versions[name] = dist.version
+    # Tcl/Tk are frozen by PyInstaller's tkinter hook. Resolve without opening a GUI.
+    import tkinter
+    tcl = Path(tkinter.Tcl().eval('info library'))
+    for name in ('tcl', 'tk'):
+        candidates = list(tcl.parent.glob(f'{name}*/license.terms'))
+        candidates += list(Path('/usr/share/doc').glob(f'{name}8.*/copyright'))
+        source = next((p for p in candidates if p.is_file()), None)
+        if source is None:
+            raise FileNotFoundError(f'{name} runtime license not found')
+        shutil.copy2(source, destination / f'{name}.txt')
+    (destination / 'versions.json').write_text(json.dumps(versions, indent=2), encoding='utf-8')
+
+
+def collect_toolchain(destination):
+    destination = Path(destination)
+    destination.mkdir(parents=True, exist_ok=True)
+    if os.name == 'nt':
+        compiler = shutil.which('clang')
+        if not compiler:
+            raise FileNotFoundError('Cannot locate the MSYS2 CLANG64 compiler')
+        prefix = Path(compiler).resolve().parent.parent / 'share/licenses'
+        if not prefix.is_dir():
+            raise FileNotFoundError(f'MSYS2 notices not found: {prefix}')
+        # Includes exact installed Vulkan/header and statically linked compiler runtime notices.
+        shutil.copytree(prefix, destination / 'msys2', dirs_exist_ok=True)
+    else:
+        for name, pattern in (('libstdc++', 'libstdc++6'), ('libgcc', 'libgcc-s1'),
+                              ('zlib', 'zlib1g'), ('Tcl', 'tcl8.6'), ('Tk', 'tk8.6')):
+            source = Path('/usr/share/doc') / pattern / 'copyright'
+            if not source.is_file():
+                raise FileNotFoundError(f'Toolchain/runtime notice missing: {source}')
+            shutil.copy2(source, destination / f'{name}.txt')
+        # Debian copyright notices refer here for the full license terms.
+        shutil.copytree('/usr/share/common-licenses', destination / 'license-texts', dirs_exist_ok=True)
+
+
+def collect(destination, python):
+    destination = Path(destination)
+    collect_native(destination)
+    subprocess.run([str(python), str(Path(__file__).resolve()), str(destination / 'python')], check=True)
+    collect_toolchain(destination / 'toolchain')
+    shutil.copy2(ROOT / 'packaging/deps.sh', destination / 'dependency-sources-and-build-options.txt')
+    commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    (destination / 'SOURCE.txt').write_text(
+        f'Port source revision: {commit}\nhttps://github.com/hachi23/unicorn_overlord_pc/tree/{commit}\n'
+        'The matching source archive is attached to the release. It contains the port,\n'
+        'submodules and downloaded static dependency sources. Build recipes: build.sh,\n'
+        'packaging/deps.sh and .github/workflows/build.yml. Header-library versions and\n'
+        'source repositories are pinned in that workflow. Runtime wheel versions are in\n'
+        'python/versions.json; upstream sources: python.org, python-pillow.org, pyinstaller.org.\n',
+        encoding='utf-8')
+
+
+if __name__ == '__main__':
+    collect_python(sys.argv[1])

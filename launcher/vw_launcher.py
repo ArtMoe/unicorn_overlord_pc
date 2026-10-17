@@ -53,7 +53,8 @@ sys.path.insert(0, str(RUNTIME / 'scripts'))
 import graphics_options  # noqa: E402  (runtime/scripts)
 from patches import game_app_version, game_title_id  # noqa: E402
 import tkinter as tk  # noqa: E402
-from tkinter import filedialog, font as tkfont  # noqa: E402
+from tkinter import filedialog, font as tkfont, messagebox  # noqa: E402
+import diagnostics  # noqa: E402
 
 try:
     from PIL import Image, ImageDraw, ImageFilter, ImageTk
@@ -419,6 +420,7 @@ class Launcher:
         top = self.log_window = tk.Toplevel(self.root)
         top.title(f"{self.game['title']}: log")
         top.geometry('900x480')
+        tk.Button(top, text='Export diagnostics…', command=self.export_diagnostics).pack(anchor='w')
         text = tk.Text(top, bg=self.c['log_bg'], fg=self.c['ink'], insertbackground=self.c['ink'], font=('Courier', 10), wrap='none')
         text.pack(fill='both', expand=True)
         lines = self.log_lines
@@ -436,6 +438,44 @@ class Launcher:
                 shown[0] = len(current)
             top.after(500, refresh)
         refresh()
+
+    def export_diagnostics(self):
+        logs = self.data / 'logs'
+        newest = sorted(logs.glob('run-*.log'))
+        chosen = filedialog.askopenfilename(title='Choose the failed run (newest selected)',
+                                           initialdir=str(logs),
+                                           initialfile=newest[-1].name if newest else '',
+                                           filetypes=[('Run logs', '*.log')])
+        if not chosen:
+            return
+        try:
+            files = diagnostics.support_files(chosen, self.data,
+                                              (self.settings.get('game_dir', ''), RUNTIME, HERE))
+        except (OSError, ValueError) as error:
+            messagebox.showerror('Cannot export diagnostics', str(error))
+            return
+        preview = tk.Toplevel(self.root)
+        preview.title('Review diagnostics before sharing')
+        preview.geometry('900x600')
+        tk.Label(preview, text='Known paths are redacted. Review for other personal information before saving.').pack()
+        text = tk.Text(preview, wrap='none')
+        text.pack(fill='both', expand=True)
+        # Editing the preview edits the exact text saved in the archive.
+        text.insert('end', '\n\n'.join(f'--- {name} ---\n{content}' for name, content in files.items()))
+        def save():
+            destination = filedialog.asksaveasfilename(title='Save diagnostics archive',
+                defaultextension='.zip', initialfile='vwport-diagnostics.zip', filetypes=[('ZIP archive', '*.zip')])
+            if not destination:
+                return
+            try:
+                # One editable text preserves the selected log and system summary together.
+                diagnostics.export_archive(destination, {'run.log': text.get('1.0', 'end-1c')})
+            except (OSError, ValueError) as error:
+                messagebox.showerror('Cannot save diagnostics', str(error))
+                return
+            preview.destroy()
+            messagebox.showinfo('Diagnostics saved', 'Attach this ZIP to your GitHub issue.')
+        tk.Button(preview, text='Save reviewed diagnostics ZIP', command=save).pack()
 
 
 def main(key):

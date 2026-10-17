@@ -57,9 +57,11 @@ Results from other hardware are welcome in the issues.
 
 ## Builds
 
-- The download contains only this project's `LICENSE`, not the license texts of the bundled
-  libraries (FFmpeg, SDL3, Dear ImGui and the others listed in the README). This is planned
-  (first item of the roadmap in pull request #10).
+- New packages include `LICENSE`, third-party notices in `licenses/` and a help file. Windows
+  downloads are ZIP archives; keep their notices alongside the executable. Older test builds
+  may lack these files. Matching source and debug symbol archives accompany new builds.
+- CI tests native code without a GPU or game dump. Successful CI does not establish a full
+  playthrough or driver compatibility; packaged builds still need Windows/Linux gameplay tests.
 
 ## Not supported (by design, for now)
 
