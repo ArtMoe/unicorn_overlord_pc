@@ -29,7 +29,7 @@ LOG_BYTES = 8 * 1024 * 1024  # two segments per run, plus a bounded live last_ru
 class RunLog:
     """Everything a run prints (this script, the preparation scripts, vwport) goes to the console
     and to <data>/logs/run-<date>-<time>.log with the seconds since the start; the newest
-    LOG_KEEP logs are kept and last_run.log is a copy of the newest (the launcher's Log button)."""
+    LOG_KEEP logs are kept and last_run.log mirrors the live current segment."""
 
     def __init__(self):
         self.file = None

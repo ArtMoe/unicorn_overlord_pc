@@ -41,8 +41,8 @@ Locally: `python3 packaging/package.py unicorn` then `bash packaging/linux/appim
 `.github/main-protection.json` is a repository ruleset for the default branch:
 
 - no direct pushes: every change goes through a pull request, admins included
-- one approving review; a new push dismisses earlier approvals
-- the `Linux` and `Windows` build jobs must pass
+- every change needs a PR and all review threads must be resolved
+- the `Linux` and `Windows` build jobs must pass against an up-to-date base
 - no force-push, no deletion
 
 Apply it with the GitHub CLI (needs admin rights on the repository):
@@ -57,16 +57,11 @@ the file.
 The status checks only appear after the workflow has run once, so merge the pull request that
 adds the workflow first, then apply the ruleset.
 
-**Single maintainer:** GitHub does not let anyone approve their own pull request. With one
-required approval and no bypass, a maintainer working alone can never merge. To let repository
-admins merge their own pull requests (still never push directly), replace `"bypass_actors": []`
-with:
-
-```json
-"bypass_actors": [{ "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request" }]
-```
-
-(`5` is GitHub's id for the admin role.)
+**Single maintainer:** the template requires zero formal approving reviews because the owner
+and their connected automation cannot approve their own PRs. It still requires a PR, resolved
+threads, current passing builds and no bypass actors. The relevance/correctness review and test
+evidence in CONTRIBUTING.md remain required. Once an independent reviewer is available, set
+`required_approving_review_count` to 1. The JSON is not active until applied in repository settings.
 
 ## Making a release
 

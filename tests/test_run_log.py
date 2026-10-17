@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,19 @@ spec.loader.exec_module(run)
 
 
 class RunLogTest(unittest.TestCase):
+    def test_gpu_driver_header_survives_log_rotation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            log = run.RunLog()
+            log.open(Path(temp))
+            log.support = {'port_version': 'abc123'}
+            log.write('GPU selected: Test GPU; driver: 1.2.3; Vulkan: 1.3', console=False)
+            with patch.object(run, 'LOG_BYTES', 1024):
+                for _ in range(40):
+                    log.write('x' * 100, console=False)
+            log.close(0)
+            info = json.loads(log.path.with_suffix('.json').read_text())
+            self.assertIn('driver: 1.2.3', info['gpu_driver_api'])
+
     def test_rapid_restarts_live_log_and_bounded_rotation(self):
         with tempfile.TemporaryDirectory() as temp:
             data = Path(temp)

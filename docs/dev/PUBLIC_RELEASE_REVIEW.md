@@ -3,6 +3,19 @@
 Reviewed published main at `b6092bef89e853f93ecc6ea8e4e9dee5922845fe`.
 This is a source review, not verification of unpublished local fixes or a full playthrough.
 
+## Follow-up implementation
+
+The release-support follow-up adds selectable, previewed diagnostics exports; unique bounded
+live logs; saved preparation errors/Python tracebacks; persistent system/settings/GPU-driver
+metadata; explicit GPU-device-loss reporting; notice collection; source/symbol archives; and
+native CI test execution. The findings below describe the original audited revision.
+
+Repository protection was separately confirmed inactive. The updated JSON template is ready
+for a solo maintainer (PRs, current builds and resolved threads, zero self-approval requirement),
+but still requires an owner to apply it through GitHub settings or the documented CLI command.
+Full playthrough, cross-vendor GPU and packaged GUI validation still require real game/hardware
+testing; source and automated tests cannot establish those results.
+
 ## Release judgment
 
 Suitable for an explicitly experimental public test release after the items below are
