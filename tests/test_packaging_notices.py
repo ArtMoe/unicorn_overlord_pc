@@ -29,12 +29,17 @@ class NoticeTests(unittest.TestCase):
             (root / 'eboot.bin').write_bytes(b'private game data')
             (root / 'data').mkdir()
             (root / 'data/save.bin').write_bytes(b'private save')
+            (root / 'src-private-game').mkdir()
+            (root / 'src-private-game/eboot.bin').write_bytes(b'private game data')
+            (root / 'out/deps/src').mkdir(parents=True)
+            (root / 'out/deps/src/private-game.tar.gz').write_bytes(b'private game archive')
             destination = root / 'source.tar.gz'
             with patch.object(package, 'ROOT', root), patch.object(package, 'OUT', root / 'out'):
                 package.source_archive(destination)
             with tarfile.open(destination) as archive:
                 self.assertIn('source/runtime.c', archive.getnames())
                 self.assertFalse(any('eboot' in p or 'save.bin' in p for p in archive.getnames()))
+                self.assertFalse(any('private-game' in p for p in archive.getnames()))
 
     def test_missing_component_fails_instead_of_shipping_incomplete_notices(self):
         with tempfile.TemporaryDirectory() as temp:

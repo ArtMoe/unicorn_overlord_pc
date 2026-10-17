@@ -16,7 +16,9 @@ dist/<Title> PC/ and an archive of it (.tar.gz on Linux, .zip on Windows), two f
 No game file is included: the launcher asks for the folder of the user's own dump.
 """
 import ast
+import hashlib
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -152,13 +154,35 @@ def source_archive(destination):
                         archive.addfile(member, source.extractfile(member) if member.isfile() else None)
                 if process.wait():
                     raise RuntimeError(f'Cannot archive {repo}')
-        for path in sorted((OUT / 'deps/src').glob('*.tar.*')):
+        recipe = ROOT / 'packaging/deps.sh'
+        manifest = recipe.read_text() if recipe.is_file() else ''
+        for name, version, url, checksum in re.findall(
+                r'^"([\w]+) (\S+) (https://\S+) ([a-f0-9]{64})"$', manifest, re.MULTILINE):
+            extension = url.rsplit('.tar.', 1)[-1]
+            path = OUT / 'deps/src' / f'{name}-{version}.tar.{extension}'
+            if not path.is_file():
+                if name == 'nasm':  # build tool may come from the system
+                    continue
+                raise FileNotFoundError(f'Required dependency source missing: {path.name}')
+            digest = hashlib.sha256()
+            with path.open('rb') as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                    digest.update(chunk)
+            if digest.hexdigest() != checksum:
+                raise ValueError(f'Dependency source checksum mismatch: {path.name}')
             archive.add(path, arcname=f'dependency-sources/{path.name}')
-        # CI clones of header libraries; strip VCS/build artifacts from their source trees.
-        for path in sorted(ROOT.glob('src-*')):
-            if path.is_dir():
-                archive.add(path, arcname=f'header-sources/{path.name}',
-                            filter=lambda m: None if '/.git' in m.name else m)
+        # Only the four known CI clones, and only their committed files. Never sweep src-*.
+        for name in ('Vulkan-Headers', 'glslang', 'VulkanMemoryAllocator', 'robin-map'):
+            path = ROOT / f'src-{name}'
+            if not (path / '.git').exists():
+                continue
+            with subprocess.Popen(['git', 'archive', '--format=tar', f'--prefix=header-sources/{name}/', 'HEAD'],
+                                  cwd=path, stdout=subprocess.PIPE) as process:
+                with tarfile.open(fileobj=process.stdout, mode='r|') as source:
+                    for member in source:
+                        archive.addfile(member, source.extractfile(member) if member.isfile() else None)
+                if process.wait():
+                    raise RuntimeError(f'Cannot archive header sources: {name}')
 
 
 def main():
