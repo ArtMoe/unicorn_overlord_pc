@@ -97,7 +97,10 @@ def collect_toolchain(destination):
         shutil.copytree(prefix, destination / 'msys2', dirs_exist_ok=True)
     else:
         for name, pattern in (('libstdc++', 'libstdc++6'), ('libgcc', 'libgcc-s1'),
-                              ('zlib', 'zlib1g'), ('Tcl', 'tcl8.6'), ('Tk', 'tk8.6')):
+                              ('zlib', 'zlib1g'), ('Tcl', 'tcl8.6'), ('Tk', 'tk8.6'),
+                              ('libffi', 'libffi8'), ('OpenSSL', 'libssl3'),
+                              ('bzip2', 'libbz2-1.0'), ('liblzma', 'liblzma5'),
+                              ('Expat', 'libexpat1')):
             source = Path('/usr/share/doc') / pattern / 'copyright'
             if not source.is_file():
                 raise FileNotFoundError(f'Toolchain/runtime notice missing: {source}')
