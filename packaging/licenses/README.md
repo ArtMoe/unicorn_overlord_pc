@@ -9,6 +9,8 @@ These are unmodified upstream notices for the versions pinned in the build workf
 | VulkanMemoryAllocator.txt | GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator, v3.4.0, LICENSE.txt |
 | robin-map.txt | Tessil/robin-map, v1.4.0, LICENSE |
 | glslang.txt | KhronosGroup/glslang, 16.0.0, LICENSE.txt |
+| Tcl-8.6.txt | tcltk/tcl, core-8-6-18, license.terms (8.6 series) |
+| Tk-8.6.txt | tcltk/tk, core-8-6-18, license.terms (8.6 series) |
 
 Repository URLs use `https://github.com/<owner>/<repository>`. Update the corresponding
 notices whenever changing dependency pins. Windows also packages the notices from the

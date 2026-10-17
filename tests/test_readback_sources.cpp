@@ -27,7 +27,9 @@ int main() {
     stats.Report(out);
     std::rewind(out);
     char text[1024] = {};
-    std::fread(text, 1, sizeof(text) - 1, out);
+    const size_t bytes_read = std::fread(text, 1, sizeof(text) - 1, out);
+    assert(bytes_read > 0 && !std::ferror(out));
+    text[bytes_read] = '\0';
     assert(std::strstr(text, "Readback source cpu-read: hits 3, waits 2, wait 4.000 ms, max 3.000 ms"));
     assert(!std::strstr(text, "image-free"));
     assert(stats.Get(ReadbackSource::CpuRead).hits == 0);

@@ -48,6 +48,19 @@ def collect_native(destination, root=ROOT):
         shutil.copy2(root / source, destination / Path(source).name)
 
 
+def tcl_notice(name, version, library, root=ROOT):
+    series = '.'.join(version.split('.')[:2])
+    candidates = list(Path(library).parent.glob(f'{name}{series}*/license.terms'))
+    candidates += list(Path('/usr/share/doc').glob(f'{name}{series}*/copyright'))
+    # Python's Windows installer omits the standalone license. The upstream 8.6
+    # terms are retained for that series; an unknown series still fails closed.
+    candidates.append(root / 'packaging/licenses' / f'{name.title()}-{series}.txt')
+    source = next((p for p in candidates if p.is_file()), None)
+    if source is None:
+        raise FileNotFoundError(f'{name} {version} runtime license not found')
+    return source
+
+
 def collect_python(destination):
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
@@ -72,13 +85,12 @@ def collect_python(destination):
         versions[name] = dist.version
     # Tcl/Tk are frozen by PyInstaller's tkinter hook. Resolve without opening a GUI.
     import tkinter
-    tcl = Path(tkinter.Tcl().eval('info library'))
+    interpreter = tkinter.Tcl()
+    tcl = Path(interpreter.eval('info library'))
+    versions['Tcl'] = interpreter.eval('info patchlevel')
+    versions['Tk'] = str(tkinter.TkVersion)
     for name in ('tcl', 'tk'):
-        candidates = list(tcl.parent.glob(f'{name}*/license.terms'))
-        candidates += list(Path('/usr/share/doc').glob(f'{name}8.*/copyright'))
-        source = next((p for p in candidates if p.is_file()), None)
-        if source is None:
-            raise FileNotFoundError(f'{name} runtime license not found')
+        source = tcl_notice(name, versions[name.title()], tcl)
         shutil.copy2(source, destination / f'{name}.txt')
     (destination / 'versions.json').write_text(json.dumps(versions, indent=2), encoding='utf-8')
 

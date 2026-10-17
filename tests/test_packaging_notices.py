@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 import importlib.util
 from pathlib import Path
 import tempfile
@@ -18,6 +19,18 @@ with patch.dict(sys.modules, {'notices': notices}):
 
 
 class NoticeTests(unittest.TestCase):
+    def test_tcl_windows_fallback_and_unknown_series(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            folder = root / 'packaging/licenses'
+            folder.mkdir(parents=True)
+            source = folder / 'Tcl-8.6.txt'
+            source.write_text('upstream 8.6 license terms')
+            with patch.object(notices.Path, 'glob', return_value=[]):
+                self.assertEqual(notices.tcl_notice('tcl', '8.6.18', root / 'tcl8.6', root), source)
+                with self.assertRaises(FileNotFoundError):
+                    notices.tcl_notice('tcl', '9.0.0', root / 'tcl9.0', root)
+
     def test_source_archive_excludes_untracked_game_data(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
