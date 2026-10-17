@@ -4,16 +4,35 @@
 [![License: GPL v2+](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
 
 A native Linux and Windows port of the PlayStation 4 version of **Unicorn Overlord**. The same
-engine also runs **Odin Sphere Leifthrasir** (branch `odin-sphere`).
+engine also runs **Odin Sphere Leifthrasir**.
 
-| Game | Dump | Branch | State |
-|---|---|---|---|
-| Unicorn Overlord | CUSA36381 (Asia, English patch), app 01.04 | `main` | Prologue, chapter 1 and its first battle played; saving works; every system function the game imports is implemented |
-| Odin Sphere Leifthrasir | CUSA05083 (US), app 01.01 | `odin-sphere` | Playable |
+| Game | Dump | State |
+|---|---|---|
+| Unicorn Overlord | CUSA36381 (Asia), app 01.04 | Prologue, chapter 1 and its first battle played; saving works; every system function the game imports is implemented |
+| Odin Sphere Leifthrasir | CUSA05083 (US), app 01.01 | Reaches the title screen (`launcher/odin_launcher.py`) |
 
-The game's own executable runs directly on the PC's processor (the PS4 uses the same x86-64
-architecture). A runtime written for these games replaces the PS4 system libraries, and the
-shadPS4 video core translates the graphics to Vulkan. It is not a general emulator.
+> **Work in progress.** The game has not been played to the end, and it runs at about 50-60 FPS
+> on a mid-range laptop. Read [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) before reporting a bug.
+
+### What it is
+
+Not an emulator, and not a decompilation. The PS4 and a PC use the same kind of processor
+(x86-64), so the game's own executable from your dump runs **directly on the PC's CPU**. What a
+PC doesn't have is the PS4's operating system and GPU, so this project supplies both:
+
+1. **Preparation** (`scripts/`): reads the game's `eboot.bin`, fixes up its addresses and links
+   the game's bundled system modules into one image.
+2. **Loader** (`src/probe.c`): loads that image into memory, applies a few small per-game code
+   patches (for example the render resolution) and jumps into the game's code.
+3. **Runtime** (`src/runtime_*.c`): about 700 PS4 system functions the game calls (memory,
+   threads, files, audio, video decoding, controller, saves, and offline stand-ins for PSN),
+   written for these games.
+4. **GPU** (`gpu/`): the [shadPS4](https://github.com/shadps4-emu/shadPS4) video core turns the
+   PS4's GPU commands and shaders into Vulkan, with this port's multi-threaded draw pipeline on top.
+5. **Launcher** (`launcher/`): a small Python/Tkinter window to pick the game folder and
+   graphics options; the in-game menu is Dear ImGui (`gpu/shim/vw_overlay.cpp`).
+
+Only the games listed above are supported.
 
 > **No game files are included.** You need a dump of your own copy. This project is not
 > affiliated with Sony Interactive Entertainment, Atlus, Sega or Vanillaware.
@@ -54,7 +73,8 @@ In game, **Insert** (R3+L2 on a controller) opens the port's menu. It has three 
 
 Settings are kept in `vw.ini` in the data directory and are shared with the launcher.
 
-Something wrong? See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Every run writes a log
+Something wrong? See [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) and
+[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Every run writes a log
 to `logs/` in the data directory (the launcher's **Log** button shows the newest).
 
 ### Render resolution
@@ -156,6 +176,8 @@ attach the run log.
 
 ## Credits
 
+This port stands on the work of others. In order of descent:
+
 - **deadinside28**: [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc), the original
   native port that this approach comes from.
 - **Supermedo**: [bloodborne_pc for Windows](https://github.com/Supermedo/bloodborne_pc).
@@ -163,15 +185,30 @@ attach the run log.
   this repository was forked from.
 - **cuesta4**: [shadPS4 fork](https://github.com/cuesta4/shadPS4), for its GNM blend rewrite,
   depth/stencil state and image aliasing fixes.
-- **shadPS4 team**: the [shadPS4](https://github.com/shadps4-emu/shadPS4) video core.
+- **shadPS4 team**: the [shadPS4](https://github.com/shadps4-emu/shadPS4) video core and shader
+  recompiler (vendored in `gpu/shadps4/`, see [gpu/VENDOR.txt](gpu/VENDOR.txt)), and its PS4
+  function names and library layouts.
+- **yogesh1239**: CI builds for Windows and Linux, run logs, contributing docs and templates.
 
-Also used: [LibAtrac9](https://github.com/Thealexbarney/LibAtrac9), [FFmpeg](https://ffmpeg.org),
-[SDL3](https://github.com/libsdl-org/SDL), [Dear ImGui](https://github.com/ocornut/imgui),
-[sirit](https://github.com/shadps4-emu/sirit), [magic_enum](https://github.com/Neargye/magic_enum),
-[miniz](https://github.com/richgel999/miniz), [xbyak](https://github.com/herumi/xbyak),
-[Vulkan Memory Allocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator),
-AMD FidelityFX FSR 1 and CAS, and [Pillow](https://python-pillow.org).
+Libraries and tools used:
+
+| What | Used for |
+|---|---|
+| [LibAtrac9](https://github.com/Thealexbarney/LibAtrac9) | ATRAC9 audio decoding |
+| [FFmpeg](https://ffmpeg.org) | Movies (H.264/HEVC), MP3/AAC audio, PNG |
+| [SDL3](https://github.com/libsdl-org/SDL) | Window, keyboard and controllers |
+| [Dear ImGui](https://github.com/ocornut/imgui) | In-game menu and overlay |
+| [sirit](https://github.com/shadps4-emu/sirit), [SPIRV-Headers](https://github.com/KhronosGroup/SPIRV-Headers), [glslang](https://github.com/KhronosGroup/glslang) | Shader generation |
+| [Vulkan](https://www.vulkan.org) headers, [Vulkan Memory Allocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) | Graphics API |
+| AMD FidelityFX FSR 1 and CAS | Upscaling and sharpening |
+| [Zydis](https://github.com/zyantific/zydis), [xbyak](https://github.com/herumi/xbyak) | x86 decoding and code generation |
+| [fmt](https://github.com/fmtlib/fmt), [Boost](https://www.boost.org), [magic_enum](https://github.com/Neargye/magic_enum), [robin-map](https://github.com/Tessil/robin-map), [half](https://half.sourceforge.net), [xxHash](https://github.com/Cyan4973/xxHash), [zlib](https://zlib.net), [miniz](https://github.com/richgel999/miniz) | Support libraries |
+| [DejaVu fonts](https://dejavu-fonts.github.io) | Menu font |
+| [Pillow](https://python-pillow.org), [PyInstaller](https://pyinstaller.org) | Launcher images and packaging |
 
 ## License
 
 GNU GPL v2 or later ([LICENSE](LICENSE)). Third-party components keep their own licenses.
+
+Unicorn Overlord and Odin Sphere Leifthrasir are trademarks of their owners. This project
+contains no game code or assets; it only runs a copy you dumped yourself.

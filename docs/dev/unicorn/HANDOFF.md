@@ -1,12 +1,7 @@
 # Unicorn Overlord (CUSA36381, Asia, v01.04) — handoff
 
-Repository `hachi23/unicorn_overlord_pc` (branch `main`; also kept as branch `unicorn-overlord` of
-`hachi23/odin_sphere_pc`, the engine source; it contains all of `odin-sphere`, merged
-2026-10-13). Locally it is checked out on its own in `~/unicorn_overlord_pc` (a git worktree of
-`~/odin_sphere_pc`, which stays on `odin-sphere`): commit engine fixes on `odin-sphere` in
-`~/odin_sphere_pc`, then `git merge odin-sphere` here and push to both remotes
-(`git push unicorn unicorn-overlord:main`). A new worktree needs
-`git submodule update --init`. Same method as Odin Sphere: the game's x86-64 code runs natively,
+Repository `hachi23/unicorn_overlord_pc`, branch `main` (it also contains the Odin Sphere port:
+the engine is shared). A new clone needs `git submodule update --init`. Same method as Odin Sphere: the game's x86-64 code runs natively,
 `src/runtime_*.c` replaces the PS4 libraries, `gpu/shadps4` translates the GPU to Vulkan.
 Read `docs/dev/odin/HANDOFF.md` first for building on Linux, the run scripts and the tooling.
 
@@ -27,22 +22,12 @@ Read `docs/dev/odin/HANDOFF.md` first for building on Linux, the run scripts and
 
 ## The dump
 
-Asia version, base v1.01 PKG + the 1.04 update with an English patch:
-- `~/Downloads/HP0177-CUSA36381_00-UNICORNOVERLORD0.v1.01-[DLPSGAME.COM].pkg` (8 GB)
-- `~/Downloads/HP0177-CUSA36381_00-UNICORNOVERLORD0-A0104-V0100-EN-patch-by-joe97tab.pkg`
-  (1 GB; a fake PKG, DRM type 15; param.sfo title "Unicorn Overlord EN Patch", APP_VER 01.04)
-
-Extracted with the ShadPs4Plus PKG Extractor 1.0
-(github.com/AzaharPlus/shadPS4Plus/releases/tag/PKG_EXTRACTOR_1_0, in
-`~/.local/src/ps4tools/ShadPs4Plus-PkgExtractor-1.0-linux/pkg_extractor.AppImage`):
-`pkg_extractor.AppImage <file.pkg> <out dir>` → `~/Downloads/uo_base/CUSA36381`,
-`~/Downloads/uo_update/CUSA36381-patch`.
-
-Merged into **`~/Downloads/game_dump/CUSA36381`** the way the console applies an update (update
-files replace base files): base files hard-linked (`cp -al`, no second copy of the 6.3 GB
-`Unicorn.CPK`), update files copied over. Names are matched case-insensitively, as on the PS4:
-the update ships `Unicorn_CN.cpk`/`Unicorn_TW.cpk`, the executable opens `Unicorn_CN.CPK`. Keep
-`uo_base` while the merged folder links to it.
+Asia version (CUSA36381): the base game (v1.01) with the 1.04 update applied, dumped from your
+own console. Extract the base and update packages with a PS4 PKG extractor, then merge them the
+way the console applies an update (update files replace base files). On Linux, hard-linking the
+base files (`cp -al`) avoids a second copy of the 6.3 GB `Unicorn.CPK`. Names are matched
+case-insensitively, as on the PS4: the update ships `Unicorn_CN.cpk`/`Unicorn_TW.cpk`, the
+executable opens `Unicorn_CN.CPK`.
 
 Open question: the update's `UnicornPatch.CPK` is 1.0 GB, the base's 3.3 GB. Nothing missing has
 shown so far (everything through the first battle renders and the text is English).
@@ -50,7 +35,7 @@ shown so far (everything through the first battle renders and the text is Englis
 ## Running
 
 ```
-VW_GAME_DIR=$HOME/Downloads/game_dump/CUSA36381 VW_DATA_DIR=$HOME/unicorn_overlord_pc/run_uo bash run.sh
+VW_GAME_DIR=/path/to/CUSA36381 VW_DATA_DIR=$PWD/run_uo bash run.sh
 python3 launcher/unicorn_launcher.py          # the launcher (data: run_uo/)
 python3 packaging/package.py unicorn          # dist/Unicorn Overlord PC/: launcher + LICENSE
 ```
@@ -106,7 +91,7 @@ Image options on the port side: render resolution (supersampling to the window),
 
 Imports: 720 (Odin Sphere 215), 44 required modules. `out/vwport … --check-imports` lists
 every import the game would stop at without running it; names come from shadPS4's
-`aerolib.inl` (~/.local/src/ps4tools/aerolib.inl).
+`aerolib.inl`.
 
 - **Bundled PSN libraries run natively.** `libSceNpToolkit2.prx`, `libSceNpCppWebApi.prx` and
   `libSceJobManager.prx` from the game's `sce_module` are linked like libc and Fios2
