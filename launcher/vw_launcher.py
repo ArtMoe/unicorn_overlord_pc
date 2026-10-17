@@ -427,15 +427,16 @@ class Launcher:
         if not lines and (self.data / 'last_run.log').is_file():
             lines = (self.data / 'last_run.log').read_text(encoding='utf-8', errors='replace').splitlines()
 
-        def refresh(shown=[0]):  # noqa: B006  (the count shown so far)
+        def refresh(shown=[None]):  # noqa: B006  (last displayed tail)
             if not top.winfo_exists():
                 return
             current = self.log_lines or lines
-            if len(current) != shown[0]:
+            state = (len(current), current[-1] if current else '')
+            if state != shown[0]:
                 text.delete('1.0', 'end')
                 text.insert('end', '\n'.join(current))
                 text.see('end')
-                shown[0] = len(current)
+                shown[0] = state
             top.after(500, refresh)
         refresh()
 

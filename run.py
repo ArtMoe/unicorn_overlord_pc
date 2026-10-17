@@ -70,10 +70,22 @@ class RunLog:
                 self.file.write(entry)
                 self.latest.write(entry)
                 self.size += len(entry.encode('utf-8'))
-                if self.support is not None and line.startswith('GPU selected:'):
+                if self.support is not None:
                     import diagnostics
-                    self.support['gpu_driver_api'] = line
-                    diagnostics.write_summary(self.path, self.support)
+                    updated = False
+                    if line.startswith('GPU selected:'):
+                        self.support['gpu_driver_api'] = line
+                        updated = True
+                    elif line.startswith('Mods: ') and line.endswith(' files'):
+                        name, _, count = line[6:].rpartition(': ')
+                        if name and count.split()[0].isdigit():
+                            self.support.setdefault('mods', []).append(name[:256])
+                            updated = True
+                    elif line.startswith('Patches: ') and line.endswith(' writes)'):
+                        self.support.setdefault('patches', []).append(line[9:][:512])
+                        updated = True
+                    if updated:
+                        diagnostics.write_summary(self.path, self.support)
 
     def run(self, command, capture=False, **kwargs):
         """Runs command with its output (stdout and stderr) through the log; returns its exit code."""
