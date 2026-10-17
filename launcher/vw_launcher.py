@@ -427,9 +427,22 @@ class Launcher:
         if not lines and (self.data / 'last_run.log').is_file():
             lines = (self.data / 'last_run.log').read_text(encoding='utf-8', errors='replace').splitlines()
 
+        file_stamp = [None]
         def refresh(shown=[None]):  # noqa: B006  (last displayed tail)
+            nonlocal lines
             if not top.winfo_exists():
                 return
+            # Windowed frozen Python may have no stdout despite the inherited pipe.
+            # The live file still contains the native output, so keep that view fresh too.
+            if not self.log_lines:
+                try:
+                    path = self.data / 'last_run.log'
+                    stamp = (path.stat().st_mtime_ns, path.stat().st_size)
+                    if stamp != file_stamp[0]:
+                        lines = path.read_text(encoding='utf-8', errors='replace').splitlines()[-4000:]
+                        file_stamp[0] = stamp
+                except OSError:
+                    pass
             current = self.log_lines or lines
             state = (len(current), current[-1] if current else '')
             if state != shown[0]:
