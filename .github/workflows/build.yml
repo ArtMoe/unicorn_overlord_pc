@@ -45,7 +45,7 @@ jobs:
           sudo apt-get install -y gcc-14 g++-14 ninja-build pkg-config nasm python3-venv python3-tk desktop-file-utils \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev \
             libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
-            libegl-dev libgl-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libvulkan-dev
+            libegl-dev libgl-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libvulkan-dev mesa-vulkan-drivers
           pip install --user 'cmake>=3.28'
           echo "CC=gcc-14" >> "$GITHUB_ENV"
           echo "CXX=g++-14" >> "$GITHUB_ENV"
@@ -93,6 +93,7 @@ jobs:
         run: |
           export PKG_CONFIG_PATH=$PWD/out/deps/prefix/lib/pkgconfig:$PWD/out/deps/prefix/share/pkgconfig
           export CMAKE_PREFIX_PATH=$PWD/out/deps/prefix:$CMAKE_PREFIX_PATH
+          export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
           bash packaging/test-native.sh
           python3 -m unittest discover -s tests
 

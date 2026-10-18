@@ -29,7 +29,14 @@ class NoticeTests(unittest.TestCase):
             with patch.object(notices.Path, 'glob', return_value=[]):
                 self.assertEqual(notices.tcl_notice('tcl', '8.6.18', root / 'tcl8.6', root), source)
                 with self.assertRaises(FileNotFoundError):
-                    notices.tcl_notice('tcl', '9.0.0', root / 'tcl9.0', root)
+                    notices.tcl_notice('tcl', '99.0.0', root / 'tcl99.0', root)
+
+    def test_supported_tcl_tk_series_have_upstream_notices(self):
+        with patch.object(notices.Path, 'glob', return_value=[]):
+            for name in ('tcl', 'tk'):
+                for version in ('8.6.18', '9.0.4'):
+                    source = notices.tcl_notice(name, version, Path('/missing'))
+                    self.assertIn('The authors hereby grant permission', source.read_text())
 
     def test_source_archive_excludes_untracked_game_data(self):
         with tempfile.TemporaryDirectory() as temp:

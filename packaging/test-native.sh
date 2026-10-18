@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Run after packaging has configured the native build. No GPU or game dump required.
+# Run after packaging configures the native build. Linux uses Mesa lavapipe; no game dump required.
 set -euo pipefail
 cd -- "$(dirname -- "$0")/.."
 case $(uname -s) in
@@ -13,7 +13,13 @@ tests=(pipeline-binary-cache png-decode aliasing blend-rewrite depth-stencil-sta
 targets=()
 for name in "${tests[@]}"; do targets+=("$name-test"); done
 cmake --build "$directory" --target "${targets[@]}" --parallel 2
-for name in "${tests[@]}"; do "$directory/$name-test$suffix"; done
+for name in "${tests[@]}"; do
+    if [[ $suffix == .exe && $name == async-pipeline-cache ]]; then
+        echo 'SKIP: async-pipeline-cache runtime on Windows CI (no Vulkan ICD); built here and run on Linux lavapipe'
+        continue
+    fi
+    "$directory/$name-test$suffix"
+done
 if [[ $suffix == .exe ]]; then
     cmake --build "$directory" --target mp3-test videodec-test services-test pad-map-test --parallel 2
     "$directory/mp3-test.exe" tests/data/sine.mp3
