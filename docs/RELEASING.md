@@ -20,7 +20,9 @@ cached; changing a pin rebuilds it.
 
 Both jobs run the C++ tests and platform-specific native tests via
 `packaging/test-native.sh`, then Python unittest discovery. Linux also runs the C runtime
-and loader tests. No game dump or GPU is needed. Treat skipped tests separately from passes.
+and loader tests. The Vulkan cache test runs with Mesa lavapipe on Linux. Windows builds
+it but skips execution because hosted runners have no Vulkan ICD; the other native tests
+run on both platforms. No game dump or physical GPU is needed. Report skips separately.
 
 Packaging fails if required dependency notices are missing. `packaging/notices.py` collects
 vendored, static-library, Python/Tcl/Tk and installed toolchain notices. When bumping header
