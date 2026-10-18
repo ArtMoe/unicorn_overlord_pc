@@ -149,27 +149,158 @@ static int apply_button_map(ButtonMap *map, const char *spec, bool keyboard) {
         entry=next;
         uint32_t ps=0;
         for (size_t i=0;i<sizeof(ps_names)/sizeof(*ps_names);++i) if (!SDL_strcasecmp(button,ps_names[i].name)) ps=ps_names[i].ps;
-        const int source=!*name ? -1 : keyboard ? (int)SDL_GetScancodeFromName(name) : (int)SDL_GetGamepadButtonFromString(name);
-        if (!ps || source<=(keyboard ? (int)SDL_SCANCODE_UNKNOWN : (int)SDL_GAMEPAD_BUTTON_INVALID)) {
+        /* name: one source, several joined with '|', or "none" (the button is not pressed by
+         * anything on this device). */
+        int sources[8], count=0;
+        bool valid=ps && *name;
+        const bool none=!SDL_strcasecmp(name,"none");
+        if (valid && !none) {
+            char names[256];
+            snprintf(names,sizeof(names),"%s",name);
+            for (char *part=names, *bar; part && valid; part=bar) {
+                if ((bar=strchr(part,'|'))) *bar++=0;
+                const char *one=trim(part);
+                const int source=keyboard ? (int)SDL_GetScancodeFromName(one) : (int)SDL_GetGamepadButtonFromString(one);
+                valid=source>(keyboard ? (int)SDL_SCANCODE_UNKNOWN : (int)SDL_GAMEPAD_BUTTON_INVALID);
+                if (valid && count<8) sources[count++]=source;
+            }
+        }
+        if (!valid) {
             printf("Runtime: pad map: ignored '%s=%s'\n",button,name);
             continue;
         }
         size_t kept=0;
         for (size_t i=0;i<map->count;++i) if (map->entries[i].ps!=ps) map->entries[kept++]=map->entries[i];
         map->count=kept;
-        if (map->count<sizeof(map->entries)/sizeof(*map->entries)) map->entries[map->count++]=(ButtonSource){source,ps};
+        for (int s=0;s<count;++s)
+            if (map->count<sizeof(map->entries)/sizeof(*map->entries)) map->entries[map->count++]=(ButtonSource){sources[s],ps};
         ++used;
     }
     return used;
 }
 
+/* The defaults above, kept for "Reset" and to tell remapped buttons apart (runtime_pad_spec). */
+static ButtonMap pad_defaults, key_defaults;
+
+/* Order: the defaults, then the in-game Controls tab (vw.ini pad_map/key_map), then the
+ * environment. */
 static void load_button_maps(void) {
     static bool loaded;
     if (loaded) return;
     loaded=true;
-    const int pad=apply_button_map(&pad_map,getenv("VW_PAD_MAP"),false);
-    const int keys=apply_button_map(&key_map,getenv("VW_KEY_MAP"),true);
+    pad_defaults=pad_map;
+    key_defaults=key_map;
+    char saved[1024];
+    int pad=0, keys=0;
+    if (vwgpu_setting_text("pad_map",saved,sizeof(saved))) pad+=apply_button_map(&pad_map,saved,false);
+    if (vwgpu_setting_text("key_map",saved,sizeof(saved))) keys+=apply_button_map(&key_map,saved,true);
+    pad+=apply_button_map(&pad_map,getenv("VW_PAD_MAP"),false);
+    keys+=apply_button_map(&key_map,getenv("VW_KEY_MAP"),true);
     if (pad || keys) printf("Runtime: pad map: %d gamepad and %d keyboard buttons remapped\n",pad,keys);
+}
+
+/* The in-game Controls tab (gpu/shim/vw_overlay.cpp): PS4 button i of ps_names, its host
+ * sources and a new one, applied at once. */
+int runtime_pad_button_count(void) { return (int)(sizeof(ps_names)/sizeof(*ps_names)); }
+const char *runtime_pad_button_name(int i) {
+    return i>=0 && i<runtime_pad_button_count() ? ps_names[i].name : "";
+}
+static const char *source_name(int source, bool keyboard) {
+    const char *name=keyboard ? SDL_GetScancodeName((SDL_Scancode)source)
+                              : SDL_GetGamepadStringForButton((SDL_GamepadButton)source);
+    return name && *name ? name : "?";
+}
+/* A gamepad button as the menu shows it: Xbox and PlayStation names. */
+static const char *pad_label(int source) {
+    switch (source) {
+    case SDL_GAMEPAD_BUTTON_SOUTH: return "A / Cross";
+    case SDL_GAMEPAD_BUTTON_EAST: return "B / Circle";
+    case SDL_GAMEPAD_BUTTON_WEST: return "X / Square";
+    case SDL_GAMEPAD_BUTTON_NORTH: return "Y / Triangle";
+    case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: return "LB / L1";
+    case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: return "RB / R1";
+    case SDL_GAMEPAD_BUTTON_LEFT_STICK: return "LS / L3";
+    case SDL_GAMEPAD_BUTTON_RIGHT_STICK: return "RS / R3";
+    case SDL_GAMEPAD_BUTTON_START: return "Start / Options";
+    case SDL_GAMEPAD_BUTTON_BACK: return "Back / Share";
+    case SDL_GAMEPAD_BUTTON_TOUCHPAD: return "Touchpad";
+    case SDL_GAMEPAD_BUTTON_DPAD_UP: return "D-pad up";
+    case SDL_GAMEPAD_BUTTON_DPAD_DOWN: return "D-pad down";
+    case SDL_GAMEPAD_BUTTON_DPAD_LEFT: return "D-pad left";
+    case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: return "D-pad right";
+    default: return source_name(source,false);
+    }
+}
+/* The sources of PS4 button i, joined with ", " ("" when none). */
+void runtime_pad_describe(int keyboard, int i, char *out, size_t size) {
+    if (!size) return;
+    out[0]=0;
+    if (i<0 || i>=runtime_pad_button_count()) return;
+    pthread_mutex_lock(&lock);
+    load_button_maps();
+    const ButtonMap *map=keyboard ? &key_map : &pad_map;
+    size_t used=0;
+    for (size_t e=0;e<map->count;++e) {
+        if (map->entries[e].ps!=ps_names[i].ps) continue;
+        const int source=map->entries[e].source;
+        const int n=snprintf(out+used,size-used,"%s%s",used ? ", " : "",keyboard ? source_name(source,true) : pad_label(source));
+        if (n<0 || (size_t)n>=size-used) break;
+        used+=(size_t)n;
+    }
+    pthread_mutex_unlock(&lock);
+}
+/* PS4 button i is pressed by `source` only (an SDL scancode or gamepad button); -1: by nothing. */
+void runtime_pad_bind(int keyboard, int i, int source) {
+    if (i<0 || i>=runtime_pad_button_count()) return;
+    pthread_mutex_lock(&lock);
+    load_button_maps();
+    ButtonMap *map=keyboard ? &key_map : &pad_map;
+    size_t kept=0;
+    for (size_t e=0;e<map->count;++e) if (map->entries[e].ps!=ps_names[i].ps) map->entries[kept++]=map->entries[e];
+    map->count=kept;
+    if (source>=0 && map->count<sizeof(map->entries)/sizeof(*map->entries))
+        map->entries[map->count++]=(ButtonSource){source,ps_names[i].ps};
+    pthread_mutex_unlock(&lock);
+}
+void runtime_pad_reset(int keyboard) {
+    pthread_mutex_lock(&lock);
+    load_button_maps();
+    if (keyboard) key_map=key_defaults; else pad_map=pad_defaults;
+    pthread_mutex_unlock(&lock);
+}
+/* The buttons that differ from the defaults, in apply_button_map's format (vw.ini):
+ * "cross=Q,circle=none"; several sources of one button are joined with '|'. */
+void runtime_pad_spec(int keyboard, char *out, size_t size) {
+    if (!size) return;
+    out[0]=0;
+    pthread_mutex_lock(&lock);
+    load_button_maps();
+    const ButtonMap *map=keyboard ? &key_map : &pad_map, *base=keyboard ? &key_defaults : &pad_defaults;
+    size_t used=0;
+    bool full=false;
+    for (int i=0;i<runtime_pad_button_count() && !full;++i) {
+        const uint32_t ps=ps_names[i].ps;
+        size_t now=0, before=0, matching=0;
+        for (size_t e=0;e<map->count;++e) {
+            if (map->entries[e].ps!=ps) continue;
+            ++now;
+            for (size_t b=0;b<base->count;++b)
+                if (base->entries[b].ps==ps && base->entries[b].source==map->entries[e].source) { ++matching; break; }
+        }
+        for (size_t b=0;b<base->count;++b) before+=base->entries[b].ps==ps;
+        if (now==before && matching==now) continue;
+        char value[256]="none";
+        size_t length=0;
+        for (size_t e=0;e<map->count;++e) {
+            if (map->entries[e].ps!=ps) continue;
+            const int n=snprintf(value+length,sizeof(value)-length,"%s%s",length ? "|" : "",source_name(map->entries[e].source,keyboard));
+            if (n>0 && (size_t)n<sizeof(value)-length) length+=(size_t)n;
+        }
+        const int n=snprintf(out+used,size-used,"%s%s=%s",used ? "," : "",ps_names[i].name,value);
+        if (n<0 || (size_t)n>=size-used) { out[used]=0; full=true; }
+        else used+=(size_t)n;
+    }
+    pthread_mutex_unlock(&lock);
 }
 
 static void key_axis(uint8_t *axis, bool negative, bool positive) {

@@ -17,7 +17,17 @@
 #include "vw_graphics.h"
 #include "vw_perf_stats.h"
 
-extern "C" void runtime_restart(void); // src/probe.c: starts run.py again, ends this process
+extern "C" {
+void runtime_restart(void); // src/probe.c: starts run.py again, ends this process
+void runtime_restart_with(const char* name); // the same with another command (VW_CHOOSE_GAME_COMMAND)
+// src/runtime_pad.c: button remapping (Controls tab).
+int runtime_pad_button_count(void);
+const char* runtime_pad_button_name(int i);
+void runtime_pad_describe(int keyboard, int i, char* out, size_t size);
+void runtime_pad_bind(int keyboard, int i, int source);
+void runtime_pad_reset(int keyboard);
+void runtime_pad_spec(int keyboard, char* out, size_t size);
+}
 #include "common/elf_info.h"
 #include "imgui.h"
 #include "imgui_internal.h" // RegisterUserTexture (save pictures)
@@ -64,6 +74,9 @@ std::atomic<u32> loading_done{0}, loading_total{0};
 std::atomic<u32> background_done{0}, background_total{0};
 bool dirty = false; // settings changed while open: saved on close
 int requested_tab = -1; // switch on the next frame (L1/R1, Q/E, menu opened)
+// Controls tab: the PS4 button waiting for a new key (keyboard) or pad button, -1 none.
+int binding_button = -1;
+bool binding_keyboard = false;
 // The game's text dialog (SetTextEntry), guarded by imgui_mutex.
 bool text_entry_active = false;
 std::string text_entry_prompt, text_entry_text;
@@ -330,6 +343,95 @@ void PerformanceTab() {
     }
 }
 
+// The remapping as vw.ini keeps it (key_map, pad_map); saved when the menu closes.
+void StoreButtonMaps() {
+    char spec[1024];
+    runtime_pad_spec(1, spec, sizeof(spec));
+    VwSettings::SetText("key_map", spec);
+    runtime_pad_spec(0, spec, sizeof(spec));
+    VwSettings::SetText("pad_map", spec);
+    dirty = true;
+}
+
+// Called from HandleEvent (imgui_mutex held) while a button waits for its new key or pad button.
+bool HandleBindingEvent(const SDL_Event& event) {
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+        const SDL_Scancode code = event.key.scancode;
+        const char* name = SDL_GetScancodeName(code);
+        // Esc cancels; Insert opens the menu; vw.ini can't hold names with , | or =.
+        if (code != SDL_SCANCODE_ESCAPE && code != SDL_SCANCODE_INSERT && binding_keyboard && name && *name &&
+            !std::strpbrk(name, ",|=")) {
+            runtime_pad_bind(1, binding_button, int(code));
+            StoreButtonMaps();
+        }
+        binding_button = -1;
+        return true;
+    }
+    if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
+        if (!binding_keyboard) {
+            runtime_pad_bind(0, binding_button, event.gbutton.button);
+            StoreButtonMaps();
+        }
+        binding_button = -1; // on a key binding, any pad button cancels
+        return true;
+    }
+    return event.type == SDL_EVENT_KEY_UP || event.type == SDL_EVENT_GAMEPAD_BUTTON_UP;
+}
+
+void ControlsTab() {
+    static const char* const labels[] = {"Cross", "Circle", "Square", "Triangle", "L1", "R1", "L2", "R2", "L3",
+                                         "R3", "Options", "Touchpad", "D-pad up", "D-pad down", "D-pad left",
+                                         "D-pad right"};
+    const int count = std::min(runtime_pad_button_count(), int(std::size(labels)));
+    ImGui::TextWrapped("Choose a box, then press the new key or controller button (Esc cancels). Applied at "
+                       "once. Sticks and triggers stay as they are; keyboard sticks: WASD and the arrow keys.");
+    if (ImGui::BeginTable("##controls", 3, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg)) {
+        ImGui::TableSetupColumn("PS4 button", ImGuiTableColumnFlags_WidthStretch, 0.8f);
+        ImGui::TableSetupColumn("Keyboard", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn("Controller", ImGuiTableColumnFlags_WidthStretch, 1.2f);
+        ImGui::TableHeadersRow();
+        for (int i = 0; i < count; ++i) {
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(labels[i]);
+            for (int keyboard = 1; keyboard >= 0; --keyboard) {
+                ImGui::TableNextColumn();
+                char text[160];
+                if (binding_button == i && binding_keyboard == bool(keyboard)) {
+                    std::snprintf(text, sizeof(text), keyboard ? "press a key..." : "press a button...");
+                } else {
+                    runtime_pad_describe(keyboard, i, text, sizeof(text));
+                    if (!text[0]) {
+                        std::snprintf(text, sizeof(text), "(none)");
+                    }
+                }
+                ImGui::PushID(i * 2 + keyboard);
+                if (ImGui::Button(text, ImVec2(-FLT_MIN, 0))) {
+                    binding_button = i;
+                    binding_keyboard = keyboard;
+                }
+                if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+                    runtime_pad_bind(keyboard, i, -1); // right click: clear
+                    StoreButtonMaps();
+                }
+                ImGui::PopID();
+            }
+        }
+        ImGui::EndTable();
+    }
+    ImGui::TextDisabled("Right click a box to clear it.");
+    if (ImGui::Button("Reset keyboard")) {
+        runtime_pad_reset(1);
+        StoreButtonMaps();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reset controller")) {
+        runtime_pad_reset(0);
+        StoreButtonMaps();
+    }
+}
+
 void OverlayTab() {
     namespace P = VwPerfStats;
     auto& s = VwSettings::Get();
@@ -388,6 +490,13 @@ void OverlayTab() {
         InfoRow("Shader cache", text);
         ImGui::EndTable();
     }
+    // The start program (launcher/vw_launcher.py) asks for the folder again, then starts the game.
+    ImGui::BeginDisabled(!std::getenv("VW_CHOOSE_GAME_COMMAND"));
+    if (ImGui::Button("Change game folder (restarts the game)")) {
+        VwSettings::Save();
+        runtime_restart_with("VW_CHOOSE_GAME_COMMAND");
+    }
+    ImGui::EndDisabled();
 }
 
 // Startup options changed since this launch (applied by "Apply and restart").
@@ -417,7 +526,7 @@ void Menu() {
         return;
     }
     footer_help = nullptr;
-    constexpr int TabCount = 3;
+    constexpr int TabCount = 4;
     const ImGuiIO& io = ImGui::GetIO();
     if (!io.WantTextInput) {
         const int step = ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false) || ImGui::IsKeyPressed(ImGuiKey_E, false) ? 1
@@ -430,7 +539,7 @@ void Menu() {
     }
     const float footer = ImGui::GetFrameHeightWithSpacing() * 2.0f + ImGui::GetTextLineHeightWithSpacing() * 2.0f;
     if (ImGui::BeginTabBar("##tabs")) {
-        static const char* const tabs[TabCount] = {"Image", "Performance", "Overlay"};
+        static const char* const tabs[TabCount] = {"Image", "Performance", "Controls", "Overlay"};
         for (int tab = 0; tab < TabCount; ++tab) {
             const ImGuiTabItemFlags flags = requested_tab == tab ? ImGuiTabItemFlags_SetSelected : 0;
             if (!ImGui::BeginTabItem(tabs[tab], nullptr, flags)) {
@@ -444,6 +553,7 @@ void Menu() {
                 switch (tab) {
                 case 0: ImageTab(); break;
                 case 1: PerformanceTab(); break;
+                case 2: ControlsTab(); break;
                 default: OverlayTab(); break;
                 }
             }
@@ -785,6 +895,13 @@ bool HandleEvent(const SDL_Event& event) {
     }
     if (choice_active && !menu_open) {
         return HandleChoiceEvent(event);
+    }
+    if (binding_button >= 0) {
+        if (!menu_open) {
+            binding_button = -1;
+        } else if (HandleBindingEvent(event)) {
+            return true;
+        }
     }
     ImGuiIO& io = ImGui::GetIO();
     const bool is_open = menu_open;

@@ -65,9 +65,9 @@ Results from other hardware are welcome in the issues.
 
 - Everything online: PSN sign-in, network features and trophies. They all report "signed out"
   or succeed without doing anything, so the game runs offline.
-- Remapping controls in the launcher. Buttons can be remapped with the `VW_KEY_MAP` (keyboard)
-  and `VW_PAD_MAP` (controller) environment variables, e.g. `VW_KEY_MAP="cross=Q"`; sticks,
-  triggers and the menu shortcut can't be remapped.
+- Remapping sticks, triggers and the menu shortcut. Button bindings can be changed in the
+  in-game Controls tab and are saved in `vw.ini`. The `VW_KEY_MAP` (keyboard) and `VW_PAD_MAP`
+  (controller) environment variables override saved bindings, e.g. `VW_KEY_MAP="cross=Q"`.
 - DLC and PS4 package installation: the port runs an already extracted game folder.
 
 ## Open questions

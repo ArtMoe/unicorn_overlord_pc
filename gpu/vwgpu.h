@@ -35,6 +35,8 @@ int vwgpu_choice_begin(const char *title, const char *const *items, const char *
 int vwgpu_choice_poll(void);
 /* 1 while the in-game settings menu is open: the game's pad input is held neutral. */
 int vwgpu_overlay_captures_input(void);
+/* A text setting of vw.ini ("key_map", "pad_map"): 1 and the value in out when it is set. */
+int vwgpu_setting_text(const char *key, char *out, uint64_t size);
 /* Number of symbols registered by the vendored libraries (diagnostics). */
 unsigned vwgpu_symbol_count(void);
 #ifdef __cplusplus
