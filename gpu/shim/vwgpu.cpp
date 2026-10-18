@@ -346,6 +346,15 @@ u32 ConsumeWithOverlaysScreenshotRequests() { return 0; }
 ScreenshotRequests ConsumeScreenshotRequests() { return {}; }
 } // namespace VideoCore
 
+extern "C" int vwgpu_setting_text(const char* key, char* out, uint64_t size) {
+    const std::string value = VwSettings::Text(key);
+    if (value.empty() || !size) {
+        return 0;
+    }
+    std::snprintf(out, size, "%s", value.c_str());
+    return 1;
+}
+
 extern "C" int vwgpu_overlay_captures_input(void) {
     return VwOverlay::CapturesInput() ? 1 : 0;
 }

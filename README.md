@@ -57,21 +57,23 @@ builds and releases are made.
 
 ## Playing
 
-Start the launcher, pick the game folder, choose the graphics options and press **Play**.
-Packaged builds contain the launcher and the game executable. From the
-source tree:
+On the first start, choose the game folder in the setup dialog. Later starts go straight
+into the game. Change graphics options and button bindings in the in-game menu.
+Packaged builds contain the start program and the game executable. From the source tree:
 
 ```bash
 python launcher/unicorn_launcher.py   # Odin Sphere: launcher/odin_launcher.py
 ```
 
-In game, **Insert** (R3+L2 on a controller) opens the port's menu. It has three tabs:
+In game, **Insert** (R3+L2 on a controller) opens the port's menu. It has four tabs:
 
 - **Image:** display mode, VSync, FSR 1 and RCAS sharpening.
 - **Performance:** frame rate limit, render resolution and the GPU readback options.
 - **Overlay:** the performance overlay.
+- **Controls:** keyboard and controller button bindings, saved in `vw.ini`.
 
-Settings are kept in `vw.ini` in the data directory and are shared with the launcher.
+Settings are kept in `vw.ini` in the data directory. The Overlay tab also has a
+**Change game folder** button to reopen setup.
 
 Something wrong? See [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) and
 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Every run writes a log

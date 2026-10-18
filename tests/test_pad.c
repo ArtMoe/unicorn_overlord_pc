@@ -5,6 +5,7 @@
 
 static int capture;
 int vwgpu_overlay_captures_input(void) { return capture; }
+int vwgpu_setting_text(const char *key, char *out, uint64_t size) { (void)key; (void)out; (void)size; return 0; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;
