@@ -180,7 +180,8 @@ def main():
         if clang64.is_dir():
             env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
     import game_profiles
-    gpu = game_profiles.device_name(probe)
+    import prepare_cache
+    gpu = prepare_cache.cached_device_name(out, probe, lambda: game_profiles.device_name(probe))
     LOG.write(f'GPU: {gpu or "unknown"}')
     if game_profiles.radv_nohiz(env, gpu):
         LOG.write('RADV: RADV_DEBUG=nohiz for this GPU (VW_AUTO_NOHIZ=0: off)')
@@ -197,10 +198,17 @@ def main():
                            '--enabled', env.get('VW_MODS_ENABLED', '1'), capture=True).strip())
     mod_view = game if game.resolve() != original_game else None
     try:
-        run_script('prepare.py', game, '--out', out)
-        run_script('link_libc.py', game, '--out', out)
-        run_script('link_modules.py', game, '--out', out)
-        run_script('content_profile.py', game, '--out', out, '--sku', env.get('VW_CONTENT_SKU', 'full'))
+        sku = env.get('VW_CONTENT_SKU', 'full')
+        prepare_key = prepare_cache.key(game, PORT / 'scripts', sku)
+        if prepare_cache.valid(out, prepare_key):
+            LOG.write('Game image: unchanged since the last start, preparation skipped')
+        else:
+            prepare_cache.forget(out)
+            run_script('prepare.py', game, '--out', out)
+            run_script('link_libc.py', game, '--out', out)
+            run_script('link_modules.py', game, '--out', out)
+            run_script('content_profile.py', game, '--out', out, '--sku', sku)
+            prepare_cache.store(out, prepare_key)
 
         from patches import (eboot_matches, game_app_version, game_profile, game_title_id,
                              patch_requirements, selected_patches)
