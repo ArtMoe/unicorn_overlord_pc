@@ -69,8 +69,6 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.display_mode = VwGraphics::ParseDisplayMode(value);
     } else if (key == "vsync") {
         v.vsync = i != 0;
-    } else if (key == "fps_limit") {
-        v.fps_limit = VwGraphics::ParseFpsLimit(i);
     } else if (key == "async_shaders") {
         v.async_shaders = i != 0;
     } else if (key == "fsr1") {
@@ -167,12 +165,12 @@ void Save() {
                  int(v.overlay_items >> 6 & 1), v.overlay_scale.load(), v.overlay_corner.load(),
                  v.overlay_opacity.load(), v.overlay_layout.load(), v.menu_tab.load());
     std::fprintf(file,
-                 "display_mode=%s\nvsync=%d\nfps_limit=%d\nasync_shaders=%d\n"
+                 "display_mode=%s\nvsync=%d\nasync_shaders=%d\n"
                  "fsr1=%d\nrcas=%d\nrcas_strength=%d\nframes_queued=%d\n"
                  "render_resolution=%s\ndeferred_readback=%d\nstale_readback=%d\n"
                  "restart_unconfirmed=%d\n",
                  VwGraphics::DisplayModeKeys[std::clamp(v.display_mode.load(), 0, 2)].data(),
-                 int(v.vsync.load()), v.fps_limit.load(), int(v.async_shaders.load()),
+                 int(v.vsync.load()), int(v.async_shaders.load()),
                  int(v.fsr1.load()), int(v.rcas.load()), v.rcas_strength.load(), v.frames_queued.load(),
                  VwGraphics::Resolutions[std::clamp(v.render_resolution.load(), 0,
                                                       int(VwGraphics::Resolutions.size()) - 1)]
@@ -198,18 +196,15 @@ namespace {
 namespace G = VwGraphics;
 
 enum Row {
-    Heading, DisplayMode, Vsync, FpsLimit, Resolution, Fsr1, Sharpening, SharpeningStrength, ButtonIcons,
+    Heading, DisplayMode, Vsync, Resolution, Fsr1, Sharpening, SharpeningStrength, ButtonIcons,
     Overlay, RowCount
 };
 
 constexpr const char* DisplayModes[] = {"Windowed", "Borderless", "Fullscreen"};
-constexpr const char* FpsLimitNames[] = {"30", "60", "120", "240", "Unlimited"};
 constexpr const char* ResolutionNames[] = {"1080p (native)", "720p", "900p", "1440p", "1800p", "4K"};
 constexpr const char* IconKeys[] = {"auto", "playstation", "xbox", "nintendo"};
 constexpr const char* IconNames[] = {"Auto", "PlayStation", "Xbox", "Nintendo"};
-static_assert(std::size(FpsLimitNames) == G::FpsLimits.size() && std::size(ResolutionNames) == G::Resolutions.size());
-
-constexpr int UnlimitedFps = int(G::FpsLimits.size()) - 1;
+static_assert(std::size(ResolutionNames) == G::Resolutions.size());
 
 const VwgpuSettingRow Rows[RowCount] = {
     {"PC", nullptr, VWGPU_ROW_SECTION, 0, nullptr, 0, 0, 0, 0, nullptr},
@@ -217,8 +212,6 @@ const VwgpuSettingRow Rows[RowCount] = {
      int(std::size(DisplayModes)), DisplayModes, float(G::Windowed), 0, 0, 0, nullptr},
     {"VSync", "Waits for the monitor: no tearing, slightly more input delay.", VWGPU_ROW_SWITCH, 0, nullptr, 1, 0,
      0, 0, nullptr},
-    {"Frame Rate Limit", "Caps the frame rate. The game runs at up to 60 FPS.", VWGPU_ROW_CHOICE,
-     int(std::size(FpsLimitNames)), FpsLimitNames, float(UnlimitedFps), 0, 0, 0, nullptr},
     {"Render Resolution",
      "The size the game is drawn at: lower is faster, higher is sharper.\nTakes effect the next time the game "
      "starts.",
@@ -255,7 +248,6 @@ extern "C" float vwgpu_setting_value(int row) {
     switch (row) {
     case DisplayMode: return float(v.display_mode.load());
     case Vsync: return v.vsync ? 1.0f : 0.0f;
-    case FpsLimit: return float(G::IndexOf(G::FpsLimits, v.fps_limit.load(), UnlimitedFps));
     case Resolution: return float(v.render_resolution.load());
     case Fsr1: return v.fsr1 ? 1.0f : 0.0f;
     case Sharpening: return v.rcas ? 1.0f : 0.0f;
@@ -276,7 +268,6 @@ extern "C" void vwgpu_setting_set(int row, float value) {
     switch (row) {
     case DisplayMode: v.display_mode = choice; break;
     case Vsync: v.vsync = i != 0; break;
-    case FpsLimit: v.fps_limit = G::FpsLimits[choice]; break;
     case Resolution: v.render_resolution = choice; break;
     case Fsr1: v.fsr1 = i != 0; break;
     case Sharpening: v.rcas = i != 0; break;

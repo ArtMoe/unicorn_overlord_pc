@@ -15,9 +15,6 @@ inline constexpr std::array<std::string_view, DisplayModeCount> DisplayModeKeys 
 inline constexpr std::array<const char*, DisplayModeCount> DisplayModeNames = {
     "Windowed", "Borderless", "Fullscreen"};
 
-/// Present rate limits; 0 = unlimited.
-inline constexpr std::array<int, 5> FpsLimits = {30, 60, 120, 240, 0};
-
 /// Render resolutions: the game's 1920x1080 frame drawn at another size (the probe's render
 /// scale patch, src/unicorn_render_scale.h) and scaled to the window. Index 0 is the default.
 inline constexpr std::array<std::string_view, 6> Resolutions = {"native", "720p", "900p",
@@ -33,10 +30,6 @@ constexpr int IndexOf(const std::array<T, N>& values, const T& value, int fallba
 
 inline int ParseDisplayMode(std::string_view text) {
     return IndexOf(DisplayModeKeys, text, Windowed);
-}
-/// A listed limit, else unlimited.
-inline int ParseFpsLimit(int value) {
-    return IndexOf(FpsLimits, value, -1) >= 0 ? value : 0;
 }
 /// Index into Resolutions; unknown text is native.
 inline int ParseResolution(std::string_view text) {

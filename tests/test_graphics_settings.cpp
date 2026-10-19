@@ -26,7 +26,6 @@ static std::string Read(const char* path) {
 
 int main() {
     assert(G::ParseDisplayMode("borderless") == G::Borderless && G::ParseDisplayMode("bogus") == G::Windowed);
-    assert(G::ParseFpsLimit(240) == 240 && G::ParseFpsLimit(75) == 0);
     assert(G::ParseResolution("720p") == 1 && G::ParseResolution("900p") == 2);
     assert(G::ParseResolution("1440p") == 3 && G::ParseResolution("4K") == 5 && G::ParseResolution("8K") == 0);
     assert(G::ParseFramesQueued(2) == 2 && G::ParseFramesQueued(0) == 0 && G::ParseFramesQueued(5) == 1);
@@ -47,24 +46,25 @@ int main() {
     _putenv_s("VW_ASYNC_SHADERS", "");
     auto& v = VwSettings::Get();
     VwSettings::Load();
-    assert(v.display_mode == G::Borderless && !v.vsync && v.fps_limit == 240 && !v.async_shaders);
+    assert(v.display_mode == G::Borderless && !v.vsync && !v.async_shaders);
     assert(v.render_resolution == 3 && !v.deferred_readback && v.stale_readback);
     assert(v.fsr1 && !v.rcas && v.rcas_strength == 40 && v.frames_queued == 2);
     assert(!VwSettings::GraphicsNeedRestart());
     v.render_resolution = 1;  // 720p
     assert(VwSettings::GraphicsNeedRestart());
-    v.fps_limit = 60;  // live: no restart because of it
+    v.vsync = false;  // live: no restart because of it
     v.render_resolution = 3;
     assert(!VwSettings::GraphicsNeedRestart());
 
     VwSettings::Save();
     const std::string saved = Read(path);
-    for (const char* line : {"display_mode=borderless\n", "vsync=0\n", "fps_limit=60\n", "async_shaders=0\n",
+    for (const char* line : {"display_mode=borderless\n", "vsync=0\n", "async_shaders=0\n",
                              "render_resolution=1440p\n", "deferred_readback=0\n",
                              "stale_readback=1\n", "fsr1=1\n", "rcas=0\n", "rcas_strength=40\n",
                              "frames_queued=2\n"}) {
         assert(saved.find(line) != std::string::npos);
     }
+    assert(saved.find("fps_limit") == std::string::npos);  // removed: the game runs at its own 60
 
     {
         std::ofstream out(path);
@@ -74,37 +74,38 @@ int main() {
     _putenv_s("VW_ASYNC_SHADERS", "1");  // the environment still wins at start
     v.async_shaders = false;
     VwSettings::Load();
-    assert(v.display_mode == G::Windowed && v.fps_limit == 0 && v.render_resolution == 0);
+    assert(v.display_mode == G::Windowed && v.render_resolution == 0);
     assert(v.rcas_strength == 75 && v.frames_queued == 1);
     assert(v.async_shaders);
 
     // The rows of the game's Options screen (vwgpu.h).
     const VwgpuSettingRow* rows = nullptr;
     const int count = vwgpu_setting_rows(&rows);
-    assert(count == 10 && rows[0].kind == VWGPU_ROW_SECTION && !std::strcmp(rows[0].label, "PC"));
-    int display = -1, fps = -1, strength = -1, icons = -1, overlay = -1;
+    assert(count == 9 && rows[0].kind == VWGPU_ROW_SECTION && !std::strcmp(rows[0].label, "PC"));
+    int display = -1, resolution = -1, strength = -1, icons = -1, overlay = -1;
     for (int i = 0; i < count; ++i) {
         const std::string label = rows[i].label;
         display = label == "Display Mode" ? i : display;
-        fps = label == "Frame Rate Limit" ? i : fps;
+        resolution = label == "Render Resolution" ? i : resolution;
+        assert(label != "Frame Rate Limit");
         strength = label == "Sharpening Strength" ? i : strength;
         icons = label == "Button Icons" ? i : icons;
         overlay = label == "Performance Overlay" ? i : overlay;
         if (rows[i].kind == VWGPU_ROW_CHOICE) assert(rows[i].count > 1 && rows[i].choices[rows[i].count - 1]);
     }
-    assert(display > 0 && fps > 0 && strength > 0 && icons > 0 && overlay > 0);
-    assert(!std::strcmp(rows[fps].choices[int(rows[fps].fallback)], "Unlimited"));
+    assert(display > 0 && resolution > 0 && strength > 0 && icons > 0 && overlay > 0);
+    assert(!std::strcmp(rows[resolution].choices[int(rows[resolution].fallback)], "1080p (native)"));
     vwgpu_setting_set(display, 2.0f);
-    vwgpu_setting_set(fps, 1.0f);
+    vwgpu_setting_set(resolution, 1.0f);
     vwgpu_setting_set(strength, 39.6f);  // a slider's float steps round to whole values
     vwgpu_setting_set(icons, 2.0f);
     vwgpu_setting_set(overlay, 1.0f);
     vwgpu_setting_set(display, 7.0f);  // past the last choice: the last one
-    assert(v.display_mode == G::Fullscreen && v.fps_limit == 60 && v.rcas_strength == 40 && v.show_fps);
+    assert(v.display_mode == G::Fullscreen && v.render_resolution == 1 && v.rcas_strength == 40 && v.show_fps);
     assert(VwSettings::Text("button_icons") == "xbox" && vwgpu_setting_value(icons) == 2.0f);
-    assert(vwgpu_setting_value(fps) == 1.0f && vwgpu_setting_value(strength) == 40.0f);
+    assert(vwgpu_setting_value(resolution) == 1.0f && vwgpu_setting_value(strength) == 40.0f);
     const std::string written = Read(path);
-    for (const char* line : {"display_mode=fullscreen\n", "fps_limit=60\n", "rcas_strength=40\n",
+    for (const char* line : {"display_mode=fullscreen\n", "render_resolution=720p\n", "rcas_strength=40\n",
                              "button_icons=xbox\n", "show_fps=1\n"}) {
         assert(written.find(line) != std::string::npos);
     }

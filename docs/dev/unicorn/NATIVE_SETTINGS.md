@@ -1,7 +1,7 @@
 # PC rows in the game's Options screen
 
-The game's own System → Options screen ends with a **PC** section: Display Mode, VSync, Frame
-Rate Limit, Render Resolution, FSR 1 Upscaling, Sharpening, Sharpening Strength, Button Icons and
+The game's own System → Options screen ends with a **PC** section: Display Mode, VSync, Render
+Resolution, FSR 1 Upscaling, Sharpening, Sharpening Strength, Button Icons and
 Performance Overlay. They look and work like the game's rows (choice boxes, Off/On switches, a
 slider, help text at the bottom, Restore Defaults). Changes apply at once and go to `vw.ini`;
 nothing is written to the game's system data. The Insert menu keeps every setting, including
@@ -12,10 +12,16 @@ Code: `src/unicorn_native_settings.h` (the game side, installed by `src/probe.c`
 value maps to a `VwSettings` field). Tests: `tests/test_native_settings.c` (`build.sh --test`)
 and `tests/test_graphics_settings.cpp`.
 
-Checked on 2026-10-19 (Linux, RX 560X): the title's Options (20 rows + 10) and the battle map's
-Stage Menu → System → Options (21 rows with Difficulty + 10); changing a choice, a switch and the
+Checked on 2026-10-19 (Linux, RX 560X): the title's Options (20 rows + the PC rows) and the battle map's
+Stage Menu → System → Options (21 rows with Difficulty + the PC rows); changing a choice, a switch and the
 slider (including L1/R1 steps of 10); closing and reopening; Restore Defaults; button icons
 switching at once.
+
+There is no frame rate setting: the game paces itself at its 60 Hz vblank. Measured on the
+title (2026-10-19): no limiter 60.0 FPS with 17 ms worst frames; a 60 FPS limiter on top
+59.6-59.8 FPS with 20-25 ms; 120 and 240 the same as none; 30 a steady 30.0. `VW_FPS_LIMIT`
+remains for measurements. FSR 1 only acts when the render resolution is smaller than the
+window (720p in a 1432x806 window: visibly sharper, edge energy 25.3 -> 31.7).
 
 ## How the screen works
 

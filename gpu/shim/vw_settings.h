@@ -21,7 +21,6 @@ struct Values {
     // Graphics (vw_graphics.h). Live: applied on the next frame.
     std::atomic<int> display_mode{0};
     std::atomic<bool> vsync{true};
-    std::atomic<int> fps_limit{0};
     std::atomic<bool> async_shaders{true};
     std::atomic<bool> fsr1{false};
     std::atomic<bool> rcas{true};
