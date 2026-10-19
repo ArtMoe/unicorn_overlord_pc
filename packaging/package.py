@@ -16,13 +16,16 @@ dist/<Title> PC/ and an archive of it (.tar.gz on Linux, .zip on Windows), two f
 No game file is included: the launcher asks for the folder of the user's own dump.
 """
 import ast
+import hashlib
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tarfile
 import zipfile
+import notices
 
 ROOT = Path(__file__).resolve().parent.parent
 WINDOWS = os.name == 'nt' or sys.platform == 'msys'
@@ -123,9 +126,63 @@ def collect_binaries():
                                             check=True).stdout.strip(), folder)
     else:
         shutil.copy2(OUT / 'static' / 'vwport', folder)
-    if strip := shutil.which('strip') or shutil.which('llvm-strip'):
-        subprocess.run([strip, '--strip-unneeded', str(folder / ('vwport.exe' if WINDOWS else 'vwport'))], check=False)
+    binary = folder / ('vwport.exe' if WINDOWS else 'vwport')
+    symbols = OUT / 'symbols'
+    symbols.mkdir(exist_ok=True)
+    objcopy = shutil.which('objcopy') or shutil.which('llvm-objcopy')
+    strip = shutil.which('strip') or shutil.which('llvm-strip')
+    if not objcopy or not strip:
+        raise RuntimeError('objcopy and strip are required to retain matching release debug symbols')
+    run(objcopy, '--only-keep-debug', binary, symbols / 'vwport.debug')
+    run(strip, '--strip-unneeded', binary)
+    run(objcopy, f'--add-gnu-debuglink={symbols / "vwport.debug"}', binary)
     return folder
+
+
+def source_archive(destination):
+    """Only tracked port/submodule code and build-downloaded sources, never game data."""
+    with tarfile.open(destination, 'w:gz') as archive:
+        repos = [ROOT]
+        listing = subprocess.check_output(['git', 'submodule', 'status', '--recursive'], cwd=ROOT, text=True)
+        repos += [ROOT / line.split()[1] for line in listing.splitlines()]
+        for repo in repos:
+            prefix = 'source/' if repo == ROOT else f'source/{repo.relative_to(ROOT)}/'
+            with subprocess.Popen(['git', 'archive', '--format=tar', f'--prefix={prefix}', 'HEAD'],
+                                  cwd=repo, stdout=subprocess.PIPE) as process:
+                with tarfile.open(fileobj=process.stdout, mode='r|') as source:
+                    for member in source:
+                        archive.addfile(member, source.extractfile(member) if member.isfile() else None)
+                if process.wait():
+                    raise RuntimeError(f'Cannot archive {repo}')
+        recipe = ROOT / 'packaging/deps.sh'
+        manifest = recipe.read_text() if recipe.is_file() else ''
+        for name, version, url, checksum in re.findall(
+                r'^"([\w]+) (\S+) (https://\S+) ([a-f0-9]{64})"$', manifest, re.MULTILINE):
+            extension = url.rsplit('.tar.', 1)[-1]
+            path = OUT / 'deps/src' / f'{name}-{version}.tar.{extension}'
+            if not path.is_file():
+                if name == 'nasm':  # build tool may come from the system
+                    continue
+                raise FileNotFoundError(f'Required dependency source missing: {path.name}')
+            digest = hashlib.sha256()
+            with path.open('rb') as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                    digest.update(chunk)
+            if digest.hexdigest() != checksum:
+                raise ValueError(f'Dependency source checksum mismatch: {path.name}')
+            archive.add(path, arcname=f'dependency-sources/{path.name}')
+        # Only the four known CI clones, and only their committed files. Never sweep src-*.
+        for name in ('Vulkan-Headers', 'glslang', 'VulkanMemoryAllocator', 'robin-map'):
+            path = ROOT / f'src-{name}'
+            if not (path / '.git').exists():
+                continue
+            with subprocess.Popen(['git', 'archive', '--format=tar', f'--prefix=header-sources/{name}/', 'HEAD'],
+                                  cwd=path, stdout=subprocess.PIPE) as process:
+                with tarfile.open(fileobj=process.stdout, mode='r|') as source:
+                    for member in source:
+                        archive.addfile(member, source.extractfile(member) if member.isfile() else None)
+                if process.wait():
+                    raise RuntimeError(f'Cannot archive header sources: {name}')
 
 
 def main():
@@ -147,6 +204,18 @@ def main():
     dist.mkdir(parents=True)
     shutil.copy2(launcher, dist)
     shutil.copy2(ROOT / 'LICENSE', dist)
+    notices.collect(dist / 'licenses', python)
+    (dist / 'README.txt').write_text(
+        f'{game["title"]} experimental PC port\nNo game files included.\n'
+        'Keep this folder, LICENSE and licenses/ together. Settings, logs and saves are\n'
+        'in data/ beside the launcher. Log > Export diagnostics creates a reviewed support ZIP.\n'
+        'Help: https://github.com/hachi23/unicorn_overlord_pc/blob/main/docs/TROUBLESHOOTING.md\n', encoding='utf-8')
+    revision = subprocess.check_output(['git', 'rev-parse', '--short=12', 'HEAD'], cwd=ROOT, text=True).strip()
+    target = 'windows' if WINDOWS else 'linux'
+    with tarfile.open(dist.parent / f'{key}-{target}-symbols-{revision}.tar.gz', 'w:gz') as symbols:
+        symbols.add(OUT / 'symbols', arcname=f'symbols-{revision}')
+    if not WINDOWS:
+        source_archive(dist.parent / f'{key}-source-{revision}.tar.gz')
     archive = dist.parent / (name.replace(' ', '-') + ('-windows.zip' if WINDOWS else '-linux.tar.gz'))
     if WINDOWS:
         with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:

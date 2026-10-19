@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <boost/container/static_vector.hpp>
+#include <cstdio>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
@@ -695,6 +696,12 @@ void Instance::CollectDeviceParameters() {
     const std::string driver_name = fmt::format("{} {}", vendor_name, driver_version);
     const std::string api_version = GetReadableVersion(properties.apiVersion);
     const std::string extensions = fmt::format("{}", fmt::join(available_extensions, ", "));
+
+    // Essential support data must survive the default warning-only log filter.
+    std::fprintf(stderr, "GPU selected: %s; driver: %s; Vulkan: %s; integrated: %s\n",
+                 model_name.c_str(), driver_name.c_str(), api_version.c_str(),
+                 IsIntegrated() ? "yes" : "no");
+    std::fflush(stderr);
 
     LOG_INFO(Render_Vulkan, "GPU_Vendor: {}", vendor_name);
     LOG_INFO(Render_Vulkan, "GPU_Model: {}", model_name);

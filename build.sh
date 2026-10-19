@@ -52,7 +52,7 @@ if ! { command -v pkg-config >/dev/null && pkg-config --exists vulkan sdl3 && co
     echo 'Need pkg-config with vulkan and sdl3, cmake and ninja (see shell.nix).' >&2; exit 1
 fi
 read -r -a includes <<< "$(pkg-config --cflags vulkan sdl3 libavcodec libavutil libswscale)"
-read -r -a libraries <<< "$(pkg-config --libs vulkan sdl3 libavcodec libavutil libswscale)"
+read -r -a libraries <<< "$(pkg-config --libs --static vulkan sdl3 libavcodec libavutil libswscale)"
 # GPU library (shadPS4 video core + drivers), built by CMake into out/gpu/libvwgpu.so.
 # VW_PGO: generate (instrumented build that writes pgo/ while the game runs), use, off.
 # Default: use the profile in pgo/ when there is one. VW_LTO=OFF disables link-time optimization.
@@ -69,7 +69,9 @@ fi
 # third-party libraries of packaging/deps.sh linked in (packaging/package.py).
 if [[ ${1:-} == --static ]]; then
     bash packaging/deps.sh
-    cmake -S gpu -B out/static -G Ninja -DCMAKE_BUILD_TYPE=Release -DVW_STATIC=ON -DVW_PGO="$pgo" \
+    cmake -S gpu -B out/static -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_FLAGS_RELEASE='-O3 -DNDEBUG -g' -DCMAKE_CXX_FLAGS_RELEASE='-O3 -DNDEBUG -g' \
+        -DVW_STATIC=ON -DVW_PGO="$pgo" \
         -DVW_LTO="${VW_LTO:-ON}" -DVW_PGO_DIR="$PWD/pgo" -DCMAKE_C_COMPILER="$CC" \
         -DVW_DEPS="$PWD/out/deps/prefix" >/dev/null
     if ! ninja -C out/static vwport > out/static-build.log 2>&1; then
@@ -80,7 +82,7 @@ if [[ ${1:-} == --static ]]; then
     exit 0
 fi
 cmake -S gpu -B out/gpu -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVW_PGO="$pgo" \
-    -DVW_LTO="${VW_LTO:-ON}" -DVW_PGO_DIR="$PWD/pgo" >/dev/null
+    -DVW_LTO="${VW_LTO:-ON}" -DVW_PGO_DIR="$PWD/pgo" -DVW_DEPS="${VW_DEPS:-}" >/dev/null
 echo "GPU library: PGO $pgo, LTO ${VW_LTO:-ON}"
 # A failed GPU build must stop here: an older libvwgpu.so would otherwise be used silently.
 if ! ninja -C out/gpu vwgpu > out/gpu-build.log 2>&1; then
@@ -102,13 +104,13 @@ echo "Built $PWD/out/vwport"
 if [[ ${1:-} == --test ]]; then
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test
-    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_runtime.c "${runtime[@]}" out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/runtime-test
+    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_runtime.c "${runtime[@]}" out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/runtime-test
     out/runtime-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -Isrc tests/test_file_mods.c -o out/file-mods-test
     out/file-mods-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -Isrc tests/test_save_commit.c -o out/save-commit-test
     out/save-commit-test
-    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_sema.c "${runtime[@]}" out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/sema-test
+    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_sema.c "${runtime[@]}" out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/sema-test
     out/sema-test
     "$CC" -std=c11 -D_GNU_SOURCE -O2 -g -Wall -Wextra -Werror -I. -Isrc tests/test_content.c src/runtime_content.c -o out/content-test
     out/content-test

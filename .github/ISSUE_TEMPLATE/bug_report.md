@@ -28,7 +28,8 @@ labels: bug
 
 **Log**
 
-<!-- Attach the log of the failed run: data directory → logs/ (or last_run.log for the newest run).
+<!-- Prefer Log → Export diagnostics: select the failed run, review the redacted preview,
+     save the ZIP and attach it here. You can also attach the log manually: data directory → logs/ (or last_run.log for the newest run).
      Pick the timestamped log if the game was restarted after the failure.
      Review for personal paths/usernames before posting. Do not upload the whole data folder.
      Hang: also run with VW_HANG_DUMP=5 and attach the output.

@@ -9,8 +9,9 @@ The **data directory** holds settings, saves and logs:
 | Packaged launcher (`.exe` or `.AppImage`) | `data/` beside the launcher file |
 | From the source tree | `run_uo/` in the repository (or `VW_DATA_DIR`) |
 
-Inside it: `vw.ini` (settings), `user/` (saves and shader caches), `logs/` (one log per run,
-newest 10 kept), `last_run.log` (copy of the newest log). Saves are backed up automatically
+Inside it: `vw.ini` (settings), `user/` (saves and shader caches), `logs/` (one unique log per run,
+newest 10 kept), `last_run.log` (live copy of the newest log segment). Each run has at most
+two 8 MiB segments (`.log` and `.log.1`) and a small system summary (`.json`). Saves are backed up automatically
 before each start.
 
 ## The launcher refuses the game folder
@@ -25,6 +26,13 @@ before each start.
 2. Look for a line starting with `STOP:` (something the port does not support yet) or
    `Guest fault` / `Host fault` (a crash, followed by where it happened).
 3. Check the GPU line near the top: the port needs a Vulkan 1.3 GPU and an up-to-date driver.
+
+## The log says the graphics device was lost
+
+`GPU crash: the graphics device was lost` (exit code 23) identifies a Vulkan device-loss
+failure. This alone does not establish whether the cause is in the port, driver or hardware.
+Try a current driver and native render resolution; report the exact scene, graphics settings
+and driver version with the failed run's diagnostics.
 
 ## Black screen, wrong colours or missing graphics
 
@@ -41,5 +49,13 @@ Attach that log to the bug report.
 
 ## Reporting a bug
 
-Open an issue with the bug report form and attach the log of the run that failed. See
+Open **Log → Export diagnostics**, select the timestamped run that failed, review/edit the
+redacted preview and save the ZIP. Attach it to an issue using the bug report template.
+The export includes only that run's log segments and system/settings summary. It excludes
+game data, saves, keys and shader caches. Known local paths are redacted; review for other
+personal information before sharing. During a hang you can export the active run without
+closing the game. Very large legacy logs are limited to 16 MiB per exported segment.
+
+You can also attach the timestamped `.log` and `.log.1` manually, after checking for personal
+paths. If you restarted the game, select the earlier failed run rather than `last_run.log`. See
 [CONTRIBUTING.md](../CONTRIBUTING.md#reporting-bugs) for what helps most.

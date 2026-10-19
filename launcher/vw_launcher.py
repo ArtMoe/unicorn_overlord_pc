@@ -257,17 +257,68 @@ def install_game(game_info, source, data):
         root.destroy()
 
 
-def report_failure(game_info, data, code):
-    """The game stopped with an error: say where the log is and offer to open it."""
+def export_diagnostics(root, data, game_dir):
+    """A support ZIP of the newest run: the log (paths redacted) and the system summary, shown
+    in an editable preview first; nothing else from data/ or the game folder."""
+    import diagnostics
+    from tkinter import filedialog, messagebox
+    import tkinter as tk
+    logs = sorted((data / 'logs').glob('run-*.log'))
+    if not logs:
+        messagebox.showerror('Diagnostics', f'No run log in {data / "logs"}.', parent=root)
+        return
+    try:
+        files = diagnostics.support_files(logs[-1], data, (game_dir, RUNTIME, HERE))
+    except (OSError, ValueError) as error:
+        messagebox.showerror('Diagnostics', str(error), parent=root)
+        return
+    preview = tk.Toplevel(root)
+    preview.title('Diagnostics: review before sharing')
+    preview.geometry('900x600')
+    preview.attributes('-topmost', True)
+    tk.Label(preview, text='Known folders are replaced by <local-path>. Remove anything else you do not '
+             'want to share; the ZIP holds exactly this text.').pack(anchor='w', padx=8, pady=4)
+    text = tk.Text(preview, wrap='none')
+    text.pack(fill='both', expand=True)
+    text.insert('end', files['run.log'])
+    summary = files.get('system.json')
+
+    def save():
+        destination = filedialog.asksaveasfilename(parent=preview, title='Save the diagnostics ZIP',
+                                                   defaultextension='.zip', initialfile='vwport-diagnostics.zip',
+                                                   filetypes=[('ZIP archive', '*.zip')])
+        if not destination:
+            return
+        chosen = {'run.log': text.get('1.0', 'end-1c')}
+        if summary:
+            chosen['system.json'] = summary
+        try:
+            diagnostics.export_archive(destination, chosen)
+        except (OSError, ValueError) as error:
+            messagebox.showerror('Diagnostics', str(error), parent=preview)
+            return
+        preview.destroy()
+        messagebox.showinfo('Diagnostics', 'Saved. Attach the ZIP to your GitHub issue.', parent=root)
+    tk.Button(preview, text='Save diagnostics ZIP…', command=save).pack(pady=6)
+    preview.wait_window()
+
+
+def report_failure(game_info, data, code, game_dir=''):
+    """The game stopped with an error: offer a diagnostics ZIP for an issue, or the log itself."""
     log = data / 'last_run.log'
     try:
         from tkinter import messagebox
         root = tk_root()
         try:
-            if messagebox.askyesno(game_info['name'], f'The game stopped with an error (code {code}).\n\n'
-                                   f'The log of this run is {log}.\nOpen it now?\n\n'
-                                   'docs/TROUBLESHOOTING.md in the repository explains what to look for.',
-                                   icon='error', parent=root):
+            answer = messagebox.askyesnocancel(
+                game_info['name'], f'The game stopped with an error (code {code}).\n\n'
+                'Yes: save a diagnostics ZIP to attach to a GitHub issue (you review it first).\n'
+                f'No: open the log of this run ({log}).\n\n'
+                'docs/TROUBLESHOOTING.md in the repository explains what to look for.',
+                icon='error', parent=root)
+            if answer:
+                export_diagnostics(root, data, game_dir)
+            elif answer is False:
                 if WINDOWS:
                     os.startfile(log)  # noqa: S606
                 else:
@@ -345,5 +396,5 @@ def main(key):
     except SystemExit as stop:
         code = stop.code
     if code not in (0, None):
-        report_failure(game_info, data, code)
+        report_failure(game_info, data, code, folder)
     sys.exit(code)

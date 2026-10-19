@@ -20,6 +20,8 @@ rm -rf "$appdir"
 mkdir -p "$appdir/usr/bin"
 cp "$launcher" "$appdir/usr/bin/launcher"
 cp LICENSE "$appdir/"
+cp -r "dist/$title PC/licenses" "$appdir/"
+cp "dist/$title PC/README.txt" "$appdir/"
 cp out/icon.png "$appdir/vwport.png"
 cat > "$appdir/AppRun" <<'EOF'
 #!/bin/sh

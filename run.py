@@ -8,6 +8,7 @@ The in-game "Apply and restart" runs this script again through VW_RESTART_COMMAN
 `--after PID` waits for the previous game process to end first (its GPU device and memory).
 """
 import ctypes
+from datetime import datetime
 import os
 from pathlib import Path
 import platform
@@ -15,43 +16,98 @@ import shutil
 import subprocess
 import sys
 import time
+import threading
+import traceback
+import uuid
 
 PORT = Path(__file__).resolve().parent
 WINDOWS = os.name == 'nt'
 LOG_KEEP = 10  # run logs kept in <data>/logs
+LOG_BYTES = 8 * 1024 * 1024  # two segments per run, plus a bounded live last_run.log
 
 
 class RunLog:
     """Everything a run prints (this script, the preparation scripts, vwport) goes to the console
     and to <data>/logs/run-<date>-<time>.log with the seconds since the start; the newest
-    LOG_KEEP logs are kept and last_run.log is a copy of the newest (the launcher's Log button)."""
+    LOG_KEEP logs are kept and last_run.log mirrors the live current segment."""
 
     def __init__(self):
         self.file = None
         self.start = time.monotonic()
+        self.lock = threading.RLock()
+        self.size = 0
+        self.support = None
 
     def open(self, data):
         logs = data / 'logs'
         logs.mkdir(parents=True, exist_ok=True)
-        self.path = logs / time.strftime('run-%Y%m%d-%H%M%S.log')
-        self.file = open(self.path, 'a', encoding='utf-8', errors='replace', buffering=1)
+        self.path = logs / f'run-{datetime.now():%Y%m%d-%H%M%S-%f}-{uuid.uuid4().hex[:8]}.log'
+        self.file = open(self.path, 'x', encoding='utf-8', errors='replace', buffering=1)
         for old in sorted(logs.glob('run-*.log'))[:-LOG_KEEP]:
             old.unlink(missing_ok=True)
+            old.with_suffix('.log.1').unlink(missing_ok=True)
+            old.with_suffix('.json').unlink(missing_ok=True)
         self.last = data / 'last_run.log'
+        self.latest = open(self.last, 'w', encoding='utf-8', errors='replace', buffering=1)
 
     def write(self, line, console=True):
         if console:
             print(line, flush=True)
-        if self.file:
-            self.file.write(f'[{time.monotonic() - self.start:9.3f}] {line}\n')
+        with self.lock:
+            if self.file:
+                # Bound even a single pathological line. The previous segment preserves the
+                # recent history; the support header is also in a separate JSON file.
+                line = line[:LOG_BYTES // 8]
+                entry = f'[{time.monotonic() - self.start:9.3f}] {line}\n'
+                if self.size + len(entry.encode('utf-8')) > LOG_BYTES:
+                    self.file.close()
+                    self.path.replace(self.path.with_suffix('.log.1'))
+                    self.file = open(self.path, 'w', encoding='utf-8', buffering=1)
+                    self.latest.close()
+                    self.latest = open(self.last, 'w', encoding='utf-8', buffering=1)
+                    self.size = 0
+                    entry = '[Log rotated; previous segment is .log.1]\n' + entry
+                self.file.write(entry)
+                self.latest.write(entry)
+                self.size += len(entry.encode('utf-8'))
+                if self.support is not None:
+                    import diagnostics
+                    updated = False
+                    if line.startswith('GPU selected:'):
+                        self.support['gpu_driver_api'] = line
+                        updated = True
+                    elif line.startswith('Mods: ') and line.endswith(' files'):
+                        name, _, count = line[6:].rpartition(': ')
+                        if name and count.split()[0].isdigit():
+                            self.support.setdefault('mods', []).append(name[:256])
+                            updated = True
+                    elif line.startswith('Patches: ') and line.endswith(' writes)'):
+                        self.support.setdefault('patches', []).append(line[9:][:512])
+                        updated = True
+                    if updated:
+                        diagnostics.write_summary(self.path, self.support)
 
-    def run(self, command, **kwargs):
+    def run(self, command, capture=False, **kwargs):
         """Runs command with its output (stdout and stderr) through the log; returns its exit code."""
-        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT, text=True, errors='replace', bufsize=1, **kwargs)
-        for line in process.stdout:
-            self.write(line.rstrip('\n'))
-        return process.wait()
+        with subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE if capture else subprocess.STDOUT,
+                              text=True, errors='replace', bufsize=1, **kwargs) as process:
+            output = []
+            def read_errors():
+                for line in process.stderr:
+                    self.write(line.rstrip('\n'))
+            reader = threading.Thread(target=read_errors) if capture else None
+            if reader:
+                reader.start()
+            for line in process.stdout:
+                if capture:
+                    output.append(line)
+                else:
+                    self.write(line.rstrip('\n'))
+            code = process.wait()
+            if reader:
+                reader.join()
+            return (code, ''.join(output)) if capture else code
 
     def close(self, code):
         if not self.file:
@@ -59,10 +115,7 @@ class RunLog:
         self.write(f'Exit code {code}', console=False)
         self.file.close()
         self.file = None
-        try:
-            shutil.copyfile(self.path, self.last)
-        except OSError:
-            pass
+        self.latest.close()
 
 
 LOG = RunLog()
@@ -122,11 +175,11 @@ def run_script(name, *args, capture=False):
     script = ['--script'] if getattr(sys, 'frozen', False) else []
     command = [sys.executable, *script, str(PORT / 'scripts' / name), *map(str, args)]
     if capture:
-        result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True,
-                                creationflags=no_console())
-        if result.returncode:
-            sys.exit(result.returncode)
-        return result.stdout
+        code, output = LOG.run(command, capture=True, creationflags=no_console())
+        if code:
+            LOG.write(f'{name} failed (exit code {code})')
+            sys.exit(code)
+        return output
     code = LOG.run(command, creationflags=no_console())
     if code:
         LOG.write(f'{name} failed (exit code {code})')
@@ -164,10 +217,15 @@ def main():
     derived = []
     sys.path.insert(0, str(PORT / 'scripts'))
     import graphics_options
+    import diagnostics
     graphics, reverted = graphics_options.prepare(env['VW_CONFIG'], out / 'graphics_state.json')
     if reverted:
         LOG.write('Graphics: the last restart never reached the game; previous options restored')
     env.update(graphics_options.environment(graphics))
+    support = {**diagnostics.system_info(), 'port_version': port_version(), 'graphics': graphics}
+    LOG.support = support
+    diagnostics.write_summary(LOG.path, support)
+    LOG.write(f'System: {support}')
 
     probe = Path(env['VW_PROBE']) if env.get('VW_PROBE') else find_executable('vwport.exe' if WINDOWS else 'vwport')
     if not probe or not probe.is_file():
@@ -183,6 +241,8 @@ def main():
     import prepare_cache
     gpu = prepare_cache.cached_device_name(out, probe, lambda: game_profiles.device_name(probe))
     LOG.write(f'GPU: {gpu or "unknown"}')
+    support['gpu'] = gpu or 'unknown'
+    diagnostics.write_summary(LOG.path, support)
     if game_profiles.radv_nohiz(env, gpu):
         LOG.write('RADV: RADV_DEBUG=nohiz for this GPU (VW_AUTO_NOHIZ=0: off)')
 
@@ -214,6 +274,8 @@ def main():
                              patch_requirements, selected_patches)
         profile = game_profile(game_title_id(game))
         LOG.write(f'Game: {game_title_id(game)} v{game_app_version(game)} · {original_game}')
+        support.update(game=game_title_id(game), game_version=game_app_version(game))
+        diagnostics.write_summary(LOG.path, support)
         patched = bool(profile) and ((game_app_version(game) == profile[2] and eboot_matches(game, profile))
                                      or bool(env.get('VW_FORCE_PATCHES')))
         # The window shows the game's icon (BMP: the format SDL loads without extra libraries).
@@ -243,6 +305,11 @@ def main():
             env['VW_VBLANK_HZ'] = '60'
             derived.append('VW_VBLANK_HZ')
         env['VW_DERIVED'] = ','.join(derived)
+        support['launch_options'] = {key: env[key] for key in diagnostics.LAUNCH_KEYS if key in env}
+        support['settings'] = {key: value for key, value in graphics_options.read_ini(env['VW_CONFIG']).items()
+                               if key in diagnostics.SETTING_KEYS}
+        diagnostics.write_summary(LOG.path, support)
+        LOG.write('Launch options: ' + str(support['launch_options']))
 
         # The in-game restart starts this script again once this process is gone.
         # GPU caches (shaders, pipelines) beside the saves; read before main(), so set here.
@@ -276,7 +343,7 @@ def main():
             shutil.rmtree(mod_view, ignore_errors=True)
 
 
-if __name__ == '__main__':
+def entrypoint():
     code = 1
     try:
         code = main()
@@ -284,6 +351,12 @@ if __name__ == '__main__':
         code = 130
     except SystemExit as stop:
         code = stop.code
+    except Exception:
+        LOG.write(traceback.format_exc())
     finally:
         LOG.close(code)
-    sys.exit(code)
+    return code
+
+
+if __name__ == '__main__':
+    sys.exit(entrypoint())

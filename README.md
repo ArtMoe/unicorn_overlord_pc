@@ -43,7 +43,8 @@ Test builds of `main` are on the [`latest` pre-release](https://github.com/hachi
 
 - **Linux:** `Unicorn-Overlord-x86_64.AppImage`. Make it executable (`chmod +x`) and run it. It
   keeps its `data/` folder next to the `.AppImage`.
-- **Windows:** `Unicorn Overlord.exe`. Put it in its own folder; it keeps `data/` beside itself.
+- **Windows:** `Unicorn-Overlord-PC-windows.zip`. Extract it into its own folder and run
+  `Unicorn Overlord.exe`; it keeps `data/` beside itself. Keep `LICENSE` and `licenses/` with it.
 
 These are untested builds of the newest code. See [docs/RELEASING.md](docs/RELEASING.md) for how
 builds and releases are made.
@@ -78,6 +79,8 @@ Settings are kept in `vw.ini` in the data directory. The Overlay tab also has a
 Something wrong? See [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) and
 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Every run writes a log
 to `logs/` in the data directory (the launcher's **Log** button shows the newest).
+Use **Log → Export diagnostics** to select a failed run, review its redacted contents and
+save a ZIP to attach to your issue. No game files or saves are included.
 
 ### Render resolution
 
@@ -132,7 +135,8 @@ To package a release, run `python packaging/package.py unicorn`. On Linux it bui
 `packaging/deps.sh` (pinned static FFmpeg with only the decoders the port uses, SDL3, fmt, Zydis,
 xxHash, zlib; a few minutes the first time) and a `vwport` with them and the GPU library linked
 in (`build.sh --static`), which needs only libc, libm and the Vulkan loader. `dist/` then holds
-two files: the launcher, with the runtime scripts and `vwport` inside, and `LICENSE`.
+the launcher, with the runtime scripts and `vwport` inside, `LICENSE`, `licenses/` and
+`README.txt`. Releases also retain matching debug symbols and an archive of the source.
 
 ### Tests
 

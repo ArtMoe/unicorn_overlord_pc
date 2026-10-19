@@ -45,7 +45,7 @@ jobs:
           sudo apt-get install -y gcc-14 g++-14 ninja-build pkg-config nasm python3-venv python3-tk desktop-file-utils \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev \
             libxfixes-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev \
-            libegl-dev libgl-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libvulkan-dev
+            libegl-dev libgl-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev libvulkan-dev mesa-vulkan-drivers
           pip install --user 'cmake>=3.28'
           echo "CC=gcc-14" >> "$GITHUB_ENV"
           echo "CXX=g++-14" >> "$GITHUB_ENV"
@@ -90,7 +90,12 @@ jobs:
           bash packaging/linux/appimage.sh "$TITLE"
 
       - name: Tests
-        run: python3 -m unittest discover -s tests
+        run: |
+          export PKG_CONFIG_PATH=$PWD/out/deps/prefix/lib/pkgconfig:$PWD/out/deps/prefix/share/pkgconfig
+          export CMAKE_PREFIX_PATH=$PWD/out/deps/prefix:$CMAKE_PREFIX_PATH
+          export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          bash packaging/test-native.sh
+          python3 -m unittest discover -s tests
 
       - name: Keep the build logs
         if: failure()
@@ -104,7 +109,10 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: linux
-          path: dist/*.AppImage
+          path: |
+            dist/*.AppImage
+            dist/*-source-*.tar.gz
+            dist/*-linux-symbols-*.tar.gz
           if-no-files-found: error
 
   windows:
@@ -134,6 +142,11 @@ jobs:
       - name: Build and package
         run: VW_VERSION=$(git describe --always --tags) bash packaging/windows/build.sh "$GAME"
 
+      - name: Native and Python tests
+        run: |
+          bash packaging/test-native.sh
+          py -3 -m unittest discover -s tests
+
       - name: Keep the build logs
         if: failure()
         uses: actions/upload-artifact@v7
@@ -146,7 +159,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: windows
-          path: dist/${{ env.TITLE }} PC/${{ env.TITLE }}.exe
+          path: |
+            dist/*-windows.zip
+            dist/*-windows-symbols-*.tar.gz
           if-no-files-found: error
 
   release:
@@ -166,4 +181,5 @@ jobs:
           gh release create latest --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
             --title "Latest build ($(echo "$GITHUB_SHA" | cut -c1-7))" \
             --notes "Built from ${GITHUB_SHA} by the Build workflow. Test build: no game files included." \
-            linux/*.AppImage "windows/$TITLE.exe"
+            linux/*.AppImage linux/*-source-*.tar.gz linux/*-linux-symbols-*.tar.gz \
+            windows/*-windows.zip windows/*-windows-symbols-*.tar.gz
