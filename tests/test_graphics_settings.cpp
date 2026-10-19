@@ -27,7 +27,8 @@ static std::string Read(const char* path) {
 int main() {
     assert(G::ParseDisplayMode("borderless") == G::Borderless && G::ParseDisplayMode("bogus") == G::Windowed);
     assert(G::ParseResolution("720p") == 1 && G::ParseResolution("900p") == 2);
-    assert(G::ParseResolution("1440p") == 3 && G::ParseResolution("4K") == 5 && G::ParseResolution("8K") == 0);
+    assert(G::ParseResolution("1800p") == 3 && G::ParseResolution("4K") == 4 && G::ParseResolution("8K") == 0);
+    assert(G::ParseResolution("1440p") == 0);  // removed: a vw.ini that still has it starts native
     assert(G::ParseFramesQueued(2) == 2 && G::ParseFramesQueued(0) == 0 && G::ParseFramesQueued(5) == 1);
     assert(G::ParseRcasStrength(100) == 100 && G::ParseRcasStrength(101) == 75 && G::ParseRcasStrength(-1) == 75);
     assert(G::RcasAttenuation(100) == 0.0f && G::RcasAttenuation(0) == 2.0f && G::RcasAttenuation(75) == 0.5f);
@@ -39,7 +40,7 @@ int main() {
     {
         std::ofstream out(path);
         out << "display_mode=borderless\nvsync=0\nfps_limit=240\nasync_shaders=0\n"
-               "render_resolution=1440p\ndeferred_readback=0\nstale_readback=1\n"
+               "render_resolution=1800p\ndeferred_readback=0\nstale_readback=1\n"
                "fsr1=1\nrcas=0\nrcas_strength=40\nframes_queued=2\n";
     }
     _putenv_s("VW_CONFIG", path);
@@ -59,7 +60,7 @@ int main() {
     VwSettings::Save();
     const std::string saved = Read(path);
     for (const char* line : {"display_mode=borderless\n", "vsync=0\n", "async_shaders=0\n",
-                             "render_resolution=1440p\n", "deferred_readback=0\n",
+                             "render_resolution=1800p\n", "deferred_readback=0\n",
                              "stale_readback=1\n", "fsr1=1\n", "rcas=0\n", "rcas_strength=40\n",
                              "frames_queued=2\n"}) {
         assert(saved.find(line) != std::string::npos);

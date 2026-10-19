@@ -352,7 +352,9 @@ static float render_scale_value(const char *text) {
     if (render_scale_prefix(text, "480p")) return 4.0f / 9.0f;
     if (render_scale_prefix(text, "720p")) return 2.0f / 3.0f;
     if (render_scale_prefix(text, "900p")) return 5.0f / 6.0f;
-    if (render_scale_prefix(text, "1440p")) return 4.0f / 3.0f;
+    /* 1440p was removed (the battle map's foreground blur broke into blocks): native, not
+     * strtof's 1440 (clamped to 4K), for a vw.ini that still has it. */
+    if (render_scale_prefix(text, "1440p")) return 1.0f;
     if (render_scale_prefix(text, "1800p")) return 5.0f / 3.0f;
     if (render_scale_prefix(text, "4k") || render_scale_prefix(text, "2160p")) return 2.0f;
     return strtof(text, NULL);
@@ -424,6 +426,9 @@ static void install_unicorn_render_scale(const char *app0, uint64_t size) {
             memcpy(image + unicorn_width_imm[i], &width, 4);
             memcpy(image + unicorn_height_imm[i], &height, 4);
         }
+        const float widthf = (float)width, heightf = (float)height;
+        memcpy(image + unicorn_width_float, &widthf, 4);
+        memcpy(image + unicorn_height_float, &heightf, 4);
     }
     printf("Render scale: %ux%u (PS4 Pro path)\n", width, height);
 }
@@ -572,12 +577,12 @@ void runtime_restart_with(const char *name) {
     printf("Runtime: restarting through %s\n",name);
     if (!command || !*command) { fprintf(stderr,"runtime_restart: %s is not set\n",name); _exit(1); }
     char *line=_strdup(command);
-    /* Same output handles: a launcher reading the game's log keeps reading the new launch. */
-    STARTUPINFOA startup={.cb=sizeof(startup),.dwFlags=STARTF_USESTDHANDLES,
-                          .hStdInput=GetStdHandle(STD_INPUT_HANDLE),.hStdOutput=GetStdHandle(STD_OUTPUT_HANDLE),
-                          .hStdError=GetStdHandle(STD_ERROR_HANDLE)};
+    /* No inherited handles: the new launch keeps its own log. Inheriting this process's output
+     * pipe kept the old run.py reading it, so it never ended and the new one's --after wait ran
+     * into its 30 s timeout (and a manual start meanwhile restored the previous options). */
+    STARTUPINFOA startup={.cb=sizeof(startup)};
     PROCESS_INFORMATION process;
-    if (!line || !CreateProcessA(NULL,line,NULL,NULL,TRUE,0,NULL,NULL,&startup,&process)) {
+    if (!line || !CreateProcessA(NULL,line,NULL,NULL,FALSE,0,NULL,NULL,&startup,&process)) {
         fprintf(stderr,"runtime_restart: CreateProcess failed (%lu)\n",GetLastError()); _exit(1);
     }
     CloseHandle(process.hThread); CloseHandle(process.hProcess);

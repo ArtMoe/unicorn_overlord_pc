@@ -17,8 +17,9 @@ inline constexpr std::array<const char*, DisplayModeCount> DisplayModeNames = {
 
 /// Render resolutions: the game's 1920x1080 frame drawn at another size (the probe's render
 /// scale patch, src/unicorn_render_scale.h) and scaled to the window. Index 0 is the default.
-inline constexpr std::array<std::string_view, 6> Resolutions = {"native", "720p", "900p",
-                                                                "1440p",  "1800p", "4K"};
+/// 1440p was removed: the battle map's foreground blur broke into blocks at that size.
+inline constexpr std::array<std::string_view, 5> Resolutions = {"native", "720p", "900p", "1800p",
+                                                                "4K"};
 
 template <typename T, std::size_t N>
 constexpr int IndexOf(const std::array<T, N>& values, const T& value, int fallback) {

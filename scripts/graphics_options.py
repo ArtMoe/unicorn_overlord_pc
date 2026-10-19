@@ -5,12 +5,13 @@
 The in-game menu and the launcher write them; run.py turns them into environment variables
 (the probe reads render_resolution itself) at every start, so "Apply and restart" uses the new values. After a
 restart the game confirms them (restart_unconfirmed=0) once it shows frames; when a launch
-never did, the next start goes back to the last confirmed values.
+never did, the next start goes back to the last confirmed values. A launch started by "Apply and
+restart" confirms the one before it: that one reached the game, its menu asked for the restart.
 """
 import json
 from pathlib import Path
 
-RESOLUTIONS = ('native', '720p', '900p', '1440p', '1800p', '4K')
+RESOLUTIONS = ('native', '720p', '900p', '1800p', '4K')
 DEFAULTS = {'render_resolution': 'native', 'deferred_readback': '1', 'stale_readback': '1',
             'async_shaders': '1'}
 
@@ -57,9 +58,10 @@ def startup_options(ini):
     return options
 
 
-def prepare(config, state_path):
+def prepare(config, state_path, restarted=False):
     """(options, reverted): the startup options of this launch, restoring the last confirmed
-    ones when the previous launch after a restart never confirmed its own."""
+    ones when the previous launch after a restart never confirmed its own. restarted: this
+    launch comes from the in-game "Apply and restart" (run.py --after)."""
     ini = read_ini(config)
     state = {}
     try:
@@ -69,13 +71,18 @@ def prepare(config, state_path):
     options = startup_options(ini)
     reverted = False
     if ini.get('restart_unconfirmed') == '1':
-        if state.get('attempt') and state.get('last_good'):
+        if restarted and state.get('attempt') and state.get('attempt_options'):
+            # The previous attempt asked for this restart from its menu: it reached the game,
+            # even when that was sooner than its own confirmation (or Apply overwrote it).
+            state['last_good'] = state['attempt_options']
+        if not restarted and state.get('attempt') and state.get('last_good'):
             options = startup_options(state['last_good'])
             write_keys(config, {**options, 'restart_unconfirmed': '0'})
-            state['attempt'] = False
+            state = {'last_good': options, 'attempt': False}
             reverted = True
         else:
             state['attempt'] = True
+            state['attempt_options'] = options
     else:
         state = {'last_good': options, 'attempt': False}
     Path(state_path).write_text(json.dumps(state, indent=2), encoding='utf-8')

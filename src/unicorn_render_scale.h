@@ -9,9 +9,14 @@
  * 3840x2160 with its Font_4K/ fonts. Its screen size getters FUN_0003e2b0 (width) and
  * FUN_0003e2d0 (height), and their two inlined copies in FUN_0003cb60 (the MAIN BUFFER color
  * and depth targets), pick the Pro size with `mov ecx, 0xf00` / `mov ecx, 0x870`: a smaller
- * Pro size (1440p, 1800p) is those six imm32 operands. */
+ * Pro size (1800p, or below 1080p) is those six imm32 operands. */
 static const uint32_t unicorn_width_imm[] = {0x3d9fd, 0x3db77, 0x3e2bd};
 static const uint32_t unicorn_height_imm[] = {0x3da19, 0x3db5b, 0x3e2dd};
+/* 3840.0f and 2160.0f in rodata, read only by FUN_00233cd0 at 0x2354bb: the rectangle of one
+ * of its passes (FUN_000393d0, pass 0x1a). Patched with the integer sizes; suspected (not
+ * confirmed) cause of the blocky foreground blur that got 1440p removed. */
+static const uint32_t unicorn_width_float = 0xaf31a4;
+static const uint32_t unicorn_height_float = 0xaf31a8;
 
 /* Each operand follows the `mov ecx` opcode (0xb9) and holds 3840 or 2160. */
 static inline int unicorn_render_scale_signature_match(const unsigned char *image, uint64_t size) {
@@ -23,7 +28,11 @@ static inline int unicorn_render_scale_signature_match(const unsigned char *imag
         memcpy(&hv, image + h, 4);
         if (wv != 3840 || hv != 2160) return 0;
     }
-    return 1;
+    float wf, hf;
+    if (unicorn_height_float + 4 > size) return 0;
+    memcpy(&wf, image + unicorn_width_float, 4);
+    memcpy(&hf, image + unicorn_height_float, 4);
+    return wf == 3840.0f && hf == 2160.0f;
 }
 
 #endif
