@@ -41,8 +41,8 @@ Measured on the test system above, 1080p:
 - The busy scenes are limited by the CPU, not the GPU: the PS4's GPU reads its command stream in
   hardware, the port decodes it in software. Two threads share that work (stage A decodes, about
   3.8 µs per draw; stage B records Vulkan commands) and both are close to full in the opening.
-  A faster CPU (higher single-core speed) helps most. Spreading stage A over more threads is the
-  next planned step; see [dev/HANDOFF.md](dev/HANDOFF.md).
+  A faster CPU (higher single-core speed) helps most.
+  
 - 720p and 900p render resolutions lower the GPU's work, not the CPU's: they help weak GPUs,
   not the busy scenes above.
 - The first time a scene is shown, its shaders are compiled, which can stutter. Later runs use
@@ -60,7 +60,7 @@ Measured on the test system above, 1080p:
 - A render resolution change applies after a restart: the Insert menu has **Apply and
   restart**; in the game's Options screen it takes effect the next time the game starts.
 - Every render resolution other than 1080p uses the game's own PS4 Pro mode at that size.
-  Checked: 720p (logos, the opening, a battle map), 1440p and 4K (title, menu and battle).
+  Checked: 720p (logos, the opening, a battle map), 4K (title, menu and battle).
   900p and 1800p have not been checked in game.
 - Soft colour steps (banding) in dark fog and sky gradients, for example in the opening: the game
   draws these layers into 8-bit targets, as on a PS4, and the port adds no precision loss
