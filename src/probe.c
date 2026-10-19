@@ -572,12 +572,12 @@ void runtime_restart_with(const char *name) {
     printf("Runtime: restarting through %s\n",name);
     if (!command || !*command) { fprintf(stderr,"runtime_restart: %s is not set\n",name); _exit(1); }
     char *line=_strdup(command);
-    /* Same output handles: a launcher reading the game's log keeps reading the new launch. */
-    STARTUPINFOA startup={.cb=sizeof(startup),.dwFlags=STARTF_USESTDHANDLES,
-                          .hStdInput=GetStdHandle(STD_INPUT_HANDLE),.hStdOutput=GetStdHandle(STD_OUTPUT_HANDLE),
-                          .hStdError=GetStdHandle(STD_ERROR_HANDLE)};
+    /* No inherited handles: the new launch keeps its own log. Inheriting this process's output
+     * pipe kept the old run.py reading it, so it never ended and the new one's --after wait ran
+     * into its 30 s timeout (and a manual start meanwhile restored the previous options). */
+    STARTUPINFOA startup={.cb=sizeof(startup)};
     PROCESS_INFORMATION process;
-    if (!line || !CreateProcessA(NULL,line,NULL,NULL,TRUE,0,NULL,NULL,&startup,&process)) {
+    if (!line || !CreateProcessA(NULL,line,NULL,NULL,FALSE,0,NULL,NULL,&startup,&process)) {
         fprintf(stderr,"runtime_restart: CreateProcess failed (%lu)\n",GetLastError()); _exit(1);
     }
     CloseHandle(process.hThread); CloseHandle(process.hProcess);
