@@ -37,6 +37,9 @@ Only the dump listed above is supported.
 
 ## Download
 
+Download [v1.0.0 for Windows and Linux](https://github.com/hachi23/unicorn_overlord_pc/releases/tag/v1.0.0).
+The release includes checksums, source and matching debug symbols.
+
 Test builds of `main` are on the [`latest` pre-release](https://github.com/hachi23/unicorn_overlord_pc/releases/tag/latest):
 
 - **Linux:** `Unicorn-Overlord-x86_64.AppImage`. Make it executable (`chmod +x`) and run it. It
@@ -71,9 +74,13 @@ python launcher/unicorn_launcher.py
 The game's own **System → Options** screen (from the title or the in-game menu) has a **PC**
 section at the end: display mode, VSync, render resolution (applied at the next
 start), FSR 1 upscaling, sharpening and its strength, button icons and the performance overlay.
-Changes apply at once and are saved in `vw.ini`; **Restore Defaults** resets them too.
+Settings are saved in `vw.ini`; **Restore Defaults** resets them too.
 
-In game, **Insert** (R3+L2 on a controller) opens the port's own menu with every setting. It has
+> **Every render resolution change requires a restart.** Press **Insert** to open the overlay
+> menu, change the resolution under **Performance**, then choose **Apply and restart**. If you
+> change it in the game's **System → Options → PC** section, close and relaunch the game.
+
+In game, **Insert** (R3+L2 on a controller) opens the port's overlay menu with every setting. It has
 four tabs:
 
 - **Image:** display mode, VSync, FSR 1 and RCAS sharpening.
