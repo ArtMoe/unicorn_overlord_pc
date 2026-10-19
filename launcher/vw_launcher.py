@@ -3,8 +3,10 @@
 """The ports' start program (Windows and Linux): a one-time setup, then straight into the game.
 
 There is no launcher window. The first start asks for the folder of the user's dump (a folder
-dialog), checks that it is the supported game and version, and remembers it in
-data/launcher.json; every start then prepares the game image (run.py) and runs it. All settings
+dialog), checks that it is the supported game and version, installs it into data/game (hard
+links when the dump is on the same drive, otherwise a copy with a progress window; resumable)
+and remembers it in data/launcher.json; every start then prepares the game image (run.py,
+skipped while nothing changed) and runs it. All settings
 are in the in-game menu (Insert / R3+L2), which can also choose another game folder. Each game
 has a two-line entry script (odin_launcher.py, ...) that calls main(<key>).
 
@@ -14,7 +16,8 @@ installation:
 
     <Game>(.exe)        this program, with the runtime scripts and bin/vwport(.exe) inside
     LICENSE
-    data/               vw.ini, launcher.json, user/ (saves, caches), out/ (generated), logs/
+    data/               vw.ini, launcher.json, game/ (the installed dump), user/ (saves, caches),
+                        out/ (generated), logs/
 
 Arguments: --choose-game asks for the game folder again; --after PID first waits for that
 process to end (the in-game "Change game folder" restart).
@@ -139,6 +142,121 @@ def choose_game(game_info, start):
         root.destroy()
 
 
+def install_plan(source):
+    """(relative path, size) of every file of the dump, largest last."""
+    source = Path(source)
+    files = [(path.relative_to(source), path.stat().st_size) for path in source.rglob('*') if path.is_file()]
+    return sorted(files, key=lambda item: item[1])
+
+
+def install_files(source, target, progress=None, cancelled=lambda: False):
+    """Installs the dump at `source` into `target`: hard links where the drive allows them, else
+    copies. Files already there with the same size are kept, so a cancelled install resumes.
+    Writes into <target>.partial and renames it at the end. Returns False when cancelled.
+    progress(done_bytes, total_bytes, linked) is called as it goes."""
+    source, target = Path(source), Path(target)
+    partial = target.with_name(target.name + '.partial')
+    partial.mkdir(parents=True, exist_ok=True)
+    plan = install_plan(source)
+    total = sum(size for _, size in plan) or 1
+    done, linked = 0, True
+    for relative, size in plan:
+        if cancelled():
+            return False
+        to = partial / relative
+        to.parent.mkdir(parents=True, exist_ok=True)
+        if not (to.is_file() and to.stat().st_size == size):
+            to.unlink(missing_ok=True)
+            try:
+                os.link(source / relative, to)
+            except OSError:
+                linked = False
+                copied = 0
+                with open(source / relative, 'rb') as reader, open(to, 'wb') as writer:
+                    while chunk := reader.read(8 << 20):
+                        if cancelled():
+                            break
+                        writer.write(chunk)
+                        copied += len(chunk)
+                        if progress:
+                            progress(done + copied, total, linked)
+                if copied != size:  # cancelled in the middle of the file
+                    to.unlink(missing_ok=True)
+                    return False
+        done += size
+        if progress:
+            progress(done, total, linked)
+    if target.exists():
+        import shutil
+        shutil.rmtree(target)
+    partial.rename(target)
+    return True
+
+
+def install_game(game_info, source, data):
+    """The install with a progress window; the installed folder, or None when cancelled."""
+    import shutil
+    import threading
+    import tkinter as tk
+    from tkinter import messagebox, ttk
+    target = data / 'game'
+    plan = install_plan(source)
+    need = sum(size for _, size in plan)
+    data.mkdir(parents=True, exist_ok=True)
+    same_drive = os.stat(source).st_dev == os.stat(data).st_dev
+    root = tk_root()
+    try:
+        free = shutil.disk_usage(data).free
+        if not same_drive and free < need + (256 << 20):
+            messagebox.showerror(f"{game_info['name']}: setup",
+                                 f'The game needs {need / 2**30:.1f} GB in {data}, but only '
+                                 f'{free / 2**30:.1f} GB are free. Free some space, or move the port '
+                                 'to the drive that holds the dump (then nothing is copied).', parent=root)
+            return None
+        window = tk.Toplevel(root)
+        window.title(f"{game_info['name']}: installing")
+        window.resizable(False, False)
+        window.attributes('-topmost', True)
+        text = tk.StringVar(value=f'Installing the game into {target} …')
+        ttk.Label(window, textvariable=text, padding=(16, 12, 16, 4), wraplength=420).pack(fill='x')
+        bar = ttk.Progressbar(window, length=420, maximum=1000)
+        bar.pack(padx=16, pady=8)
+        state = {'done': 0, 'total': need or 1, 'linked': same_drive, 'result': None, 'error': None}
+        stop = threading.Event()
+
+        def work():
+            def progress(done, total, linked):
+                state.update(done=done, total=total, linked=linked)
+            try:
+                state['result'] = install_files(source, target, progress, stop.is_set)
+            except OSError as error:
+                state['error'] = error
+        ttk.Button(window, text='Cancel', command=stop.set).pack(pady=(0, 12))
+        window.protocol('WM_DELETE_WINDOW', stop.set)
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+
+        def poll():
+            bar['value'] = 1000 * state['done'] / max(state['total'], 1)
+            how = 'linking (same drive, no extra space)' if state['linked'] else 'copying'
+            text.set(f"Installing the game into {target}: {how}, "
+                     f"{state['done'] / 2**30:.1f} of {state['total'] / 2**30:.1f} GB")
+            if worker.is_alive():
+                window.after(200, poll)
+            else:
+                window.destroy()
+        poll()
+        window.wait_window()
+        worker.join()
+        if state['error']:
+            messagebox.showerror(f"{game_info['name']}: setup", f"Installing failed: {state['error']}\n\n"
+                                 'Start the program again to continue where it stopped.', parent=root)
+            return None
+        return str(target) if state['result'] else None
+    finally:
+        root.destroy()
+
+
 def report_failure(game_info, data, code):
     """The game stopped with an error: say where the log is and offer to open it."""
     log = data / 'last_run.log'
@@ -200,9 +318,15 @@ def main(key):
     settings = load_settings(data)
     folder = settings.get('game_dir')
     if '--choose-game' in args or not check_game(game_info, folder)[0]:
-        folder = choose_game(game_info, folder)
+        folder = choose_game(game_info, settings.get('source_dir', folder))
         if not folder:
             sys.exit(0)
+        settings['source_dir'] = folder
+        if os.environ.get('VW_INSTALL', '1') != '0' and Path(folder).resolve() != (data / 'game').resolve():
+            installed = install_game(game_info, folder, data)
+            if not installed:
+                sys.exit(0)
+            folder = installed
         settings['game_dir'] = folder
         save_settings(data, settings)
 
