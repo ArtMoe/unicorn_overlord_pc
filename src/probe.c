@@ -349,6 +349,7 @@ static float render_scale_value(const char *text) {
     if (render_scale_prefix(text, "native") || render_scale_prefix(text, "1080p")) return 1.0f;
     if (render_scale_prefix(text, "480p")) return 4.0f / 9.0f;
     if (render_scale_prefix(text, "720p")) return 2.0f / 3.0f;
+    if (render_scale_prefix(text, "900p")) return 5.0f / 6.0f;
     if (render_scale_prefix(text, "1440p")) return 4.0f / 3.0f;
     if (render_scale_prefix(text, "1800p")) return 5.0f / 3.0f;
     if (render_scale_prefix(text, "4k") || render_scale_prefix(text, "2160p")) return 2.0f;
@@ -438,8 +439,9 @@ static void install_odin_render_scale(const char *app0, Segment *segments, uint6
     printf("Render scale: %.2f (%ux%u, render buffer heap %u MiB)\n", scale, width, height, heap >> 20);
 }
 
-/* Unicorn Overlord: the render size of this launch, 0x0 when native. Above 1080p the game runs
- * its PS4 Pro path (VW_NEO_MODE), up to its native 3840x2160. */
+/* Unicorn Overlord: the render size of this launch, 0x0 when native. Any other size runs the
+ * game's PS4 Pro path (VW_NEO_MODE) with its 3840x2160 replaced: the Pro path lays out every
+ * 2D layer from the target size, so 720p and 900p keep the 1080p framing too. */
 static int unicorn_render_size(const char *app0, uint32_t *width, uint32_t *height) {
     char path[4096], serial[32] = "", version[32] = "";
     snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
@@ -447,7 +449,8 @@ static int unicorn_render_size(const char *app0, uint32_t *width, uint32_t *heig
     sfo_value(path, "APP_VER", version, sizeof(version), NULL);
     if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return 0;
     float scale = render_scale_setting();
-    if (!(scale > 1.001f)) return 0;
+    if (!(scale > 0.0f) || (scale > 0.999f && scale < 1.001f)) return 0;
+    if (scale < 0.5f) scale = 0.5f;
     if (scale > 2.0f) scale = 2.0f;
     *width = (uint32_t)(1920.0f * scale + 0.5f) & ~1u;
     *height = (uint32_t)(1080.0f * scale + 0.5f) & ~1u;

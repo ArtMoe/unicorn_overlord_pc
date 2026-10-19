@@ -331,10 +331,12 @@ void PerformanceTab() {
     }
     ImGui::SeparatorText("Applied on restart");
     if (BeginRows("##restart")) {
-        static const char* const resolution_labels[] = {"Native (1080p)", "1440p", "1800p", "4K"};
+        static const char* const resolution_labels[] = {"Native (1080p)", "720p (less GPU work)",
+                                                        "900p (less GPU work)", "1440p", "1800p", "4K"};
         ChoiceRow("Render resolution", s.render_resolution, resolution_labels, nullptr, int(G::Resolutions.size()),
-                  "Draws the game larger and averages it down to the window: smoother edges, sharper "
-                  "art, more GPU work.");
+                  "Above 1080p: drawn larger and averaged down to the window (smoother edges, sharper "
+                  "art, more GPU work). 720p and 900p: less GPU work for weak GPUs, softer image; the "
+                  "layout stays the same.");
         CheckRow("Game reads GPU data without waiting", s.stale_readback,
                  "Big FPS gain. Switch it off if lighting or objects look wrong.");
         CheckRow("Deferred GPU readbacks", s.deferred_readback,

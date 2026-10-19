@@ -18,9 +18,10 @@ inline constexpr std::array<const char*, DisplayModeCount> DisplayModeNames = {
 /// Present rate limits; 0 = unlimited.
 inline constexpr std::array<int, 5> FpsLimits = {30, 60, 120, 240, 0};
 
-/// Render resolutions: the game's 1920x1080 frame drawn larger (the probe's render scale
-/// patch for each game) and averaged down to the window.
-inline constexpr std::array<std::string_view, 4> Resolutions = {"native", "1440p", "1800p", "4K"};
+/// Render resolutions: the game's 1920x1080 frame drawn at another size (the probe's render
+/// scale patch, src/unicorn_render_scale.h) and scaled to the window. Index 0 is the default.
+inline constexpr std::array<std::string_view, 6> Resolutions = {"native", "720p", "900p",
+                                                                "1440p",  "1800p", "4K"};
 
 template <typename T, std::size_t N>
 constexpr int IndexOf(const std::array<T, N>& values, const T& value, int fallback) {

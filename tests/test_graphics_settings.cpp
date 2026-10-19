@@ -25,7 +25,8 @@ static std::string Read(const char* path) {
 int main() {
     assert(G::ParseDisplayMode("borderless") == G::Borderless && G::ParseDisplayMode("bogus") == G::Windowed);
     assert(G::ParseFpsLimit(240) == 240 && G::ParseFpsLimit(75) == 0);
-    assert(G::ParseResolution("1440p") == 1 && G::ParseResolution("4K") == 3 && G::ParseResolution("8K") == 0);
+    assert(G::ParseResolution("720p") == 1 && G::ParseResolution("900p") == 2);
+    assert(G::ParseResolution("1440p") == 3 && G::ParseResolution("4K") == 5 && G::ParseResolution("8K") == 0);
     assert(G::ParseFramesQueued(2) == 2 && G::ParseFramesQueued(0) == 0 && G::ParseFramesQueued(5) == 1);
     assert(G::ParseRcasStrength(100) == 100 && G::ParseRcasStrength(101) == 75 && G::ParseRcasStrength(-1) == 75);
     assert(G::RcasAttenuation(100) == 0.0f && G::RcasAttenuation(0) == 2.0f && G::RcasAttenuation(75) == 0.5f);
@@ -45,13 +46,13 @@ int main() {
     auto& v = VwSettings::Get();
     VwSettings::Load();
     assert(v.display_mode == G::Borderless && !v.vsync && v.fps_limit == 240 && !v.async_shaders);
-    assert(v.render_resolution == 1 && !v.deferred_readback && v.stale_readback);
+    assert(v.render_resolution == 3 && !v.deferred_readback && v.stale_readback);
     assert(v.fsr1 && !v.rcas && v.rcas_strength == 40 && v.frames_queued == 2);
     assert(!VwSettings::GraphicsNeedRestart());
-    v.render_resolution = 3;
+    v.render_resolution = 1;  // 720p
     assert(VwSettings::GraphicsNeedRestart());
     v.fps_limit = 60;  // live: no restart because of it
-    v.render_resolution = 1;
+    v.render_resolution = 3;
     assert(!VwSettings::GraphicsNeedRestart());
 
     VwSettings::Save();
