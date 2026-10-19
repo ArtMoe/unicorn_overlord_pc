@@ -319,9 +319,6 @@ void PerformanceTab() {
     auto& s = VwSettings::Get();
     ImGui::SeparatorText("Live");
     if (BeginRows("##live")) {
-        static const char* const fps_labels[] = {"30", "60", "120", "240", "Unlimited"};
-        ChoiceRow("Frame rate limit", s.fps_limit, fps_labels, G::FpsLimits.data(), int(G::FpsLimits.size()),
-                  "Caps the frame rate. These games run their logic at up to 60 FPS.");
         static const char* const queued_labels[] = {"1 (lowest latency)", "2", "Unlimited"};
         ChoiceRow("Frames queued", s.frames_queued, queued_labels, G::FramesQueued.data(),
                   int(G::FramesQueued.size()), "More frames queued: steadier FPS, slower response to input.");
@@ -509,6 +506,8 @@ void OverlayTab() {
             std::snprintf(text, sizeof(text), "ready");
         }
         InfoRow("Shader cache", text);
+        CheckRow("Check for updates at start", s.check_updates,
+                 "The start program looks for a newer version of the port and asks before downloading.");
         ImGui::EndTable();
     }
     // The start program (launcher/vw_launcher.py) asks for the folder again, then starts the game.

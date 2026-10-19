@@ -69,7 +69,7 @@ python launcher/unicorn_launcher.py
 ```
 
 The game's own **System → Options** screen (from the title or the in-game menu) has a **PC**
-section at the end: display mode, VSync, frame rate limit, render resolution (applied at the next
+section at the end: display mode, VSync, render resolution (applied at the next
 start), FSR 1 upscaling, sharpening and its strength, button icons and the performance overlay.
 Changes apply at once and are saved in `vw.ini`; **Restore Defaults** resets them too.
 
@@ -77,7 +77,7 @@ In game, **Insert** (R3+L2 on a controller) opens the port's own menu with every
 four tabs:
 
 - **Image:** display mode, VSync, FSR 1 and RCAS sharpening.
-- **Performance:** frame rate limit, render resolution and the GPU readback options.
+- **Performance:** render resolution, frames queued and the GPU readback options.
 - **Overlay:** the performance overlay.
 - **Controls:** keyboard and controller button bindings, saved in `vw.ini`, and the
   **button icons** the game shows: Auto (follows the controller in use), PlayStation, Xbox or
@@ -85,6 +85,10 @@ four tabs:
 
 Settings are kept in `vw.ini` in the data directory. The Overlay tab also has a
 **Change game folder** button to reopen setup.
+
+**Updates:** at start the program looks for a newer release on GitHub and asks before
+downloading it; the update keeps your settings, saves and installed game. Turn it off with
+**Check for Updates** in the game's Options (PC section) or in the Insert menu.
 
 Something wrong? See [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) and
 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Every run writes a log to `logs/` in the

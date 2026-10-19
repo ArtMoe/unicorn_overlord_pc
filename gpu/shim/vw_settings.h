@@ -12,6 +12,8 @@ namespace VwSettings {
 
 struct Values {
     std::atomic<bool> show_fps{false};
+    /// The start program looks for a newer release (scripts/updates.py); it reads vw.ini itself.
+    std::atomic<bool> check_updates{true};
     /// Performance overlay (vw_perf_stats.h): items shown, font size and background opacity
     /// in percent, corner (0 top left, 1 top right, 2 bottom left, 3 bottom right), layout
     /// (0 one line, 1 one item per line). menu_tab: the menu's last tab.
@@ -21,7 +23,6 @@ struct Values {
     // Graphics (vw_graphics.h). Live: applied on the next frame.
     std::atomic<int> display_mode{0};
     std::atomic<bool> vsync{true};
-    std::atomic<int> fps_limit{0};
     std::atomic<bool> async_shaders{true};
     std::atomic<bool> fsr1{false};
     std::atomic<bool> rcas{true};

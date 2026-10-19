@@ -3,6 +3,46 @@
 Read this first. The port's history and reverse-engineering notes are in
 [unicorn/HANDOFF.md](unicorn/HANDOFF.md), the GPU pipeline in [parallel_gpu.md](parallel_gpu.md).
 
+## Open work for the next agent (2026-10-19, evening)
+
+Finish the first public release. In order:
+
+1. **Pull request #18** (branch `claude/settings-checks`): removes the frame rate limit and adds
+   updates from GitHub releases (below). Wait for the Linux and Windows checks, then merge it
+   into `main` with a merge commit (`gh pr merge 18 --merge`); GitHub deletes the branch. The
+   CI then rebuilds the rolling `latest` pre-release. A check run once got stuck (run "completed"
+   while its jobs stayed queued): `gh run rerun <id>` fixed it.
+2. **Test the Windows package from `latest`** (`Unicorn-Overlord-PC-windows.zip`): first-start
+   setup, title, the Options PC section, a battle, save and load. Nobody has run the Windows
+   **update swap** (`--finish-update`, `scripts/updates.install`) on Windows yet: after step 3,
+   start an older build (the `latest` zip counts as older than every release) and take the
+   offered update; check that `data/` (vw.ini, saves, game) survives and the new version starts.
+3. **Publish v0.1.0:** `git tag -a v0.1.0 <tested main commit>` (the message is the release notes
+   players see in the update dialog), `git push origin v0.1.0`. The tag workflow builds and
+   publishes the release with `SHA256SUMS` ([../RELEASING.md](../RELEASING.md)). Never move or
+   delete a published tag. Decide whether to mark it a pre-release in the GitHub UI (the updater
+   offers pre-releases too; GitHub's "Latest" badge only shows normal releases).
+4. The owner asked whether the Insert menu is still needed. Only it has: button remapping
+   (keyboard and controller), the GPU readback switches (the fix for wrong graphics), frames
+   queued, background shader compilation, overlay layout, Change game folder, Apply and
+   restart, and image information. Shrinking it to remapping + troubleshooting is an open option.
+
+### What landed today
+
+| Change | Where | Checked |
+|---|---|---|
+| PC section in System → Options (#17, in `main`): Display Mode, VSync, Render Resolution, FSR 1, Sharpening, Strength, Button Icons, Performance Overlay, Check for Updates | `src/unicorn_native_settings.h`, `gpu/shim/vw_settings.cpp` | title and in-game screens, every row kind, Restore Defaults, `vw.ini` |
+| Frame rate limit removed (#18): the game paces itself at 60 Hz | `driver.cpp`, `vw_settings.*`, `vw_overlay.cpp` | no limiter 60.0 FPS / 17 ms worst; a 60 limiter 59.6–59.8 / 20–25 ms; 120/240 = none |
+| Render resolution and FSR 1 checked | | 720p after restart: `Render scale: 1280x720`; FSR 1 at 720p in a 1432×806 window: sharper (edge energy 25.3 → 31.7) |
+| Updates (#18): offer, download, SHA-256 check, Windows swap with rollback, AppImage replace | `scripts/updates.py`, `launcher/vw_launcher.py`, `tests/test_updates.py` | 10 unit tests, live GitHub API read; not on Windows |
+| Tag releases (#18): `vX.Y.Z` tag → release with `SHA256SUMS`; versions from `v*` tags only | `.github/workflows/build.yml` | not run yet (runs on the first tag) |
+
+How the updater decides: `scripts/updates.py` docstring. The running version is
+`_internal/runtime/VERSION` (`git describe --match 'v[0-9]*'`); `vX.Y.Z-N-g<hash>` is newer than
+vX.Y.Z, a version without a `v` tag (today's builds) is older than every release. `check_updates=0`
+in `vw.ini` or `VW_UPDATES=0` turns the check off; "Skip this version" is kept in
+`data/launcher.json` (`skipped_update`).
+
 ## State
 
 Unicorn Overlord (CUSA36381 v01.04) boots, plays the prologue and chapter 1's first battle,
