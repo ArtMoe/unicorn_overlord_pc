@@ -135,9 +135,9 @@ On Windows, build in an MSYS2 CLANG64 shell. See
 To package a release, run `python packaging/package.py unicorn`. On Linux it builds
 `packaging/deps.sh` (pinned static FFmpeg with only the decoders the port uses, SDL3, fmt, Zydis,
 xxHash, zlib; a few minutes the first time) and a `vwport` with them and the GPU library linked
-in (`build.sh --static`), which needs only libc, libm and the Vulkan loader. `dist/` then holds
-the launcher, with the runtime scripts and `vwport` inside, `LICENSE`, `licenses/` and
-`README.txt`. Releases also retain matching debug symbols and an archive of the source.
+in (`build.sh --static`), which needs only libc, libm and the Vulkan loader. `dist/<Title> PC/`
+then holds the start program, `_internal/` (its Python runtime, the runtime scripts and
+`vwport`), `LICENSE`, `licenses/` and `README.txt`. Releases also retain matching debug symbols and an archive of the source.
 
 ### Tests
 

@@ -1,6 +1,6 @@
 # Builds the release packages for every pull request and every merge to main:
 #   Linux:   Unicorn-Overlord-x86_64.AppImage (built on Ubuntu 22.04: runs on glibc 2.35 and newer)
-#   Windows: Unicorn Overlord.exe (MSYS2 CLANG64, one file)
+#   Windows: Unicorn-Overlord-PC-windows.zip (MSYS2 CLANG64; the program, _internal/, licenses)
 # On main, the "latest" pre-release is replaced with the new files.
 # The job names (Linux, Windows) are the required status checks of the main branch protection.
 name: Build

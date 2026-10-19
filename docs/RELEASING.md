@@ -7,7 +7,7 @@
 | Job | Runner | Result |
 |---|---|---|
 | Linux | Ubuntu 22.04, GCC 14 | `Unicorn-Overlord-x86_64.AppImage` (runs on glibc 2.35 and newer: Ubuntu 22.04+, Debian 12+, SteamOS 3.5+) |
-| Windows | MSYS2 CLANG64 | `Unicorn-Overlord-PC-windows.zip` (launcher, licenses and help) |
+| Windows | MSYS2 CLANG64 | `Unicorn-Overlord-PC-windows.zip` (the start program, `_internal/`, licenses and help) |
 | Publish latest | main only | Replaces the `latest` pre-release with both files |
 
 Every run keeps both files as workflow artifacts (Actions tab → the run → Artifacts), so a pull
