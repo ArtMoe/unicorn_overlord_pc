@@ -23,6 +23,17 @@ Done on 2026-10-19 (pull request #16):
 | PR #13 merged (notices, diagnostics, native CI tests) | `packaging/notices.py`, `scripts/diagnostics.py` | 99 Python tests, `build.sh --test`, 15 GPU tests |
 | Odin Sphere removed | everything | builds and tests pass |
 
+Done later on 2026-10-19 (branch `claude/native-settings`, on top of #16):
+
+| Change | Where | Checked |
+|---|---|---|
+| PC section in the game's System → Options (10 rows) | `src/unicorn_native_settings.h`, `gpu/shim/vw_settings.cpp` | title and in-game screens; choice, switch, slider, close/reopen, Restore Defaults; `vw.ini` |
+| Ghidra image: base-relative pointers were all written as 0 (vtables empty) | `tools/re/make_ghidra_elf.py` | slider vtable `+0xe8` now `0x73add0` |
+
+Details: [unicorn/NATIVE_SETTINGS.md](unicorn/NATIVE_SETTINGS.md). A Ghidra project made
+before this fix has no vtables or function tables: re-import a new `eboot_ghidra.elf` (about
+15 minutes, [../../tools/re/README.md](../../tools/re/README.md)).
+
 ## Findings worth knowing
 
 - **Benchmarks: run with `VW_VSYNC=0`.** With VSync on, KWin throttles presentation of a
@@ -66,8 +77,10 @@ Done on 2026-10-19 (pull request #16):
    - then stage B's pure lookups (buffers, vertex/index, textures) to stage A's workers, with
      generation checks on stage B (bbport's unimplemented "stage 2").
    Measure in the opening with `VW_FRAME_STATS=1 VW_VSYNC=0` (us/draw, idle, EOP latency).
-3. **Native settings rows** in the game's Options screen: research and plan in
-   [unicorn/NATIVE_SETTINGS.md](unicorn/NATIVE_SETTINGS.md).
+3. **Native settings, what is left:** run it on Windows (CI builds it; the hooks use the
+   game's System V calling convention, as the button icon hook does); a restart prompt for
+   Render Resolution in the game's screen (now it applies at the next start); a Japanese system
+   language (the PC texts are English only).
 4. **Live button icon switching:** swap the icon texture at bind time (bbport
    `vk_button_prompts.cpp`) instead of relying on the sprite table being re-read.
 5. Optional: deband filter; parallel boot decompression; ultrawide (see unicorn/HANDOFF.md).

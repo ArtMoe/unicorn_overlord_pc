@@ -68,7 +68,13 @@ Packaged builds contain the start program and the game executable. From the sour
 python launcher/unicorn_launcher.py
 ```
 
-In game, **Insert** (R3+L2 on a controller) opens the port's menu. It has four tabs:
+The game's own **System → Options** screen (from the title or the in-game menu) has a **PC**
+section at the end: display mode, VSync, frame rate limit, render resolution (applied at the next
+start), FSR 1 upscaling, sharpening and its strength, button icons and the performance overlay.
+Changes apply at once and are saved in `vw.ini`; **Restore Defaults** resets them too.
+
+In game, **Insert** (R3+L2 on a controller) opens the port's own menu with every setting. It has
+four tabs:
 
 - **Image:** display mode, VSync, FSR 1 and RCAS sharpening.
 - **Performance:** frame rate limit, render resolution and the GPU readback options.

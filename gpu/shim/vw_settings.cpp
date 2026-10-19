@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "vw_settings.h"
 #include "vw_graphics.h"
+#include "../vwgpu.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -190,3 +191,98 @@ void Save() {
 }
 
 } // namespace VwSettings
+
+// The rows the game's Options screen shows (vwgpu.h, src/unicorn_native_settings.h).
+namespace {
+
+namespace G = VwGraphics;
+
+enum Row {
+    Heading, DisplayMode, Vsync, FpsLimit, Resolution, Fsr1, Sharpening, SharpeningStrength, ButtonIcons,
+    Overlay, RowCount
+};
+
+constexpr const char* DisplayModes[] = {"Windowed", "Borderless", "Fullscreen"};
+constexpr const char* FpsLimitNames[] = {"30", "60", "120", "240", "Unlimited"};
+constexpr const char* ResolutionNames[] = {"1080p (native)", "720p", "900p", "1440p", "1800p", "4K"};
+constexpr const char* IconKeys[] = {"auto", "playstation", "xbox", "nintendo"};
+constexpr const char* IconNames[] = {"Auto", "PlayStation", "Xbox", "Nintendo"};
+static_assert(std::size(FpsLimitNames) == G::FpsLimits.size() && std::size(ResolutionNames) == G::Resolutions.size());
+
+constexpr int UnlimitedFps = int(G::FpsLimits.size()) - 1;
+
+const VwgpuSettingRow Rows[RowCount] = {
+    {"PC", nullptr, VWGPU_ROW_SECTION, 0, nullptr, 0, 0, 0, 0, nullptr},
+    {"Display Mode", "Plays in a window, a borderless window or exclusive fullscreen.", VWGPU_ROW_CHOICE,
+     int(std::size(DisplayModes)), DisplayModes, float(G::Windowed), 0, 0, 0, nullptr},
+    {"VSync", "Waits for the monitor: no tearing, slightly more input delay.", VWGPU_ROW_SWITCH, 0, nullptr, 1, 0,
+     0, 0, nullptr},
+    {"Frame Rate Limit", "Caps the frame rate. The game runs at up to 60 FPS.", VWGPU_ROW_CHOICE,
+     int(std::size(FpsLimitNames)), FpsLimitNames, float(UnlimitedFps), 0, 0, 0, nullptr},
+    {"Render Resolution",
+     "The size the game is drawn at: lower is faster, higher is sharper.\nTakes effect the next time the game "
+     "starts.",
+     VWGPU_ROW_CHOICE, int(std::size(ResolutionNames)), ResolutionNames, 0, 0, 0, 0, nullptr},
+    {"FSR 1 Upscaling", "Upscales a render resolution smaller than the window with AMD FSR 1.", VWGPU_ROW_SWITCH,
+     0, nullptr, 0, 0, 0, 0, nullptr},
+    {"Sharpening", "Sharpens the final image.", VWGPU_ROW_SWITCH, 0, nullptr, 1, 0, 0, 0, nullptr},
+    {"Sharpening Strength", "How strong the sharpening is.\n(Range: 0% to 100%)", VWGPU_ROW_SLIDER, 0, nullptr, 75,
+     0, 100, 1, "%.0f%%"},
+    {"Button Icons", "The button icons in prompts.\nAuto follows the controller in use.", VWGPU_ROW_CHOICE,
+     int(std::size(IconNames)), IconNames, 0, 0, 0, 0, nullptr},
+    {"Performance Overlay",
+     "Shows the frame rate and other measurements in a corner.\nMore settings: Insert or R3+L2.", VWGPU_ROW_SWITCH, 0,
+     nullptr, 0, 0, 0, 0, nullptr},
+};
+
+int IconIndex() {
+    const std::string key = VwSettings::Text("button_icons");
+    for (int i = 1; i < int(std::size(IconKeys)); ++i) {
+        if (key == IconKeys[i]) return i;
+    }
+    return 0;
+}
+
+} // namespace
+
+extern "C" int vwgpu_setting_rows(const VwgpuSettingRow** rows) {
+    if (rows) *rows = Rows;
+    return RowCount;
+}
+
+extern "C" float vwgpu_setting_value(int row) {
+    const auto& v = VwSettings::Get();
+    switch (row) {
+    case DisplayMode: return float(v.display_mode.load());
+    case Vsync: return v.vsync ? 1.0f : 0.0f;
+    case FpsLimit: return float(G::IndexOf(G::FpsLimits, v.fps_limit.load(), UnlimitedFps));
+    case Resolution: return float(v.render_resolution.load());
+    case Fsr1: return v.fsr1 ? 1.0f : 0.0f;
+    case Sharpening: return v.rcas ? 1.0f : 0.0f;
+    case SharpeningStrength: return float(v.rcas_strength.load());
+    case ButtonIcons: return float(IconIndex());
+    case Overlay: return v.show_fps ? 1.0f : 0.0f;
+    default: return 0.0f;
+    }
+}
+
+extern "C" void vwgpu_setting_set(int row, float value) {
+    if (row <= Heading || row >= RowCount || value != value) return;
+    auto& v = VwSettings::Get();
+    const auto& r = Rows[row];
+    // The game moves sliders in float steps: round to the nearest whole value.
+    const int i = int(value + (value < 0 ? -0.5f : 0.5f));
+    const int choice = std::clamp(i, 0, std::max(r.count - 1, 0));
+    switch (row) {
+    case DisplayMode: v.display_mode = choice; break;
+    case Vsync: v.vsync = i != 0; break;
+    case FpsLimit: v.fps_limit = G::FpsLimits[choice]; break;
+    case Resolution: v.render_resolution = choice; break;
+    case Fsr1: v.fsr1 = i != 0; break;
+    case Sharpening: v.rcas = i != 0; break;
+    case SharpeningStrength: v.rcas_strength = std::clamp(i, int(r.min), int(r.max)); break;
+    case ButtonIcons: VwSettings::SetText("button_icons", choice ? IconKeys[choice] : ""); break;
+    case Overlay: v.show_fps = i != 0; break;
+    }
+    VwSettings::Save();
+}

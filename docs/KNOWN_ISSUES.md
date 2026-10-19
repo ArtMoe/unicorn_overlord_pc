@@ -57,7 +57,8 @@ Measured on the test system above, 1080p:
   them off: in-game menu (**Insert**) → Performance → "Game reads GPU data without waiting" and
   "Deferred GPU readbacks", then **Apply and restart**. If the game then fails to start, the
   next start goes back to the previous options by itself.
-- A render resolution change in the in-game menu only applies after a restart.
+- A render resolution change applies after a restart: the Insert menu has **Apply and
+  restart**; in the game's Options screen it takes effect the next time the game starts.
 - Every render resolution other than 1080p uses the game's own PS4 Pro mode at that size.
   Checked: 720p (logos, the opening, a battle map), 1440p and 4K (title, menu and battle).
   900p and 1800p have not been checked in game.
@@ -88,8 +89,8 @@ Measured on the test system above, 1080p:
   Controls tab and are saved in `vw.ini`. The `VW_KEY_MAP` (keyboard) and `VW_PAD_MAP`
   (controller) environment variables override saved bindings, e.g. `VW_KEY_MAP="cross=Q"`.
 - DLC and PS4 package (.pkg) installation: the port installs an already extracted game folder.
-- Port settings live in the Insert menu, not in the game's own Options screen
-  (research for native rows: [dev/unicorn/NATIVE_SETTINGS.md](dev/unicorn/NATIVE_SETTINGS.md)).
+- The game's Options screen has the main PC settings; the GPU readback options, frames queued,
+  background shader compilation, overlay layout and button remapping are only in the Insert menu.
 
 ## Open questions
 

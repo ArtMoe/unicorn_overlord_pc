@@ -1,51 +1,64 @@
-# Native settings rows: what the game's Options screen is made of (2026-10-19)
+# PC rows in the game's Options screen
 
-Goal: the port's settings (render resolution, display mode, VSync, FPS limit, sharpening, GPU
-readbacks, button icons) as rows in the game's own System → Options screen instead of the
-Insert overlay. This is the research for it; nothing here is implemented yet.
+The game's own System → Options screen ends with a **PC** section: Display Mode, VSync, Frame
+Rate Limit, Render Resolution, FSR 1 Upscaling, Sharpening, Sharpening Strength, Button Icons and
+Performance Overlay. They look and work like the game's rows (choice boxes, Off/On switches, a
+slider, help text at the bottom, Restore Defaults). Changes apply at once and go to `vw.ini`;
+nothing is written to the game's system data. The Insert menu keeps every setting, including
+the ones not in the screen.
 
-All addresses are CUSA36381 v01.04 eboot offsets (the Ghidra image from
-`tools/odin_re/make_ghidra_elf.py`).
+Code: `src/unicorn_native_settings.h` (the game side, installed by `src/probe.c`) and
+`vwgpu_setting_rows/value/set` in `gpu/shim/vw_settings.cpp` (the rows, their texts, and how a
+value maps to a `VwSettings` field). Tests: `tests/test_native_settings.c` (`build.sh --test`)
+and `tests/test_graphics_settings.cpp`.
 
-## Findings
+Checked on 2026-10-19 (Linux, RX 560X): the title's Options (20 rows + 10) and the battle map's
+Stage Menu → System → Options (21 rows with Difficulty + 10); changing a choice, a switch and the
+slider (including L1/R1 steps of 10); closing and reopening; Restore Defaults; button icons
+switching at once.
 
-- The screen is native C++, class `UcUI_Option` (vtable users in `0x7309c0`–`0x73cd00`), not one
-  of the game's AngelScript menus. `FUN_00735490` builds it.
-- Rows come from a static table at `0xd7c9f0`: 21 rows of 0x14 bytes,
-  `{float default, int label_id, int help_id, int type, int flag}`. Types: 0 section header,
-  1 and 2 choices, 3 slider (the volumes default to 100.0).
-- Two order tables pick and order the rows: `0xd7c940` (21 rows) and `0xd7c9a0` (20 rows, without
-  row 1 "Difficulty"); the global at `0x234eee8` selects one. The builder's loop bounds are the
-  immediates 0x15 and 0x14.
-- Labels and help texts are ids in `MSGSHEET/UcOption.FMS` (a CPK file, CRILAYLA-compressed in
-  `UnicornPatch.CPK`). Ids 67, 75, 80 and 86 are the section headers System, Sound, Field and
-  Stage; 101–113 are value texts (difficulties, voice languages, slow/normal/fast, OFF,
-  `%.0f`/`%.1f` formats).
-- `GUI/Interface.mbs` provides the row graphics; each row object is a 0x38e0-byte allocation made
-  in the builder.
+## How the screen works
 
-## How rows could be added
+All addresses are CUSA36381 v01.04 image offsets (the Ghidra image from
+`tools/re/make_ghidra_elf.py`).
 
-1. **Text.** Every language's `UcOption.FMS` passes the CRI decompressor, where the port already
-   hooks (`src/probe.c`, `unicorn_cri_decompress_hook`; the button icons use it). Append a "PC"
-   header and row labels there. The file's decompressed size is fixed by the CPK, so new strings
-   must fit in the space of strings the PS4 build does not show (the Switch/Xbox-only help
-   texts), or the FMS string table has to be rebuilt within the same size.
-2. **Rows.** Copy both order tables and the row table into port memory with the extra rows,
-   repoint the `lea` instructions that load them, and raise the loop bounds. Every function
-   that walks the rows needs the same change; listing them (xrefs to the three tables) is the
-   first task.
-3. **State.** Find where `UcUI_Option` keeps per-row values (sized for 21 rows) and where it
-   applies and saves them. PC rows must neither go to the game's system save nor be
-   applied by the game: a hook on the value-change path routes rows with ids ≥ 21 to
-   `VwSettings` (vw.ini) and leaves the game's rows alone.
-4. **Restart rows** (render resolution, readbacks) reuse the overlay's "Apply and restart"
-   (`restart_unconfirmed`, run.py reverts a launch that never shows frames).
+- Class `UcUI_Option`. `FUN_00735490` builds it, `FUN_00738f70` is its update (input, Restore
+  Defaults), `FUN_007397f0` closes it (writes changed values), `FUN_00735000` sets the help text.
+- Rows: a table at `0xd7c9f0`, 21 × `{float default, int label, int help, int kind, int flag}`.
+  Kinds: 0 heading, 1 list of choices, 2 Off/On, 3 slider. Two orders pick and order the rows:
+  `0xd7c940` (21, with Difficulty, in game) and `0xd7c9a0` (20, the title); the global at
+  `0x234eee8` selects one.
+- Row objects (vtable at +0): `+0xd8` set label, `+0xe0` set value, `+0xe8` value, `+0xd0` refresh.
+  Choice rows keep the index at +0x3368, the last index at +0x3364 and the first value text at
+  +0x3360; switches 0/1 at +0x38d0; sliders the value at +0x336c, ticks at +0x3378.
+- Choice rows take `{id, count, first text}` from `0xd7cba0` (Difficulty) or `0xd7cbac` (Voice
+  Language), picked by id in the builder. Sliders take `{id, format text, step, min, max,
+  decimals}` from a pointer table at `0x14fcdb0` indexed by id − 4 (14 entries).
+- Values live in the game's system data as 21 floats indexed by row id (`*(0x234ef00)+0x100` +
+  `0x195698`; Difficulty in the save data). The screen keeps each row's value on opening at
+  `+0x62b8` and, on closing, writes the rows whose value differs.
+- Texts: ids in `MSGSHEET/UcOption.FMS` read through `FUN_0002b590(sheet, id)`. The help id of a
+  choice or switch row is its help id + the value.
+- Masks of row ids: `0x1441` the headings (the cursor skips them), `0x1d680c` the Off/On rows
+  (refreshed once the screen is shown; without it a switch draws no box).
 
-Estimate: a few days of reverse engineering, mostly steps 2 and 3. A cheaper first step is a
-single "PC settings" row that opens the existing overlay menu; it still needs steps 1 and 2.
+## How rows are added
 
-## Related
+`native_settings_install` checks every instruction it changes against v01.04 first and changes
+nothing on another version (the log then says so; the Insert menu still works).
 
-- Button icon layouts (Xbox, Nintendo) are done the same way: `src/unicorn_button_icons.h`.
-- The Insert overlay stays as the fallback until native rows work.
+1. Copies of the three tables with ids 21 and up, and of the choice and slider tables. 24 `lea`
+   instructions are repointed; seven bounds (0x13/0x14/0x15) and the row count are raised.
+2. Ids past 20 would index past the 21 floats: three branches (value on build, value on open,
+   write on close) load an array of the port's instead (`NativeTables.values`).
+3. The choice-table pick becomes a lookup by id; the slider table is extended.
+4. `FUN_0002b590` is replaced: ids from `0x40000` are the port's strings
+   (`0x40000 + row × 64 + slot`: label, help, slider format, choice texts).
+5. The builder is wrapped to load the current settings first; the update is wrapped to apply a
+   changed row through `vwgpu_setting_set` and to set its value on open, so closing the screen
+   never writes the port's rows to the game's data.
+
+Limits: at most 11 rows (ids 21–31 fit the 32-bit masks, and none of them matches the game's
+`(id & 0x1b) == 1` test for Difficulty and Voice Language). Render Resolution applies at the next
+start. Not checked yet: Windows, the world map's menu, a Japanese system language (the texts are
+English).
