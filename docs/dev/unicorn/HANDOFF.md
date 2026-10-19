@@ -64,10 +64,13 @@ sharing `runtime_offline.h`.
 
 ## Render resolution (PS4 Pro path)
 
-`VW_RENDER_SCALE=1440p|1800p|4K` (or the launcher's Resolution, `render_resolution=` in vw.ini)
+`VW_RENDER_SCALE=1800p|4K` (or the launcher's Resolution, `render_resolution=` in vw.ini)
 sets `VW_NEO_MODE=1` (sceKernelIsNeoMode returns 1) and, below 4K, patches the six `mov ecx,
 imm32` operands of the game's width/height getters (`src/unicorn_render_scale.h`). Checked: 4K
-title and battle, 1440p title, menu and battle. Native (1080p) is the base PS4 path.
+title and battle. Native (1080p) is the base PS4 path. 1440p was removed (2026-10-19): on the
+battle map the foreground blur at the bottom broke into blocks while the camera moved (Windows,
+RX 9070 XT; 4K and 1080p clean). The probe also writes the size into the 3840.0f/2160.0f pair at
+0xaf31a4 (one pass rectangle in FUN_00233cd0); whether that fixes 1440p was not checked.
 
 ## Graphics options in the game code (Ghidra survey, 2026-10-13)
 

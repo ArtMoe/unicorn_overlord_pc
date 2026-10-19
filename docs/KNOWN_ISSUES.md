@@ -60,7 +60,8 @@ Measured on the test system above, 1080p:
 - A render resolution change applies after a restart: the Insert menu has **Apply and
   restart**; in the game's Options screen it takes effect the next time the game starts.
 - Every render resolution other than 1080p uses the game's own PS4 Pro mode at that size.
-  Checked: 720p (logos, the opening, a battle map), 1440p and 4K (title, menu and battle).
+  Checked: 720p (logos, the opening, a battle map), 4K (title, menu and battle). 1440p was removed:
+  the foreground blur at the bottom of the battle map broke into blocks while the camera moved.
   900p and 1800p have not been checked in game.
 - Soft colour steps (banding) in dark fog and sky gradients, for example in the opening: the game
   draws these layers into 8-bit targets, as on a PS4, and the port adds no precision loss

@@ -203,7 +203,7 @@ enum Row {
 };
 
 constexpr const char* DisplayModes[] = {"Windowed", "Borderless", "Fullscreen"};
-constexpr const char* ResolutionNames[] = {"1080p (native)", "720p", "900p", "1440p", "1800p", "4K"};
+constexpr const char* ResolutionNames[] = {"1080p (native)", "720p", "900p", "1800p", "4K"};
 constexpr const char* IconKeys[] = {"auto", "playstation", "xbox", "nintendo"};
 constexpr const char* IconNames[] = {"Auto", "PlayStation", "Xbox", "Nintendo"};
 static_assert(std::size(ResolutionNames) == G::Resolutions.size());

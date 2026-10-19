@@ -352,7 +352,9 @@ static float render_scale_value(const char *text) {
     if (render_scale_prefix(text, "480p")) return 4.0f / 9.0f;
     if (render_scale_prefix(text, "720p")) return 2.0f / 3.0f;
     if (render_scale_prefix(text, "900p")) return 5.0f / 6.0f;
-    if (render_scale_prefix(text, "1440p")) return 4.0f / 3.0f;
+    /* 1440p was removed (the battle map's foreground blur broke into blocks): native, not
+     * strtof's 1440 (clamped to 4K), for a vw.ini that still has it. */
+    if (render_scale_prefix(text, "1440p")) return 1.0f;
     if (render_scale_prefix(text, "1800p")) return 5.0f / 3.0f;
     if (render_scale_prefix(text, "4k") || render_scale_prefix(text, "2160p")) return 2.0f;
     return strtof(text, NULL);
@@ -424,6 +426,9 @@ static void install_unicorn_render_scale(const char *app0, uint64_t size) {
             memcpy(image + unicorn_width_imm[i], &width, 4);
             memcpy(image + unicorn_height_imm[i], &height, 4);
         }
+        const float widthf = (float)width, heightf = (float)height;
+        memcpy(image + unicorn_width_float, &widthf, 4);
+        memcpy(image + unicorn_height_float, &heightf, 4);
     }
     printf("Render scale: %ux%u (PS4 Pro path)\n", width, height);
 }
