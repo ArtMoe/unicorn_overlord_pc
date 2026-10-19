@@ -12,6 +12,8 @@ namespace VwSettings {
 
 struct Values {
     std::atomic<bool> show_fps{false};
+    /// The start program looks for a newer release (scripts/updates.py); it reads vw.ini itself.
+    std::atomic<bool> check_updates{true};
     /// Performance overlay (vw_perf_stats.h): items shown, font size and background opacity
     /// in percent, corner (0 top left, 1 top right, 2 bottom left, 3 bottom right), layout
     /// (0 one line, 1 one item per line). menu_tab: the menu's last tab.

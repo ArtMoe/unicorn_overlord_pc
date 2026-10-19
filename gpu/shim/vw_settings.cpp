@@ -65,6 +65,8 @@ void Set(Values& v, const std::string& key, const std::string& value) {
     }
     if (key == "show_fps") {
         v.show_fps = i != 0;
+    } else if (key == "check_updates") {
+        v.check_updates = i != 0;
     } else if (key == "display_mode") {
         v.display_mode = VwGraphics::ParseDisplayMode(value);
     } else if (key == "vsync") {
@@ -154,8 +156,8 @@ void Save() {
         std::printf("Settings: cannot write %s\n", Path());
         return;
     }
-    std::fprintf(file, "# vw settings (in-game menu: Insert / R3+L2)\nshow_fps=%d\n",
-                 int(v.show_fps.load()));
+    std::fprintf(file, "# vw settings (in-game menu: Insert / R3+L2)\nshow_fps=%d\ncheck_updates=%d\n",
+                 int(v.show_fps.load()), int(v.check_updates.load()));
     std::fprintf(file,
                  "overlay_fps=%d\noverlay_frametime=%d\noverlay_resolution=%d\noverlay_gpu=%d\n"
                  "overlay_cpu=%d\noverlay_ram=%d\noverlay_vram=%d\noverlay_scale=%d\noverlay_corner=%d\n"
@@ -197,7 +199,7 @@ namespace G = VwGraphics;
 
 enum Row {
     Heading, DisplayMode, Vsync, Resolution, Fsr1, Sharpening, SharpeningStrength, ButtonIcons,
-    Overlay, RowCount
+    Overlay, CheckUpdates, RowCount
 };
 
 constexpr const char* DisplayModes[] = {"Windowed", "Borderless", "Fullscreen"};
@@ -226,6 +228,8 @@ const VwgpuSettingRow Rows[RowCount] = {
     {"Performance Overlay",
      "Shows the frame rate and other measurements in a corner.\nMore settings: Insert or R3+L2.", VWGPU_ROW_SWITCH, 0,
      nullptr, 0, 0, 0, 0, nullptr},
+    {"Check for Updates", "At start, looks for a newer version of the PC port.\nIt asks before downloading anything.",
+     VWGPU_ROW_SWITCH, 0, nullptr, 1, 0, 0, 0, nullptr},
 };
 
 int IconIndex() {
@@ -254,6 +258,7 @@ extern "C" float vwgpu_setting_value(int row) {
     case SharpeningStrength: return float(v.rcas_strength.load());
     case ButtonIcons: return float(IconIndex());
     case Overlay: return v.show_fps ? 1.0f : 0.0f;
+    case CheckUpdates: return v.check_updates ? 1.0f : 0.0f;
     default: return 0.0f;
     }
 }
@@ -274,6 +279,7 @@ extern "C" void vwgpu_setting_set(int row, float value) {
     case SharpeningStrength: v.rcas_strength = std::clamp(i, int(r.min), int(r.max)); break;
     case ButtonIcons: VwSettings::SetText("button_icons", choice ? IconKeys[choice] : ""); break;
     case Overlay: v.show_fps = i != 0; break;
+    case CheckUpdates: v.check_updates = i != 0; break;
     }
     VwSettings::Save();
 }

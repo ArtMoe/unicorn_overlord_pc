@@ -506,6 +506,8 @@ void OverlayTab() {
             std::snprintf(text, sizeof(text), "ready");
         }
         InfoRow("Shader cache", text);
+        CheckRow("Check for updates at start", s.check_updates,
+                 "The start program looks for a newer version of the port and asks before downloading.");
         ImGui::EndTable();
     }
     // The start program (launcher/vw_launcher.py) asks for the folder again, then starts the game.

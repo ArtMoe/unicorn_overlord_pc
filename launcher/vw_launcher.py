@@ -22,7 +22,11 @@ installation:
 
 Arguments: --choose-game asks for the game folder again; --after PID first waits for that
 process to end (the in-game "Change game folder" restart); --export-diagnostics only saves a
-diagnostics ZIP of the newest run (works while the game is still running).
+diagnostics ZIP of the newest run (works while the game is still running); --finish-update
+FOLDER (with --after) is the second half of a Windows update (scripts/updates.py).
+
+Packaged, each start first looks for a newer release (unless check_updates=0 in vw.ini) and
+offers it; see scripts/updates.py.
 """
 import json
 import os
@@ -348,6 +352,172 @@ def wait_for(pid):
             time.sleep(0.1)
 
 
+def current_version():
+    try:
+        return (RUNTIME / 'VERSION').read_text(encoding='utf-8').strip()
+    except OSError:
+        return ''
+
+
+def ask_update(game_info, release, version):
+    """'update', 'later' or 'skip'."""
+    import tkinter as tk
+    from tkinter import ttk
+    root = tk_root()
+    choice = {'value': 'later'}
+    try:
+        window = tk.Toplevel(root)
+        window.title(f"{game_info['name']}: update")
+        window.resizable(False, False)
+        window.attributes('-topmost', True)
+        notes = release['notes'].strip()
+        if len(notes) > 900:
+            notes = notes[:900].rsplit('\n', 1)[0] + '\n…'
+        ttk.Label(window, padding=(16, 12, 16, 4), wraplength=460,
+                  text=f"Version {release['tag']} is available (this is {version or 'a test build'}).\n\n"
+                       f"{notes}\n\nYour settings, saves and the installed game are kept.").pack(fill='x')
+        buttons = ttk.Frame(window, padding=(16, 4, 16, 12))
+        buttons.pack(fill='x')
+
+        def pick(value):
+            choice['value'] = value
+            window.destroy()
+        ttk.Button(buttons, text='Update now', command=lambda: pick('update')).pack(side='left')
+        ttk.Button(buttons, text='Later', command=lambda: pick('later')).pack(side='left', padx=8)
+        ttk.Button(buttons, text='Skip this version', command=lambda: pick('skip')).pack(side='right')
+        window.protocol('WM_DELETE_WINDOW', lambda: pick('later'))
+        window.wait_window()
+    finally:
+        root.destroy()
+    return choice['value']
+
+
+def download_update(game_info, release, destination):
+    """The download with a progress window; True when it finished and its SHA-256 matched."""
+    import threading
+    import tkinter as tk
+    from tkinter import messagebox, ttk
+    import updates
+    root = tk_root()
+    try:
+        window = tk.Toplevel(root)
+        window.title(f"{game_info['name']}: downloading {release['tag']}")
+        window.resizable(False, False)
+        window.attributes('-topmost', True)
+        text = tk.StringVar(value='Downloading …')
+        ttk.Label(window, textvariable=text, padding=(16, 12, 16, 4)).pack(fill='x')
+        bar = ttk.Progressbar(window, length=420, maximum=1000)
+        bar.pack(padx=16, pady=8)
+        state = {'done': 0, 'total': release['size'], 'result': False, 'error': None}
+        stop = threading.Event()
+
+        def work():
+            try:
+                name = release['url'].rsplit('/', 1)[1]
+                sha = updates.expected_sha256(updates.fetch_text(release['sums_url']), name)
+                if not sha:
+                    raise ValueError(f'{name} is not in {updates.SUMS}')
+                state['result'] = updates.download(release['url'], destination, sha,
+                                                   lambda d, t: state.update(done=d, total=t or state['total']),
+                                                   stop.is_set)
+            except (OSError, ValueError) as error:
+                state['error'] = error
+        ttk.Button(window, text='Cancel', command=stop.set).pack(pady=(0, 12))
+        window.protocol('WM_DELETE_WINDOW', stop.set)
+        worker = threading.Thread(target=work, daemon=True)
+        worker.start()
+
+        def poll():
+            total = max(state['total'], 1)
+            bar['value'] = 1000 * state['done'] / total
+            text.set(f"Downloading {release['tag']}: {state['done'] / 2**20:.0f} of {total / 2**20:.0f} MB")
+            if worker.is_alive():
+                window.after(200, poll)
+            else:
+                window.destroy()
+        poll()
+        window.wait_window()
+        worker.join()
+        if state['error']:
+            messagebox.showerror(f"{game_info['name']}: update", f"The update could not be downloaded: "
+                                 f"{state['error']}\n\nThe game starts with the current version.", parent=root)
+        return state['result'] and not state['error']
+    finally:
+        root.destroy()
+
+
+def check_for_update(game_info, data, settings):
+    """Packaged builds: offers a newer release and applies it. Returns only when the game should
+    start as it is (no update, declined, offline, failed)."""
+    import updates
+    if not FROZEN or not updates.setting_enabled(data / 'vw.ini'):
+        return
+    appimage = os.environ.get('APPIMAGE')
+    if not WINDOWS and not appimage:
+        return
+    shutil_rmtree_quiet(data / 'update')
+    version = current_version()
+    try:
+        release = updates.pick_release(updates.fetch_releases(), version, settings.get('skipped_update', ''))
+    except (OSError, ValueError) as error:  # offline, rate limited: try next time
+        print(f'Update check: {error}', file=sys.stderr)
+        return
+    if not release:
+        return
+    choice = ask_update(game_info, release, version)
+    if choice == 'skip':
+        settings['skipped_update'] = release['tag']
+        save_settings(data, settings)
+    if choice != 'update':
+        return
+    folder = data / 'update'
+    folder.mkdir(parents=True, exist_ok=True)
+    download = folder / release['url'].rsplit('/', 1)[1]
+    if not download_update(game_info, release, download):
+        return
+    try:
+        if WINDOWS:
+            program = updates.unpack(download, folder / release['tag'])
+            exe = program / Path(sys.executable).name
+            subprocess.Popen([str(exe), '--finish-update', str(HERE), '--after', str(os.getpid())],
+                             cwd=str(program))
+            sys.exit(0)
+        updates.replace_appimage(download, appimage)
+        os.execv(appimage, [appimage, *sys.argv[1:]])
+    except (OSError, ValueError) as error:
+        from tkinter import messagebox
+        root = tk_root()
+        try:
+            messagebox.showerror(f"{game_info['name']}: update", f'The update could not be installed: {error}\n\n'
+                                 'The game starts with the current version.', parent=root)
+        finally:
+            root.destroy()
+
+
+def finish_update(game_info, target):
+    """Windows, run from the unpacked update: copies it over the program in `target`, then
+    starts it there."""
+    import updates
+    target = Path(target)
+    try:
+        updates.install(HERE, target)
+    except OSError as error:
+        from tkinter import messagebox
+        root = tk_root()
+        try:
+            messagebox.showerror(f"{game_info['name']}: update", f'The update could not be installed: {error}\n\n'
+                                 'The previous version is still in place.', parent=root)
+        finally:
+            root.destroy()
+    subprocess.Popen([str(target / Path(sys.executable).name)], cwd=str(target))
+    return 0
+
+
+def shutil_rmtree_quiet(path):
+    import shutil
+    shutil.rmtree(path, ignore_errors=True)
+
+
 def start_command():
     """This program's own command line (the in-game "Change game folder" runs it again)."""
     if FROZEN:
@@ -363,6 +533,8 @@ def main(key):
     if '--after' in args:
         wait_for(int(args[args.index('--after') + 1]))
     game_info = GAMES[key]
+    if '--finish-update' in args:
+        sys.exit(finish_update(game_info, args[args.index('--finish-update') + 1]))
     data = data_dir(game_info)
     if '--export-diagnostics' in args:  # also while the game hangs: run a second copy with it
         root = tk_root()
@@ -386,6 +558,7 @@ def main(key):
         settings['game_dir'] = folder
         save_settings(data, settings)
 
+    check_for_update(game_info, data, settings)
     os.environ.update(VW_GAME_DIR=folder, VW_DATA_DIR=str(data), VW_CONFIG=str(data / 'vw.ini'))
     if FROZEN:
         # run.py uses the vwport of this bundle (bin/); one placed beside the program replaces it

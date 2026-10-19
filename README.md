@@ -86,6 +86,10 @@ four tabs:
 Settings are kept in `vw.ini` in the data directory. The Overlay tab also has a
 **Change game folder** button to reopen setup.
 
+**Updates:** at start the program looks for a newer release on GitHub and asks before
+downloading it; the update keeps your settings, saves and installed game. Turn it off with
+**Check for Updates** in the game's Options (PC section) or in the Insert menu.
+
 Something wrong? See [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) and
 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Every run writes a log to `logs/` in the
 data directory. When the game stops with an error, the start program offers to save a

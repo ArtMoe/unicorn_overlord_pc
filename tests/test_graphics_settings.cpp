@@ -81,7 +81,7 @@ int main() {
     // The rows of the game's Options screen (vwgpu.h).
     const VwgpuSettingRow* rows = nullptr;
     const int count = vwgpu_setting_rows(&rows);
-    assert(count == 9 && rows[0].kind == VWGPU_ROW_SECTION && !std::strcmp(rows[0].label, "PC"));
+    assert(count == 10 && rows[0].kind == VWGPU_ROW_SECTION && !std::strcmp(rows[0].label, "PC"));
     int display = -1, resolution = -1, strength = -1, icons = -1, overlay = -1;
     for (int i = 0; i < count; ++i) {
         const std::string label = rows[i].label;
@@ -109,6 +109,11 @@ int main() {
                              "button_icons=xbox\n", "show_fps=1\n"}) {
         assert(written.find(line) != std::string::npos);
     }
+    const int updates = count - 1;
+    assert(!std::strcmp(rows[updates].label, "Check for Updates") && vwgpu_setting_value(updates) == 1.0f);
+    vwgpu_setting_set(updates, 0.0f);
+    assert(!v.check_updates && Read(path).find("check_updates=0\n") != std::string::npos);
+    vwgpu_setting_set(updates, 1.0f);
     vwgpu_setting_set(icons, 0.0f);  // Auto: no key in the file
     assert(VwSettings::Text("button_icons").empty() && vwgpu_setting_value(icons) == 0.0f);
     std::remove(path);

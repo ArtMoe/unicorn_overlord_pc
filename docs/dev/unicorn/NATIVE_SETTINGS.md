@@ -1,8 +1,8 @@
 # PC rows in the game's Options screen
 
 The game's own System → Options screen ends with a **PC** section: Display Mode, VSync, Render
-Resolution, FSR 1 Upscaling, Sharpening, Sharpening Strength, Button Icons and
-Performance Overlay. They look and work like the game's rows (choice boxes, Off/On switches, a
+Resolution, FSR 1 Upscaling, Sharpening, Sharpening Strength, Button Icons,
+Performance Overlay and Check for Updates. They look and work like the game's rows (choice boxes, Off/On switches, a
 slider, help text at the bottom, Restore Defaults). Changes apply at once and go to `vw.ini`;
 nothing is written to the game's system data. The Insert menu keeps every setting, including
 the ones not in the screen.
