@@ -197,7 +197,8 @@ def find_executable(name):
 
 def main():
     args = sys.argv[1:]
-    if len(args) >= 2 and args[0] == '--after':
+    restarted = len(args) >= 2 and args[0] == '--after'  # the in-game "Apply and restart"
+    if restarted:
         wait_for(int(args[1]))
         args = args[2:]
     # Relative paths (VW_GAME_DIR, VW_DATA_DIR) are from the port.
@@ -218,7 +219,7 @@ def main():
     sys.path.insert(0, str(PORT / 'scripts'))
     import graphics_options
     import diagnostics
-    graphics, reverted = graphics_options.prepare(env['VW_CONFIG'], out / 'graphics_state.json')
+    graphics, reverted = graphics_options.prepare(env['VW_CONFIG'], out / 'graphics_state.json', restarted)
     if reverted:
         LOG.write('Graphics: the last restart never reached the game; previous options restored')
     env.update(graphics_options.environment(graphics))
