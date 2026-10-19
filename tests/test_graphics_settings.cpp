@@ -2,11 +2,13 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include "vw_graphics.h"
 #include "vw_settings.h"
+#include "../vwgpu.h"
 #ifndef _WIN32
 static int _putenv_s(const char* name, const char* value) {
     return value[0] ? setenv(name, value, 1) : unsetenv(name);
@@ -75,6 +77,39 @@ int main() {
     assert(v.display_mode == G::Windowed && v.fps_limit == 0 && v.render_resolution == 0);
     assert(v.rcas_strength == 75 && v.frames_queued == 1);
     assert(v.async_shaders);
+
+    // The rows of the game's Options screen (vwgpu.h).
+    const VwgpuSettingRow* rows = nullptr;
+    const int count = vwgpu_setting_rows(&rows);
+    assert(count == 10 && rows[0].kind == VWGPU_ROW_SECTION && !std::strcmp(rows[0].label, "PC"));
+    int display = -1, fps = -1, strength = -1, icons = -1, overlay = -1;
+    for (int i = 0; i < count; ++i) {
+        const std::string label = rows[i].label;
+        display = label == "Display Mode" ? i : display;
+        fps = label == "Frame Rate Limit" ? i : fps;
+        strength = label == "Sharpening Strength" ? i : strength;
+        icons = label == "Button Icons" ? i : icons;
+        overlay = label == "Performance Overlay" ? i : overlay;
+        if (rows[i].kind == VWGPU_ROW_CHOICE) assert(rows[i].count > 1 && rows[i].choices[rows[i].count - 1]);
+    }
+    assert(display > 0 && fps > 0 && strength > 0 && icons > 0 && overlay > 0);
+    assert(!std::strcmp(rows[fps].choices[int(rows[fps].fallback)], "Unlimited"));
+    vwgpu_setting_set(display, 2.0f);
+    vwgpu_setting_set(fps, 1.0f);
+    vwgpu_setting_set(strength, 39.6f);  // a slider's float steps round to whole values
+    vwgpu_setting_set(icons, 2.0f);
+    vwgpu_setting_set(overlay, 1.0f);
+    vwgpu_setting_set(display, 7.0f);  // past the last choice: the last one
+    assert(v.display_mode == G::Fullscreen && v.fps_limit == 60 && v.rcas_strength == 40 && v.show_fps);
+    assert(VwSettings::Text("button_icons") == "xbox" && vwgpu_setting_value(icons) == 2.0f);
+    assert(vwgpu_setting_value(fps) == 1.0f && vwgpu_setting_value(strength) == 40.0f);
+    const std::string written = Read(path);
+    for (const char* line : {"display_mode=fullscreen\n", "fps_limit=60\n", "rcas_strength=40\n",
+                             "button_icons=xbox\n", "show_fps=1\n"}) {
+        assert(written.find(line) != std::string::npos);
+    }
+    vwgpu_setting_set(icons, 0.0f);  // Auto: no key in the file
+    assert(VwSettings::Text("button_icons").empty() && vwgpu_setting_value(icons) == 0.0f);
     std::remove(path);
     std::puts("PASS: graphics settings");
 }

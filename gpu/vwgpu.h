@@ -37,6 +37,23 @@ int vwgpu_choice_poll(void);
 int vwgpu_overlay_captures_input(void);
 /* A text setting of vw.ini ("key_map", "pad_map"): 1 and the value in out when it is set. */
 int vwgpu_setting_text(const char *key, char *out, uint64_t size);
+/* The port's settings as rows of the game's own Options screen (src/unicorn_native_settings.h).
+ * kind: 0 section heading, 1 list of choices, 2 off/on, 3 slider from min to max in steps.
+ * Values are floats as the game keeps them: a choice index, 0 or 1, or the slider value.
+ * fallback: the value "Restore Defaults" sets. format: the slider's number (printf, a double). */
+typedef struct {
+    const char *label, *help;
+    int kind, count;
+    const char *const *choices;
+    float fallback, min, max, step;
+    const char *format;
+} VwgpuSettingRow;
+enum { VWGPU_ROW_SECTION = 0, VWGPU_ROW_CHOICE = 1, VWGPU_ROW_SWITCH = 2, VWGPU_ROW_SLIDER = 3 };
+/* The rows (rows may be NULL): their number. */
+int vwgpu_setting_rows(const VwgpuSettingRow **rows);
+float vwgpu_setting_value(int row);
+/* Applies a row's value at once and writes vw.ini. */
+void vwgpu_setting_set(int row, float value);
 /* Number of symbols registered by the vendored libraries (diagnostics). */
 unsigned vwgpu_symbol_count(void);
 #ifdef __cplusplus

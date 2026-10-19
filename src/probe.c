@@ -9,6 +9,7 @@
 #include "runtime.h"
 #include "unicorn_render_scale.h"
 #include "unicorn_button_icons.h"
+#include "unicorn_native_settings.h"
 #include "gpu/vwgpu.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
 #error This prototype requires x86-64 GCC or Clang (including MinGW).
@@ -507,6 +508,23 @@ static void install_unicorn_cri_hook(const char *app0, Segment *segments, uint64
     runtime_pad_on_button_icons(button_icons_set_style);
 }
 
+/* Unicorn Overlord: the port's settings in the game's Options screen
+ * (src/unicorn_native_settings.h). */
+static void install_unicorn_native_settings(const char *app0) {
+    char path[4096], serial[32] = "", version[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
+    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return;
+    unsigned char *code = allocate(page_size), *data = allocate(page_size);
+    if (!native_settings_install(image, code, data)) {
+        printf("Options: the game differs from v01.04 here; PC settings only in the Insert menu\n");
+        return;
+    }
+    protect(code, page_size, 5);
+    printf("Options: %u PC rows added to System > Options\n", native_settings.count);
+}
+
 /* G3PATCH2 (patches.py): the patches' image base, then byte writes at image offsets, applied
  * after relocation. A write may replace a whole base-relative pointer slot (60/90 FPS++ swap
  * function pointers): the patch holds the address at the patches' base, rebased here. */
@@ -827,6 +845,7 @@ int main(int argc, char **argv) {
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
     if (gpu_enabled) install_unicorn_render_scale(app0, size);
     install_unicorn_cri_hook(app0, segments, ns);
+    if (gpu_enabled) install_unicorn_native_settings(app0);
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif

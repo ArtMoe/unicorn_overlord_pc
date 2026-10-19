@@ -126,4 +126,6 @@ if [[ ${1:-} == --test ]]; then
     out/services-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -Isrc tests/test_button_icons.c -o out/button-icons-test
     out/button-icons-test
+    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -Isrc tests/test_native_settings.c -o out/native-settings-test
+    out/native-settings-test
 fi

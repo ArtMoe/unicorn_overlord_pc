@@ -14,7 +14,7 @@ For contributors:
   - [dev/ROADMAP.md](dev/ROADMAP.md): planned enhancements and the order they come in
   - [dev/HANDOFF.md](dev/HANDOFF.md): where the work stands and what comes next (read first)
   - [dev/unicorn/HANDOFF.md](dev/unicorn/HANDOFF.md): how the port was made: imports, render size, performance history
-  - [dev/unicorn/NATIVE_SETTINGS.md](dev/unicorn/NATIVE_SETTINGS.md): the game's Options screen, for native settings rows
+  - [dev/unicorn/NATIVE_SETTINGS.md](dev/unicorn/NATIVE_SETTINGS.md): the PC rows in the game's Options screen: how they are added
   - [dev/parallel_gpu.md](dev/parallel_gpu.md): the threaded GPU draw pipeline
   - [dev/PUBLIC_RELEASE_REVIEW.md](dev/PUBLIC_RELEASE_REVIEW.md): the 2026-10-18 release review
   - [../tools/re/README.md](../tools/re/README.md): the Ghidra workspace and scripts
