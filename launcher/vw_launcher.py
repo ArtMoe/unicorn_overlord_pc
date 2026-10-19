@@ -8,19 +8,21 @@ links when the dump is on the same drive, otherwise a copy with a progress windo
 and remembers it in data/launcher.json; every start then prepares the game image (run.py,
 skipped while nothing changed) and runs it. All settings
 are in the in-game menu (Insert / R3+L2), which can also choose another game folder. Each game
-has a two-line entry script (odin_launcher.py, ...) that calls main(<key>).
+has a two-line entry script (unicorn_launcher.py) that calls main(<key>).
 
-Packaged (PyInstaller, packaging/package.py) the executable carries run.py, scripts/ and
-patches/ and also runs them (`--run`, `--script <file>`), so a packaged port needs no Python
+Packaged (PyInstaller one-folder build, packaging/package.py) the program carries run.py and
+scripts/ and also runs them (`--run`, `--script <file>`), so a packaged port needs no Python
 installation:
 
-    <Game>(.exe)        this program, with the runtime scripts and bin/vwport(.exe) inside
-    LICENSE
+    <Game>(.exe)        this program
+    _internal/          its Python runtime, runtime/run.py, runtime/scripts/, runtime/bin/vwport
+    LICENSE, licenses/
     data/               vw.ini, launcher.json, game/ (the installed dump), user/ (saves, caches),
                         out/ (generated), logs/
 
 Arguments: --choose-game asks for the game folder again; --after PID first waits for that
-process to end (the in-game "Change game folder" restart).
+process to end (the in-game "Change game folder" restart); --export-diagnostics only saves a
+diagnostics ZIP of the newest run (works while the game is still running).
 """
 import json
 import os
@@ -32,18 +34,13 @@ import sys
 
 FROZEN = getattr(sys, 'frozen', False)
 HERE = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
-# Packaged: run.py, scripts/, patches/ and bin/vwport are inside the executable (PyInstaller's
-# bundle folder). From the source tree: the repository.
+# Packaged: run.py, scripts/ and bin/vwport are in _internal/runtime (PyInstaller's bundle
+# folder). From the source tree: the repository.
 RUNTIME = Path(sys._MEIPASS) / 'runtime' if FROZEN else HERE.parent  # noqa: SLF001
 WINDOWS = os.name == 'nt'
 
 # Per game: the dump it accepts and its texts; the colors are the packaged program's icon.
 GAMES = {
-    'odin': {
-        'title_id': 'CUSA05083', 'app_version': '01.01', 'version_hint': 'the base game with update 1.01',
-        'name': 'Odin Sphere Leifthrasir', 'title': 'Odin Sphere', 'run_dir': 'run',
-        'colors': {'bg': '#0d1226', 'gold': '#d9b45f', 'gold_hi': '#f6d98b'},
-    },
     'unicorn': {
         'title_id': 'CUSA36381', 'app_version': '01.04',
         'version_hint': 'the base game with the 1.04 update (English patch) applied',
@@ -280,7 +277,8 @@ def export_diagnostics(root, data, game_dir):
              'want to share; the ZIP holds exactly this text.').pack(anchor='w', padx=8, pady=4)
     text = tk.Text(preview, wrap='none')
     text.pack(fill='both', expand=True)
-    text.insert('end', files['run.log'])
+    text.insert('end', '\n\n'.join(f'--- {name} ---\n{content}' for name, content in files.items()
+                                    if name != 'system.json'))
     summary = files.get('system.json')
 
     def save():
@@ -366,6 +364,13 @@ def main(key):
         wait_for(int(args[args.index('--after') + 1]))
     game_info = GAMES[key]
     data = data_dir(game_info)
+    if '--export-diagnostics' in args:  # also while the game hangs: run a second copy with it
+        root = tk_root()
+        try:
+            export_diagnostics(root, data, load_settings(data).get('game_dir', ''))
+        finally:
+            root.destroy()
+        sys.exit(0)
     settings = load_settings(data)
     folder = settings.get('game_dir')
     if '--choose-game' in args or not check_game(game_info, folder)[0]:

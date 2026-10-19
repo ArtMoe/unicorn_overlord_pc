@@ -2,18 +2,20 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Packages a port (Linux, or Windows from MSYS2 CLANG64): python3 packaging/package.py <game>
 
-<game> is a key of launcher/vw_launcher.py GAMES (odin, ...). On Linux this builds the static
+<game> is a key of launcher/vw_launcher.py GAMES (unicorn). On Linux this builds the static
 executable first (build.sh --static); on Windows build first (bash build.sh --static). Result:
-dist/<Title> PC/ and an archive of it (.tar.gz on Linux, .zip on Windows), two files:
+dist/<Title> PC/ and an archive of it (.tar.gz on Linux, .zip on Windows):
 
-    <Title>(.exe)   the launcher (PyInstaller, one file). Inside: run.py, scripts/, patches/ and
-                    bin/ with vwport(.exe), the game executable (FFmpeg, SDL3, the GPU library
-                    and the C++ runtime linked in; Windows: plus any DLL it still loads from
-                    MSYS2). It runs all of them, so no Python installation is needed.
-    LICENSE         the GPL text the binaries are distributed under
-    data/           created on first start: vw.ini, saves, generated files
+    <Title>(.exe)   the start program (PyInstaller, one folder: it starts without unpacking
+                    itself, which a one-file build did on every start, ~0.5 s on Linux)
+    _internal/      its Python runtime and runtime/: run.py, scripts/ and bin/ with
+                    vwport(.exe), the game executable (FFmpeg, SDL3, the GPU library and the C++
+                    runtime linked in; Windows: plus any DLL it still loads from MSYS2). No Python
+                    installation is needed.
+    LICENSE, licenses/, README.txt
+    data/           created on first start: vw.ini, the installed game, saves, generated files
 
-No game file is included: the launcher asks for the folder of the user's own dump.
+No game file is included: the start program asks for the folder of the user's own dump.
 """
 import ast
 import hashlib
@@ -97,14 +99,13 @@ def freeze(python, key, game, binaries):
         ['git', 'describe', '--always', '--dirty', '--tags'], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     (OUT / 'VERSION').write_text((version or 'unknown') + '\n', encoding='utf-8')
     data = [arg for source, target in ((ROOT / 'run.py', 'runtime'), (OUT / 'VERSION', 'runtime'),
-                                       (ROOT / 'scripts', 'runtime/scripts'),
-                                       (ROOT / 'patches', 'runtime/patches'), (binaries, 'runtime/bin'))
+                                       (ROOT / 'scripts', 'runtime/scripts'), (binaries, 'runtime/bin'))
             for arg in ('--add-data', f'{source}{os.pathsep}{target}')]
-    run(python, '-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN', '--onefile',
+    run(python, '-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN', '--onedir',
         '--windowed', '--name', game['title'], '--icon', make_icon(python, game), '--distpath', OUT / 'pyi-dist',
         '--workpath', OUT / 'pyi-work', '--specpath', OUT / 'pyi-work', '--paths', ROOT / 'scripts',
         '--exclude-module', '__pycache__', *data, *hidden, ROOT / 'launcher' / f'{key}_launcher.py', cwd=ROOT)
-    return OUT / 'pyi-dist' / (game['title'] + ('.exe' if WINDOWS else ''))
+    return OUT / 'pyi-dist' / game['title']  # the folder: the program and _internal/
 
 
 def collect_binaries():
@@ -186,7 +187,7 @@ def source_archive(destination):
 
 
 def main():
-    key = sys.argv[1] if len(sys.argv) > 1 else 'odin'
+    key = sys.argv[1] if len(sys.argv) > 1 else 'unicorn'
     sys.path.insert(0, str(ROOT / 'launcher'))
     from vw_launcher import GAMES
     game = GAMES[key]
@@ -202,13 +203,14 @@ def main():
     if dist.exists():
         shutil.rmtree(dist)
     dist.mkdir(parents=True)
-    shutil.copy2(launcher, dist)
+    shutil.copytree(launcher, dist, dirs_exist_ok=True)
     shutil.copy2(ROOT / 'LICENSE', dist)
     notices.collect(dist / 'licenses', python)
     (dist / 'README.txt').write_text(
         f'{game["title"]} experimental PC port\nNo game files included.\n'
-        'Keep this folder, LICENSE and licenses/ together. Settings, logs and saves are\n'
-        'in data/ beside the launcher. Log > Export diagnostics creates a reviewed support ZIP.\n'
+        'Keep this folder together (the program, _internal/, LICENSE and licenses/). Settings,\n'
+        'the installed game, logs and saves are in data/ beside the program. After an error the\n'
+        'program offers a reviewed diagnostics ZIP (also: start it with --export-diagnostics).\n'
         'Help: https://github.com/hachi23/unicorn_overlord_pc/blob/main/docs/TROUBLESHOOTING.md\n', encoding='utf-8')
     revision = subprocess.check_output(['git', 'rev-parse', '--short=12', 'HEAD'], cwd=ROOT, text=True).strip()
     target = 'windows' if WINDOWS else 'linux'

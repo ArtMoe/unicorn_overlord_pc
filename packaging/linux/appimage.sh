@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Wraps the packaged launcher (packaging/package.py) in an AppImage:
+# Wraps the packaged start program (packaging/package.py, a PyInstaller folder) in an AppImage:
 #   bash packaging/linux/appimage.sh "<Title>"     ->  dist/<Title-with-dashes>-x86_64.AppImage
 # The launcher keeps its data/ folder beside the .AppImage file (vw_launcher.data_dir).
-# ponytail: the AppImage holds the one-file launcher, which unpacks itself on each start; a
-# PyInstaller --onedir build inside the AppImage would start faster.
 set -euo pipefail
 cd -- "$(dirname -- "$0")/../.."
 title=${1:?usage: appimage.sh <Title>}
@@ -18,14 +16,14 @@ fi
 appdir=out/AppDir
 rm -rf "$appdir"
 mkdir -p "$appdir/usr/bin"
-cp "$launcher" "$appdir/usr/bin/launcher"
+cp -r "dist/$title PC/$title" "dist/$title PC/_internal" "$appdir/usr/bin/"
 cp LICENSE "$appdir/"
 cp -r "dist/$title PC/licenses" "$appdir/"
 cp "dist/$title PC/README.txt" "$appdir/"
 cp out/icon.png "$appdir/vwport.png"
-cat > "$appdir/AppRun" <<'EOF'
+cat > "$appdir/AppRun" <<EOF
 #!/bin/sh
-exec "$(dirname "$(readlink -f "$0")")/usr/bin/launcher" "$@"
+exec "\$(dirname "\$(readlink -f "\$0")")/usr/bin/$title" "\$@"
 EOF
 chmod +x "$appdir/AppRun"
 cat > "$appdir/vwport.desktop" <<EOF
@@ -33,7 +31,7 @@ cat > "$appdir/vwport.desktop" <<EOF
 Type=Application
 Name=$title
 Comment=Native PC port
-Exec=launcher
+Exec=AppRun
 Icon=vwport
 Categories=Game;
 EOF

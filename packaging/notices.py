@@ -108,17 +108,27 @@ def collect_toolchain(destination):
         # Includes exact installed Vulkan/header and statically linked compiler runtime notices.
         shutil.copytree(prefix, destination / 'msys2', dirs_exist_ok=True)
     else:
-        for name, pattern in (('libstdc++', 'libstdc++6'), ('libgcc', 'libgcc-s1'),
-                              ('zlib', 'zlib1g'), ('Tcl', 'tcl8.6'), ('Tk', 'tk8.6'),
-                              ('libffi', 'libffi8'), ('OpenSSL', 'libssl3'),
-                              ('bzip2', 'libbz2-1.0'), ('liblzma', 'liblzma5'),
-                              ('Expat', 'libexpat1')):
+        # Debian/Ubuntu (the CI runner): /usr/share/doc/<package>/copyright. Arch-based systems:
+        # /usr/share/licenses/<package>/ (license files of the package).
+        for name, pattern, arch in (('libstdc++', 'libstdc++6', 'libstdc++'), ('libgcc', 'libgcc-s1', 'libgcc'),
+                                    ('zlib', 'zlib1g', 'zlib zlib-ng-compat zlib-ng'), ('Tcl', 'tcl8.6', 'tcl'), ('Tk', 'tk8.6', 'tk'),
+                                    ('libffi', 'libffi8', 'libffi'), ('OpenSSL', 'libssl3', 'openssl'),
+                                    ('bzip2', 'libbz2-1.0', 'bzip2'), ('liblzma', 'liblzma5', 'xz'),
+                                    ('Expat', 'libexpat1', 'expat')):
             source = Path('/usr/share/doc') / pattern / 'copyright'
-            if not source.is_file():
-                raise FileNotFoundError(f'Toolchain/runtime notice missing: {source}')
-            shutil.copy2(source, destination / f'{name}.txt')
-        # Debian copyright notices refer here for the full license terms.
-        shutil.copytree('/usr/share/common-licenses', destination / 'license-texts', dirs_exist_ok=True)
+            folders = [Path('/usr/share/licenses') / package for package in arch.split()]
+            folder = next((f for f in folders if f.is_dir() and any(f.iterdir())), None)
+            if source.is_file():
+                shutil.copy2(source, destination / f'{name}.txt')
+            elif folder:
+                shutil.copytree(folder, destination / name, dirs_exist_ok=True)
+            else:
+                raise FileNotFoundError(f'Toolchain/runtime notice missing: {source} (or /usr/share/licenses/{arch})')
+        # The full license texts those notices refer to.
+        for texts in ('/usr/share/common-licenses', '/usr/share/licenses/spdx'):
+            if Path(texts).is_dir():
+                shutil.copytree(texts, destination / 'license-texts', dirs_exist_ok=True)
+                break
 
 
 def collect(destination, python):
