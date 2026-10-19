@@ -5,23 +5,10 @@
 `defaults` apply unless the variable is already set; `forced` always apply (they are what the
 port was tested with). `native_modules` are the game's own sce_module libraries linked into the
 image after libc and Fios2 (link_modules.py). Render resolution is a code patch in the probe for
-each game (src/odin_render_scale.h, src/unicorn_render_scale.h).
+each game (src/unicorn_render_scale.h).
 """
 
 PROFILES = {
-    'CUSA05083': {  # Odin Sphere Leifthrasir
-        'defaults': {
-            # The draw pipeline (bit 37) presents black/partial frames; the constant ring
-            # (bit 36) flickers.
-            'VW_DISABLED_OPTIMIZATIONS': str((1 << 36) | (1 << 37)),
-            'VW_READBACK_LINEAR': '1',
-        },
-        'forced': {
-            # Tested without the readback shortcuts.
-            'VW_DEFERRED_READBACK': '0',
-            'VW_STALE_READBACK': '0',
-        },
-    },
     'CUSA36381': {  # Unicorn Overlord
         # The bundled PSN libraries run natively: their C++ toolkit then reaches the runtime only
         # through the PSN C APIs, which answer as signed out.

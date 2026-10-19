@@ -17,29 +17,38 @@ Results from other hardware are welcome in the issues.
 
 ## How far the game has been tested
 
-- Unicorn Overlord has been played through the prologue, into chapter 1 and its first real
-  battle (Palevia Town). Saving works (the game autosaves before that battle).
-- **Not tested yet:** the end of the first real battle, the world map, loading a save from the
-  title screen, and the game's pre-rendered movies. Anything past chapter 1 is unknown ground.
-- Odin Sphere Leifthrasir uses the same engine. Since the 2026-10-13 cleanup it has only been
-  checked up to the title screen.
+- Played through the prologue, into chapter 1 and its first real battle (Palevia Town). Saving
+  and loading (Continue on the title screen) work.
+- **Not tested yet:** the end of the first real battle, the world map and anything past
+  chapter 1.
 
-## Supported dumps only
+## Supported dump only
 
-- Unicorn Overlord: only **CUSA36381 (Asia) version 01.04** (base game with the 1.04 update
-  merged on top). The launcher refuses other regions (US, EU, Japan) and other versions; they
-  have different executables and the per-game code patches would not match.
-- Odin Sphere Leifthrasir: only **CUSA05083 (US) version 01.01**.
+Only **CUSA36381 (Asia) version 01.04**: the base game with the 1.04 update (English) merged on
+top. The start program refuses other regions (US, EU, Japan) and other versions; they have
+different executables and the port's code hooks would not match.
 
 ## Performance
 
-- The first battle map runs at about **53 FPS** on the test system above, not a steady 60. Large battles draw ~6000 sprites per frame.
-- The limit is the CPU, not the GPU: the PS4's GPU reads its command stream in hardware, the
-  port decodes it in software on one thread ("stage A"). A faster CPU (higher single-core
-  speed) helps most. Splitting that work across threads is the next planned step; see
-  [dev/parallel_gpu.md](dev/parallel_gpu.md) and [dev/unicorn/HANDOFF.md](dev/unicorn/HANDOFF.md).
+Measured on the test system above, 1080p:
+
+| Scene | Draws per frame | FPS |
+|---|---|---|
+| Palevia Town battle map (Continue from a chapter 1 save) | ~1,100 | 60, steady |
+| New Game opening (cavalry charge in the rain) | ~4,300 | 49-54 |
+| First battle map, prologue (earlier measurement) | ~3,650 | ~53 |
+
+- The busy scenes are limited by the CPU, not the GPU: the PS4's GPU reads its command stream in
+  hardware, the port decodes it in software. Two threads share that work (stage A decodes, about
+  3.8 µs per draw; stage B records Vulkan commands) and both are close to full in the opening.
+  A faster CPU (higher single-core speed) helps most. Spreading stage A over more threads is the
+  next planned step; see [dev/HANDOFF.md](dev/HANDOFF.md).
+- 720p and 900p render resolutions lower the GPU's work, not the CPU's: they help weak GPUs,
+  not the busy scenes above.
 - The first time a scene is shown, its shaders are compiled, which can stutter. Later runs use
   the shader cache in `user/`.
+- Starting the game: about 1 second until the game's own code runs (the image preparation is
+  cached), then the game's warning and logo screens.
 
 ## Graphics
 
@@ -49,8 +58,16 @@ Results from other hardware are welcome in the issues.
   "Deferred GPU readbacks", then **Apply and restart**. If the game then fails to start, the
   next start goes back to the previous options by itself.
 - A render resolution change in the in-game menu only applies after a restart.
-- Render resolutions above 1080p use the game's own PS4 Pro mode. Only 1440p and 4K have been
-  checked (title, menu and battle); 1800p has not.
+- Every render resolution other than 1080p uses the game's own PS4 Pro mode at that size.
+  Checked: 720p (logos, the opening, a battle map), 1440p and 4K (title, menu and battle).
+  900p and 1800p have not been checked in game.
+- Soft colour steps (banding) in dark fog and sky gradients, for example in the opening: the game
+  draws these layers into 8-bit targets, as on a PS4, and the port adds no precision loss
+  (checked frame by frame). It comes and goes with the scene.
+- Button icons: Auto shows Xbox icons for every controller that is not a PlayStation or Nintendo
+  pad, and for the keyboard (the game has no keyboard icons). The icons are chosen when the game
+  starts; a prompt already on screen keeps its icon after a change, and whether new prompts follow
+  a change without a restart has not been checked. Restart the game after changing it.
 - On Linux with AMD GPUs, `RADV_DEBUG=nohiz` is set automatically to avoid rendering errors.
 - On laptops with two GPUs the port picks the discrete one.
 - Needs a Vulkan 1.3 GPU and a recent driver. macOS is not supported.
@@ -67,10 +84,12 @@ Results from other hardware are welcome in the issues.
 
 - Everything online: PSN sign-in, network features and trophies. They all report "signed out"
   or succeed without doing anything, so the game runs offline.
-- Remapping sticks, triggers and the menu shortcut. Button bindings can be changed in the
-  in-game Controls tab and are saved in `vw.ini`. The `VW_KEY_MAP` (keyboard) and `VW_PAD_MAP`
+- Remapping sticks, triggers and the menu shortcut. Buttons can be remapped in the in-game
+  Controls tab and are saved in `vw.ini`. The `VW_KEY_MAP` (keyboard) and `VW_PAD_MAP`
   (controller) environment variables override saved bindings, e.g. `VW_KEY_MAP="cross=Q"`.
-- DLC and PS4 package installation: the port runs an already extracted game folder.
+- DLC and PS4 package (.pkg) installation: the port installs an already extracted game folder.
+- Port settings live in the Insert menu, not in the game's own Options screen
+  (research for native rows: [dev/unicorn/NATIVE_SETTINGS.md](dev/unicorn/NATIVE_SETTINGS.md)).
 
 ## Open questions
 

@@ -69,8 +69,7 @@ PATCHES_DIR=Path(__file__).resolve().parent.parent/'patches'
 # Built-in patch file per game, the app version its addresses are for and, when known, the
 # sha256 of the only eboot.bin they were checked against (another build of the same version has
 # its code elsewhere: byte writes there corrupt it).
-GAMES=[({'CUSA05083'},PATCHES_DIR/'Odin_Sphere_Leifthrasir.xml','01.01',
-        '2865b6cec33f2515def173c1ed0c03afc27a1cd5fad1b0d0f516b4527aba9a88')]
+GAMES=[]  # Unicorn Overlord ships no built-in patches; user patch files still apply (patches/)
 DMEM_RETAIL_MB=5056  # runtime_memory.c POOL_SIZE default
 
 
@@ -185,7 +184,7 @@ def main():
     p.add_argument('--patches-config',type=Path,help='patches.json: enabled/disabled external patches')
     p.add_argument('--extra',default='',help='additional patch names, separated by ";"')
     p.add_argument('--out',type=Path,default=Path(__file__).resolve().parent.parent/'out')
-    p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('VW_GAME_DIR','../CUSA05083')))
+    p.add_argument('--game-dir',type=Path,default=Path(os.environ.get('VW_GAME_DIR','../CUSA36381')))
     a=p.parse_args()
     title=game_title_id(a.game_dir)
     profile=game_profile(title)

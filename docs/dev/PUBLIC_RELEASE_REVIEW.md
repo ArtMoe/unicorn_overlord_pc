@@ -38,8 +38,7 @@ Record OS, GPU/driver, CPU, RAM, resolution, settings and how far each tester pl
    explicitly build/run the C++ tests. A successful build does not validate native behaviour.
 3. **Diagnostics completeness:** fix the saved-log omissions and user export workflow below.
 4. **Release communication:** distinguish mutable `latest` test builds from versioned tested
-   releases; list supported dump/version, known problems and actual tested progress. README
-   references an `odin-sphere` branch; open PR #11 already proposes correcting this.
+   releases; list supported dump/version, known problems and actual tested progress.
 5. **Protection setup:** the repository ruleset list returned empty during this review.
    `.github/main-protection.json` is a template, not proof of active protection. Legacy
    branch protection was not verified. Configure required checks/review rules separately,

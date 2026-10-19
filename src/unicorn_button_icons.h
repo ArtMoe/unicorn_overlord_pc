@@ -7,8 +7,9 @@
  * times, one per release of the game: "BUTTON_B" (Switch), "CROSS_PS4" and "BUTTON_B_2" (the PS4
  * dark and light icons) and "BUTTON_B_3" (Xbox). The PS4 build only plays the PS4 two. Animation
  * entries (section 9, 0x30 bytes: bounds, name, first keyframe set and count) are read where the
- * file lies in memory, so pointing the PS4 entries at the Xbox or Switch keyframes changes every
- * icon the game draws, also while it runs. The file is found when the CRI decompressor
+ * file lies in memory; pointing the PS4 entries at the Xbox or Switch keyframes before the game
+ * reads them changes every icon it draws. A later change rewrites the entries too, but an icon
+ * already playing keeps its keyframes (checked); new prompts after a change are not checked. The file is found when the CRI decompressor
  * (FUN_001fdfc0) has decoded it: header = the 0x100 raw bytes after the compressed stream.
  * Section layout (pointer at 0xf8, count at 0x6c) as documented by rufaswan's Web2D_Games. */
 #include <pthread.h>

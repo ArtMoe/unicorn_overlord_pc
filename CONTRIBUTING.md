@@ -18,8 +18,6 @@ Thanks for helping. This file says what a change needs before it can go in.
 
 - `main` is the Unicorn Overlord port. Work on a topic branch (`fix/save-crash`,
   `gpu/stage-a-split`) and open a pull request against `main`.
-- Shared engine changes must consider both supported games. Target `main`; do not assume an
-  `odin-sphere` branch exists.
 - One topic per pull request. A bug fix and a refactor are two pull requests.
 
 ## Before you open a pull request
@@ -60,7 +58,7 @@ Thanks for helping. This file says what a change needs before it can go in.
 ## Commits
 
 - Subject: `Area: what changed`, imperative or noun phrase, no trailing period, about 72
-  characters at most. Areas used so far: `Runtime`, `GPU`, `Draw pipe`, `Launcher`,
+  characters at most. Areas used so far: `Runtime`, `GPU`, `Draw pipe`, `Setup`,
   `Packaging`, `Docs`, `Unicorn Overlord`, `Windows`.
   Example: `Runtime: split runtime_services.c into services, online and dialogs`
 - Body: why the change was needed and anything a reviewer can't see in the diff (measurements,
@@ -118,7 +116,7 @@ GitHub branch protection; see [release setup](docs/RELEASING.md#branch-protectio
 
 Use the bug report template. The most useful report has:
 
-- Game version (`app_version` from the launcher, should be 01.04), OS, GPU and driver.
+- Game version (`APP_VER` in the run log's `Game:` line, should be 01.04), OS, GPU and driver.
 - What you did and where it broke (scene, menu, battle), and whether it repeats.
 - The log: every run writes `logs/run-<date>-<time>.log` in the data directory (the newest 10
   are kept; `last_run.log` is a copy of the newest). Attach the log of the run that failed,

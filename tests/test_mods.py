@@ -19,7 +19,7 @@ class ModTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.game = self.root / 'CUSA05083'
+        self.game = self.root / 'CUSA36381'
         self.assets = self.game / 'game_data' / 'data'
         self.assets.mkdir(parents=True)
         (self.game / 'eboot.bin').write_bytes(b'original executable')

@@ -27,7 +27,7 @@ on Linux so far: report the first error of `out/deps/<library>.log` or `out/gpu-
    launcher (slower to start: they are unpacked on every launch).
 
 For development, `bash build.sh` builds `out/vwport.exe` and
-`VW_GAME_DIR=D:/path/CUSA05083 python run.py` starts a game. From the source tree `run.py` puts
+`VW_GAME_DIR=D:/path/CUSA36381 python run.py` starts a game. From the source tree `run.py` puts
 `C:\msys64\clang64\bin` (or `$MSYS2_ROOT`) on `PATH` for the DLLs.
 
 ## What is different from Linux

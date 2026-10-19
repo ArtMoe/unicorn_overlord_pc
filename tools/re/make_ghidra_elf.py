@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn the port's prepared eboot (out_odin/) into something Ghidra's stock ELF loader reads well.
+"""Turn the port's prepared eboot (<data>/out/) into something Ghidra's stock ELF loader reads well.
 
 - eboot_ghidra.elf: eboot.elf with e_type ET_EXEC (image base 0 = PS4 vaddrs) and every
   relative relocation applied, so vtables / function tables / string pointers are real.

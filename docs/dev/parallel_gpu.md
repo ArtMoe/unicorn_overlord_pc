@@ -559,8 +559,7 @@ A/B in one run, battle map, 3 × 20 s per mode: 39.1 / 38.8 / 39.5 FPS with the 
 31.1 / 30.7 / 31.4 with the drain (+26%). ConstRam drains ~3500/s → ~0; stage A waits ~2%,
 stage B ~76% busy. Screenshots in both modes differ no more than two shots in the same mode
 (rain, animated lighting). Combat scenes: 25-46 FPS, stage B 75-84% busy, so stage B is the
-next limit. The 1440p/4K modes and Odin Sphere gameplay were not measured; Odin Sphere boots to
-its menus without errors.
+next limit. The 1440p/4K modes were not measured.
 
 ## Stage A after the drain fix (2026-10-13, night)
 

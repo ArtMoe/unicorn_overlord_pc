@@ -7,7 +7,6 @@
 #include <inttypes.h>
 #include <time.h>
 #include "runtime.h"
-#include "odin_render_scale.h"
 #include "unicorn_render_scale.h"
 #include "unicorn_button_icons.h"
 #include "gpu/vwgpu.h"
@@ -337,7 +336,7 @@ static int install_jump(uint64_t at, unsigned length, unsigned char *stub) {
 }
 
 /* Render scale: VW_RENDER_SCALE=<factor> or render_resolution= in vw.ini draws the game at
- * 1920x1080 times the factor (src/odin_render_scale.h, src/unicorn_render_scale.h); the
+ * 1920x1080 times the factor (src/unicorn_render_scale.h); the
  * presenter averages it down to the window. */
 static int render_scale_prefix(const char *text, const char *prefix) {
     for (; *prefix; ++text, ++prefix)
@@ -371,74 +370,6 @@ static float render_scale_setting(void) {
         if (!strncmp(line, "render_resolution=", 18)) scale = render_scale_value(line + 18);
     if (f) fclose(f);
     return scale;
-}
-
-static void install_odin_render_scale(const char *app0, Segment *segments, uint64_t count,
-                                      uint64_t size) {
-    char path[4096], serial[32] = "", version[32] = "";
-    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
-    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
-    if (strcmp(serial, "CUSA05083")) return;
-    const float scale = render_scale_setting();
-    if (!(scale > 1.001f)) {
-        /* Below 1080p a scaled target's size (1280x720, ...) is also a texture asset size:
-         * the texture size hooks would misreport those assets. */
-        if (scale > 0.0f && scale < 0.999f) printf("Render scale: below 1080p is not supported for this game; native\n");
-        return;
-    }
-    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(version, "01.01") || scale > 3.0f || !odin_render_scale_signature_match(image, size)) {
-        printf("Render scale: unavailable (game version, code signature or factor %.2f)\n", scale);
-        return;
-    }
-    /* Debug: VW_RENDER_SCALE_PARTS bits 1 targets/viewport immediates, 2 view viewports, 4 heap,
-     * 8 clip scissors, 16 layer buffers, 32 texture sizes (sprites, layer composites). */
-    const char *parts_env = getenv("VW_RENDER_SCALE_PARTS");
-    const unsigned parts = parts_env ? (unsigned)strtoul(parts_env, NULL, 0) : 63;
-    const uint32_t width = (uint32_t)(1920.0f * scale + 0.5f) & ~1u;
-    const uint32_t height = (uint32_t)(1080.0f * scale + 0.5f) & ~1u;
-    /* The stubs scale by the rounded target width (2560/1920 for 1440p), so 1920 maps exactly. */
-    const float exact = (float)width / 1920.0f;
-    unsigned char *stub = allocate(page_size);
-    const struct { uint64_t at; unsigned length, part; unsigned char *stub; } hooks[] = {
-        {ODIN_VIEWPORT_HOOK_OFFSET, ODIN_VIEWPORT_HOOK_LENGTH, 2, stub},
-        {ODIN_SCISSOR_HOOK_OFFSET, 5, 8, stub + 256}, /* the stub tail-jumps to the setter */
-        {ODIN_LAYER_HOOK_OFFSET, ODIN_LAYER_HOOK_LENGTH, 16, stub + 512},
-        {ODIN_TEXSIZE_HOOK_OFFSET, ODIN_TEXSIZE_HOOK_LENGTH, 32, stub + 768},
-        {odin_uvscale_hooks[0], ODIN_UVSCALE_HOOK_LENGTH, 32, stub + 1024},
-        {odin_uvscale_hooks[1], ODIN_UVSCALE_HOOK_LENGTH, 32, stub + 1280},
-    };
-    /* All or nothing: a partly scaled frame draws in two coordinate systems. */
-    for (unsigned i = 0; i < sizeof(hooks) / sizeof(*hooks); ++i)
-        if (!mapped(segments, count, hooks[i].at, hooks[i].length) || !jump_reaches(hooks[i].at, hooks[i].stub)) {
-            printf("Render scale: unavailable (hook at 0x%" PRIx64 " not reachable)\n", hooks[i].at);
-            return;
-        }
-    odin_viewport_build_stub(hooks[0].stub, exact, (uintptr_t)(image + ODIN_VIEWPORT_HOOK_OFFSET + ODIN_VIEWPORT_HOOK_LENGTH));
-    odin_scissor_build_stub(hooks[1].stub, exact, (uintptr_t)(image + ODIN_SCISSOR_TARGET));
-    odin_layer_build_stub(hooks[2].stub, width, height, (uintptr_t)(image + ODIN_LAYER_CALLEE),
-                          (uintptr_t)(image + ODIN_LAYER_HOOK_OFFSET + ODIN_LAYER_HOOK_LENGTH));
-    odin_texsize_build_stub(hooks[3].stub, width, height,
-                            (uintptr_t)(image + ODIN_TEXSIZE_HOOK_OFFSET + ODIN_TEXSIZE_HOOK_LENGTH));
-    for (unsigned i = 0; i < 2; ++i)
-        odin_uvscale_build_stub(hooks[4 + i].stub, width, height,
-                                (uintptr_t)(image + odin_uvscale_hooks[i] + ODIN_UVSCALE_HOOK_LENGTH));
-    protect(stub, page_size, 5);
-    for (unsigned i = 0; i < sizeof(hooks) / sizeof(*hooks); ++i)
-        if (parts & hooks[i].part) install_jump(hooks[i].at, hooks[i].length, hooks[i].stub);
-    const float width_f = (float)width, height_f = (float)height;
-    for (unsigned i = 0; (parts & 1) && i < sizeof(odin_scale_width_imm) / sizeof(*odin_scale_width_imm); ++i) {
-        memcpy(image + odin_scale_width_imm[i], &width, 4);
-        memcpy(image + odin_scale_height_imm[i], &height, 4);
-    }
-    for (unsigned i = 0; (parts & 1) && i < sizeof(odin_scale_width_float) / sizeof(*odin_scale_width_float); ++i) {
-        memcpy(image + odin_scale_width_float[i], &width_f, 4);
-        memcpy(image + odin_scale_height_float[i], &height_f, 4);
-    }
-    /* Scaled targets come from the RENDERBUFFER heap: scale^2 its size. */
-    const uint32_t heap = ((uint32_t)(ODIN_RENDERBUFFER_HEAP_SIZE * scale * scale) + 0x1fffff) & ~0x1fffffu;
-    if (parts & 4) memcpy(image + ODIN_RENDERBUFFER_HEAP_IMM, &heap, 4);
-    printf("Render scale: %.2f (%ux%u, render buffer heap %u MiB)\n", scale, width, height, heap >> 20);
 }
 
 /* Unicorn Overlord: the render size of this launch, 0x0 when native. Any other size runs the
@@ -894,7 +825,6 @@ int main(int argc, char **argv) {
         _exit(missing ? 1 : 0); /* no destructors: GPU threads are running */
     }
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
-    if (gpu_enabled) install_odin_render_scale(app0, segments, ns, size);
     if (gpu_enabled) install_unicorn_render_scale(app0, size);
     install_unicorn_cri_hook(app0, segments, ns);
 #ifdef _WIN32
