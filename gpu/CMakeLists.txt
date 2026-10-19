@@ -185,6 +185,13 @@ target_link_libraries(vwgpu PUBLIC Vulkan::Headers fmt::fmt Boost::headers magic
     tsl::robin_map GPUOpen::VulkanMemoryAllocator PkgConfig::XXHASH PkgConfig::SDL3 PkgConfig::FFMPEG miniz::miniz Zydis::Zydis sirit)
 if (VW_DEPS)
     target_link_libraries(vwgpu PUBLIC ${FFMPEG_STATIC_LDFLAGS} ${SDL3_STATIC_LDFLAGS} ${XXHASH_STATIC_LDFLAGS})
+    if (NOT WIN32 AND NOT VW_STATIC)
+        # FFmpeg's PIC assembly uses PC-relative references to its own tables.
+        # Keep its archive symbols local when embedding it in a shared library.
+        # SDL symbols stay public so the loader and GPU share the same SDL state.
+        target_link_options(vwgpu PRIVATE
+            "-Wl,--exclude-libs,libavcodec.a:libavformat.a:libavutil.a:libswscale.a:libswresample.a")
+    endif()
 endif()
 target_include_directories(vwgpu PRIVATE third_party/xbyak)
 if (WIN32)

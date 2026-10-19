@@ -19,7 +19,7 @@ class ModTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.game = self.root / 'CUSA05083'
+        self.game = self.root / 'CUSA36381'
         self.assets = self.game / 'game_data' / 'data'
         self.assets.mkdir(parents=True)
         (self.game / 'eboot.bin').write_bytes(b'original executable')
@@ -151,12 +151,11 @@ class ModTests(unittest.TestCase):
     def test_run_uses_overlay_propagates_exit_and_cleans_view(self):
         self.mod('A')
         probe = self.root / 'probe'
-        probe.write_text(f'#!{sys.executable}\nimport json,sys,os\nfrom pathlib import Path\n'
+        probe.write_text('import json,sys,os\nfrom pathlib import Path\n'
             'game=Path(sys.argv[sys.argv.index("--app0")+1])\n'
             'Path(os.environ["VW_DATA_DIR"],"mounted.json").write_text(json.dumps({\n'
             '"path":str(game),"content":(game/"game_data/data/a.wad").read_text()}))\n'
             'sys.exit(7)\n')
-        probe.chmod(0o755)
         env = dict(VW_PROBE=str(probe), VW_DATA_DIR=str(self.root), VW_GAME_DIR=str(self.game),
             VW_MODS_DIR=str(self.moddir), VW_MODS_ENABLED='1', VW_MODS_CONFIG=str(self.root/'mods.json'))
         spec = importlib.util.spec_from_file_location('vwrun', ROOT / 'run.py')
@@ -167,8 +166,16 @@ class ModTests(unittest.TestCase):
         run.run_script = lambda name, *args, **kw: real_script(name, *args, **kw) if name == 'mods.py' else None
         cwd = os.getcwd()
         self.addCleanup(os.chdir, cwd)
-        with mock.patch.dict(os.environ, env), mock.patch.object(sys, 'argv', ['run.py']):
-            self.assertEqual(run.main(), 7)
+        real_run = run.LOG.run
+        def launch(command, **kwargs):
+            # The fake probe is Python, not a native executable. Windows cannot
+            # execute a shebang script directly; retain a real child process on both OSes.
+            if command[0] == str(probe):
+                command = [sys.executable, *command]
+            return real_run(command, **kwargs)
+        with mock.patch.dict(os.environ, env), mock.patch.object(sys, 'argv', ['run.py']), \
+             mock.patch.object(run.LOG, 'run', side_effect=launch):
+            self.assertEqual(run.entrypoint(), 7)
         mounted = json.loads((self.root / 'mounted.json').read_text())
         self.assertEqual(mounted['content'], 'mod')
         self.assertFalse(Path(mounted['path']).exists())

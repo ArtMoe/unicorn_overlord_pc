@@ -3,13 +3,11 @@
 [![Build](https://github.com/hachi23/unicorn_overlord_pc/actions/workflows/build.yml/badge.svg)](https://github.com/hachi23/unicorn_overlord_pc/actions/workflows/build.yml)
 [![License: GPL v2+](https://img.shields.io/badge/license-GPL--2.0--or--later-blue.svg)](LICENSE)
 
-A native Linux and Windows port of the PlayStation 4 version of **Unicorn Overlord**. The same
-engine also runs **Odin Sphere Leifthrasir**.
+A native Linux and Windows port of the PlayStation 4 version of **Unicorn Overlord**.
 
-| Game | Dump | State |
-|---|---|---|
-| Unicorn Overlord | CUSA36381 (Asia), app 01.04 | Prologue, chapter 1 and its first battle played; saving works; every system function the game imports is implemented |
-| Odin Sphere Leifthrasir | CUSA05083 (US), app 01.01 | Reaches the title screen (`launcher/odin_launcher.py`) |
+| Dump | State |
+|---|---|
+| CUSA36381 (Asia), app 01.04 (base game with the 1.04 English update) | Prologue, chapter 1 and its first battle played; saving and loading work; every system function the game imports is implemented |
 
 > **Work in progress.** The game has not been played to the end, and it runs at about 50-60 FPS
 > on a mid-range laptop. Read [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) before reporting a bug.
@@ -29,10 +27,10 @@ PC doesn't have is the PS4's operating system and GPU, so this project supplies 
    written for these games.
 4. **GPU** (`gpu/`): the [shadPS4](https://github.com/shadps4-emu/shadPS4) video core turns the
    PS4's GPU commands and shaders into Vulkan, with this port's multi-threaded draw pipeline on top.
-5. **Launcher** (`launcher/`): a small Python/Tkinter window to pick the game folder and
-   graphics options; the in-game menu is Dear ImGui (`gpu/shim/vw_overlay.cpp`).
+5. **Start program** (`launcher/`): a one-time setup that installs your dump, then starts the
+   game; the in-game menu is Dear ImGui (`gpu/shim/vw_overlay.cpp`).
 
-Only the games listed above are supported.
+Only the dump listed above is supported.
 
 > **No game files are included.** You need a dump of your own copy. This project is not
 > affiliated with Sony Interactive Entertainment, Atlus, Sega or Vanillaware.
@@ -43,7 +41,8 @@ Test builds of `main` are on the [`latest` pre-release](https://github.com/hachi
 
 - **Linux:** `Unicorn-Overlord-x86_64.AppImage`. Make it executable (`chmod +x`) and run it. It
   keeps its `data/` folder next to the `.AppImage`.
-- **Windows:** `Unicorn Overlord.exe`. Put it in its own folder; it keeps `data/` beside itself.
+- **Windows:** `Unicorn-Overlord-PC-windows.zip`. Extract it into its own folder and run
+  `Unicorn Overlord.exe`; it keeps `data/` beside itself. Keep `LICENSE` and `licenses/` with it.
 
 These are untested builds of the newest code. See [docs/RELEASING.md](docs/RELEASING.md) for how
 builds and releases are made.
@@ -52,43 +51,54 @@ builds and releases are made.
 
 - 64-bit Linux, or Windows 10 (1903+) / 11.
 - A Vulkan 1.3 GPU.
-- Your own dump of a supported game, as a folder containing `eboot.bin`, `sce_module` and
-  `sce_sys`.
+- Your own dump of the game with the 1.04 update merged in, as a folder containing `eboot.bin`,
+  `sce_module`, `sce_sys` and the `.CPK` files (about 7 GB).
 
 ## Playing
 
-On the first start, choose the game folder in the setup dialog. Later starts go straight
-into the game. Change graphics options and button bindings in the in-game menu.
+**First start:** choose your dump's folder. The start program checks it (title and version),
+installs it into `data/game` and starts the game. On the same drive the install takes a
+moment and needs no extra space (hard links); from another drive it copies about 7 GB with a
+progress window, and a cancelled install continues on the next start. **Later starts** go
+straight into the game; preparing the game image is skipped while nothing changed.
+
 Packaged builds contain the start program and the game executable. From the source tree:
 
 ```bash
-python launcher/unicorn_launcher.py   # Odin Sphere: launcher/odin_launcher.py
+python launcher/unicorn_launcher.py
 ```
 
-In game, **Insert** (R3+L2 on a controller) opens the port's menu. It has four tabs:
+The game's own **System → Options** screen (from the title or the in-game menu) has a **PC**
+section at the end: display mode, VSync, frame rate limit, render resolution (applied at the next
+start), FSR 1 upscaling, sharpening and its strength, button icons and the performance overlay.
+Changes apply at once and are saved in `vw.ini`; **Restore Defaults** resets them too.
+
+In game, **Insert** (R3+L2 on a controller) opens the port's own menu with every setting. It has
+four tabs:
 
 - **Image:** display mode, VSync, FSR 1 and RCAS sharpening.
 - **Performance:** frame rate limit, render resolution and the GPU readback options.
 - **Overlay:** the performance overlay.
-- **Controls:** keyboard and controller button bindings, saved in `vw.ini`.
+- **Controls:** keyboard and controller button bindings, saved in `vw.ini`, and the
+  **button icons** the game shows: Auto (follows the controller in use), PlayStation, Xbox or
+  Nintendo. The Xbox and Nintendo icons are the game's own, from its Xbox and Switch releases.
 
 Settings are kept in `vw.ini` in the data directory. The Overlay tab also has a
 **Change game folder** button to reopen setup.
 
 Something wrong? See [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) and
-[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Every run writes a log
-to `logs/` in the data directory (the launcher's **Log** button shows the newest).
+[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Every run writes a log to `logs/` in the
+data directory. When the game stops with an error, the start program offers to save a
+diagnostics ZIP (the run log with your folders redacted, shown for review first) to attach to
+your issue. No game files or saves are included.
 
 ### Render resolution
 
-Both games render at 1920×1080 by default. A higher render resolution draws the game larger
-and averages it down to the window, which gives smoother edges at the cost of more GPU work.
-Set it in the launcher, in the menu (applied on restart), or with `VW_RENDER_SCALE`:
-
-| Game | Values | How |
-|---|---|---|
-| Odin Sphere | factor 1 to 3, or `1440p`, `1800p`, `4K` | Patches the game's render targets |
-| Unicorn Overlord | `1440p`, `1800p`, `4K` | Uses the game's PS4 Pro path (`VW_NEO_MODE=1`) at that size |
+The game renders at 1920×1080 by default. Set another size in the menu (Performance, applied on
+restart) or with `VW_RENDER_SCALE`: `720p` and `900p` for weak GPUs, `1440p`, `1800p` and `4K`
+for smoother edges and sharper art. Every size uses the game's own PS4 Pro path (`VW_NEO_MODE=1`)
+at that size, which lays out the 2D layers from the target size, so the framing and the HUD stay
+the same at every resolution.
 
 ### Keyboard
 
@@ -131,8 +141,9 @@ On Windows, build in an MSYS2 CLANG64 shell. See
 To package a release, run `python packaging/package.py unicorn`. On Linux it builds
 `packaging/deps.sh` (pinned static FFmpeg with only the decoders the port uses, SDL3, fmt, Zydis,
 xxHash, zlib; a few minutes the first time) and a `vwport` with them and the GPU library linked
-in (`build.sh --static`), which needs only libc, libm and the Vulkan loader. `dist/` then holds
-two files: the launcher, with the runtime scripts and `vwport` inside, and `LICENSE`.
+in (`build.sh --static`), which needs only libc, libm and the Vulkan loader. `dist/<Title> PC/`
+then holds the start program, `_internal/` (its Python runtime, the runtime scripts and
+`vwport`), `LICENSE`, `licenses/` and `README.txt`. Releases also retain matching debug symbols and an archive of the source.
 
 ### Tests
 
@@ -158,18 +169,20 @@ out/vwport out/boot-linked.bin --app0 <game folder> --check-imports
 
 | Part | Where | What it does |
 |---|---|---|
-| Preparation | `scripts/` | Reads `eboot.bin`, applies its relocations and links the game's own system modules into one image |
+| Preparation | `scripts/` | Reads `eboot.bin`, applies its relocations and links the game's own system modules into one image (cached in `out/` between starts) |
 | Loader | `src/probe.c` | Loads the image, applies the per-game code patches (render resolution) and starts the game's code |
 | Runtime | `src/runtime_*.c` | The PS4 system functions: memory, threads, files, audio, video, controller, saves and services |
 | GPU | `gpu/shadps4/` | The shadPS4 video core with this port's threaded draw pipeline ([notes](docs/dev/parallel_gpu.md)) |
 | In-game menu | `gpu/shim/vw_overlay.cpp` | The Dear ImGui menu and FPS overlay; settings in `gpu/shim/vw_settings.cpp` |
 | Per-game settings | `scripts/game_profiles.py` | Launch defaults and GPU workarounds for each title |
 | Mods and patches | `scripts/mods.py`, `scripts/patches.py` | Loose-file mods and shadPS4 XML patches ([docs](docs/MODS.md)) |
-| Launcher | `launcher/` | Game folder, graphics options and the Play button |
+| Start program | `launcher/` | One-time setup (check and install the dump), then starts the game |
+| Game hooks | `src/unicorn_*.h` | Render size, button icon layouts |
 
 Developer notes (state, open problems, reverse-engineering findings) are in
-[docs/dev/](docs/dev/): [Unicorn Overlord](docs/dev/unicorn/HANDOFF.md),
-[Odin Sphere](docs/dev/odin/HANDOFF.md), [GPU pipeline](docs/dev/parallel_gpu.md).
+[docs/dev/](docs/dev/): [handoff](docs/dev/unicorn/HANDOFF.md),
+[native settings research](docs/dev/unicorn/NATIVE_SETTINGS.md),
+[GPU pipeline](docs/dev/parallel_gpu.md), [Ghidra tools](tools/re/README.md).
 
 ## Contributing
 
@@ -191,6 +204,8 @@ This port stands on the work of others. In order of descent:
   recompiler (vendored in `gpu/shadps4/`, see [gpu/VENDOR.txt](gpu/VENDOR.txt)), and its PS4
   function names and library layouts.
 - **yogesh1239**: CI builds for Windows and Linux, run logs, contributing docs and templates.
+- **rufaswan**: [Web2D_Games](https://github.com/rufaswan/Web2D_Games), whose notes on
+  Vanillaware's sprite files (FMBS) made the Xbox and Nintendo button icons possible.
 
 Libraries and tools used:
 
@@ -212,5 +227,5 @@ Libraries and tools used:
 
 GNU GPL v2 or later ([LICENSE](LICENSE)). Third-party components keep their own licenses.
 
-Unicorn Overlord and Odin Sphere Leifthrasir are trademarks of their owners. This project
+Unicorn Overlord is a trademark of its owners. This project
 contains no game code or assets; it only runs a copy you dumped yourself.

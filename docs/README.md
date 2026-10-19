@@ -12,7 +12,9 @@ For contributors:
 - [RELEASING.md](RELEASING.md): automatic builds, branch protection and releases
 - [dev/](dev/): developer notes
   - [dev/ROADMAP.md](dev/ROADMAP.md): planned enhancements and the order they come in
-  - [dev/unicorn/HANDOFF.md](dev/unicorn/HANDOFF.md): Unicorn Overlord state and open problems
-  - [dev/odin/](dev/odin/): Odin Sphere handoff, plan and reverse-engineering notes
+  - [dev/HANDOFF.md](dev/HANDOFF.md): where the work stands and what comes next (read first)
+  - [dev/unicorn/HANDOFF.md](dev/unicorn/HANDOFF.md): how the port was made: imports, render size, performance history
+  - [dev/unicorn/NATIVE_SETTINGS.md](dev/unicorn/NATIVE_SETTINGS.md): the PC rows in the game's Options screen: how they are added
   - [dev/parallel_gpu.md](dev/parallel_gpu.md): the threaded GPU draw pipeline
-  - [dev/CLEANUP_HANDOFF.md](dev/CLEANUP_HANDOFF.md): the rename and cleanup pass (2026-10-13)
+  - [dev/PUBLIC_RELEASE_REVIEW.md](dev/PUBLIC_RELEASE_REVIEW.md): the 2026-10-18 release review
+  - [../tools/re/README.md](../tools/re/README.md): the Ghidra workspace and scripts

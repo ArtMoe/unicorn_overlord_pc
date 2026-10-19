@@ -19,15 +19,15 @@ on Linux so far: report the first error of `out/deps/<library>.log` or `out/gpu-
    It installs the packages, builds the static libraries (`packaging/deps.sh`: FFmpeg, SDL3,
    fmt, Zydis, xxHash, zlib; a few minutes the first time), links them and libc++ into
    `out/vwport.exe` (`bash build.sh --static`) and writes `dist/<Title> PC/` and its .zip: the
-   launcher, with the runtime scripts and `vwport.exe` inside, and `LICENSE`. Any DLL vwport
-   still loads from MSYS2 is packed into the launcher as well.
+   start program, `_internal/` (its Python runtime, the runtime scripts and `vwport.exe`),
+   `LICENSE` and `licenses/`. Any DLL vwport still loads from MSYS2 goes into `_internal/` too.
 
    If the static libraries fail to build, `bash build.sh` (MSYS2's own libraries) followed by
-   `py -3 packaging/package.py unicorn` still gives the same two files, with the DLLs inside the
-   launcher (slower to start: they are unpacked on every launch).
+   `py -3 packaging/package.py unicorn` still gives the same folder, with MSYS2's DLLs in
+   `_internal/`.
 
 For development, `bash build.sh` builds `out/vwport.exe` and
-`VW_GAME_DIR=D:/path/CUSA05083 python run.py` starts a game. From the source tree `run.py` puts
+`VW_GAME_DIR=D:/path/CUSA36381 python run.py` starts a game. From the source tree `run.py` puts
 `C:\msys64\clang64\bin` (or `$MSYS2_ROOT`) on `PATH` for the DLLs.
 
 ## What is different from Linux

@@ -16,8 +16,6 @@ launcher.json
 /*.spv
 
 # Run directories: files derived from the game dumps, saves and settings (never commit)
-out_odin/
-run/
 run_uo/
 
 # Game dumps and packages (never commit; see CONTRIBUTING.md)

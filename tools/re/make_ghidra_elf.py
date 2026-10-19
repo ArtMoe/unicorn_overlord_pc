@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn the port's prepared eboot (out_odin/) into something Ghidra's stock ELF loader reads well.
+"""Turn the port's prepared eboot (<data>/out/) into something Ghidra's stock ELF loader reads well.
 
 - eboot_ghidra.elf: eboot.elf with e_type ET_EXEC (image base 0 = PS4 vaddrs) and every
   relative relocation applied, so vtables / function tables / string pointers are real.
@@ -66,16 +66,18 @@ def main():
 
     applied = skipped = 0
     slots = {}
-    for target, kind, sym, addend in relocs:
+    # boot.bin entries (scripts/prepare.py): target, kind, value, addend. A base-relative entry's
+    # value is its image offset; an import's value is the import index.
+    for target, kind, value, addend in relocs:
         off = file_offset(target)
         if off is None:          # .bss: nothing in the file to write
             skipped += 1
             continue
-        if kind == 0:            # relative: base (0) + addend
-            value = addend
+        if kind == 0:            # relative: base (0) + value
+            value += addend
         else:                    # import (1 = code, 2 = data): fake external address
-            value = EXTERN_BASE + 8 * sym + addend
-            slots.setdefault(sym, []).append(target)
+            slots.setdefault(value, []).append(target)
+            value = EXTERN_BASE + 8 * value + addend
         struct.pack_into('<Q', elf, off, value & 0xffffffffffffffff)
         applied += 1
     struct.pack_into('<H', elf, 16, 2)  # ET_EXEC

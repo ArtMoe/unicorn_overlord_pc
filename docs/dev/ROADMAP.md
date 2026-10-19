@@ -10,13 +10,13 @@ played (see `CONTRIBUTING.md`). Order: legal first, then small wins, then the la
 
 | # | Step | Size | Status |
 |---|---|---|---|
-| 1 | Third-party licenses in the download | S | Planned |
-| 2 | Clear message when the GPU device is lost | XS | Planned |
+| 1 | Third-party licenses in the download | S | Implemented; inspect release artifacts |
+| 2 | Clear message when the GPU device is lost | XS | Implemented; injected fatal-path test |
 | 3 | Versioned releases and a launcher update check | S | Planned |
 | 4 | Add to Steam, desktop shortcut, `--play` | S | Planned |
 | 5 | Controls page and `input.ini` | M | Planned |
 | 6 | Launcher translations | M | Planned |
-| 7 | README: features, known problems | S | Planned |
+| 7 | README: features, known problems | S | Implemented in PR #11 |
 
 ## 1. Third-party licenses in the download
 

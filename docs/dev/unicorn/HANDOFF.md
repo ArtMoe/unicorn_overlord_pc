@@ -1,9 +1,10 @@
 # Unicorn Overlord (CUSA36381, Asia, v01.04) — handoff
 
-Repository `hachi23/unicorn_overlord_pc`, branch `main` (it also contains the Odin Sphere port:
-the engine is shared). A new clone needs `git submodule update --init`. Same method as Odin Sphere: the game's x86-64 code runs natively,
-`src/runtime_*.c` replaces the PS4 libraries, `gpu/shadps4` translates the GPU to Vulkan.
-Read `docs/dev/odin/HANDOFF.md` first for building on Linux, the run scripts and the tooling.
+Repository `hachi23/unicorn_overlord_pc`, branch `main`. A new clone needs
+`git submodule update --init`. The game's x86-64 code runs natively, `src/runtime_*.c` replaces
+the PS4 libraries, `gpu/shadps4` translates the GPU to Vulkan. This file is the port's history;
+the current state and next steps are in `docs/dev/HANDOFF.md`. Linux builds need a clean shell
+environment (no cross-toolchain CC/CXX/CMAKE_SYSROOT/LDFLAGS exported).
 
 ## State (2026-10-13)
 
@@ -39,7 +40,7 @@ VW_GAME_DIR=/path/to/CUSA36381 VW_DATA_DIR=$PWD/run_uo bash run.sh
 python3 launcher/unicorn_launcher.py          # the launcher (data: run_uo/)
 python3 packaging/package.py unicorn          # dist/Unicorn Overlord PC/: launcher + LICENSE
 ```
-(with the shell environment cleaned as in docs/dev/odin/HANDOFF.md). Saves, caches and vw.ini are
+(with a clean shell environment). Saves, caches and vw.ini are
 in `run_uo/`. `run.sh` builds and then runs `run.py`, so since 2026-10-13 UO runs with run.py's
 defaults: deferred and stale readbacks on (graphics options in vw.ini). The battle rendered
 correctly with them; switch them off in the menu if something looks wrong.
@@ -89,7 +90,7 @@ Image options on the port side: render resolution (supersampling to the window),
 
 ## What the port needed (commit 1f99c4c)
 
-Imports: 720 (Odin Sphere 215), 44 required modules. `out/vwport … --check-imports` lists
+Imports: 720, 44 required modules. `out/vwport … --check-imports` lists
 every import the game would stop at without running it; names come from shadPS4's
 `aerolib.inl`.
 
@@ -129,7 +130,7 @@ Measured in the first battle (scripts below drive there):
 - Two threads saturate: `shadPS4:GpuComm` (PM4 decode, stage A) and `vw:DrawRec` (draw
   recording, stage B), ~6 µs per draw each. 60 FPS needs < ~2.7 µs.
 
-Done — **draw pipe batching** (commit b426b8b, `vk_draw_pipe.h`, also merged into odin-sphere):
+Done — **draw pipe batching** (commit b426b8b, `vk_draw_pipe.h`):
 each draw was handed to stage B with a seq_cst store to the line B polls, plus a read of B's
 position per Begin, plus a locked add on a counter sharing a line with A's. Now draws are
 published every 16 (`VW_PIPE_BATCH`) and before A drains, waits for ring space, yields

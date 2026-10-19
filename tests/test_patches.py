@@ -4,10 +4,11 @@ import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import patches
 from patches import (compile_patches, external_patches, external_selection, compile_external,
                      game_profile, selected_patches, patch_requirements)
 
-ODIN = ROOT / 'patches/Odin_Sphere_Leifthrasir.xml'
+BUILT_IN = ROOT / 'patches/Built_In.xml'  # a built-in file's path (only its name is compared)
 IDS = {'CUSA00000'}
 SEGMENTS = [(0, 0x6000000)]
 
@@ -37,7 +38,7 @@ class ExternalPatchTests(unittest.TestCase):
             (folder / 'extra.xml').write_text(EXTERNAL)
             (folder / 'other.xml').write_text(EXTERNAL.replace('CUSA00000', 'CUSA99999'))
             (folder / 'broken.xml').write_text('<Patch>')
-            found = external_patches(folder, '01.02', ODIN, IDS)
+            found = external_patches(folder, '01.02', BUILT_IN, IDS)
             self.assertEqual([key for key, _, _ in found],
                              ['extra.xml/On', 'extra.xml/Off', 'extra.xml/Mask'])
             # The file's isEnabled; the mask patch is skipped as a whole.
@@ -49,7 +50,10 @@ class ExternalPatchTests(unittest.TestCase):
             self.assertEqual(writes, [(0x2000, (0x12345678).to_bytes(4, 'little'))])
 
     def test_built_in_file_is_not_external(self):
-        self.assertEqual(external_patches(ODIN.parent, '01.01', ODIN, {'CUSA05083'}), [])
+        with tempfile.TemporaryDirectory() as directory:
+            built_in = Path(directory) / 'Game.xml'
+            built_in.write_text(EXTERNAL)
+            self.assertEqual(external_patches(built_in.parent, '01.02', built_in, IDS), [])
 
 
 REQUIREMENTS = """<?xml version="1.0"?>
@@ -65,8 +69,15 @@ REQUIREMENTS = """<?xml version="1.0"?>
 
 
 class GameProfileTests(unittest.TestCase):
+    def setUp(self):
+        self.games = patches.GAMES
+        patches.GAMES = [(IDS, BUILT_IN, '01.02', '00' * 32)]
+
+    def tearDown(self):
+        patches.GAMES = self.games
+
     def test_profiles_by_title_id(self):
-        self.assertEqual(game_profile('CUSA05083')[1:3], (ODIN, '01.01'))
+        self.assertEqual(game_profile('CUSA00000')[1:3], (BUILT_IN, '01.02'))
         self.assertIsNone(game_profile('CUSA99999'))
         self.assertIsNone(game_profile(None))
 
@@ -85,12 +96,15 @@ class GameProfileTests(unittest.TestCase):
         from patches import eboot_matches
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder) / 'eboot.bin').write_bytes(b'another build')
-            self.assertFalse(eboot_matches(folder, game_profile('CUSA05083')))
+            self.assertFalse(eboot_matches(folder, game_profile('CUSA00000')))
             self.assertTrue(eboot_matches(folder, None))  # no profile: nothing to check
 
-    def test_odin_patches_compile(self):
-        names = [m.get('Name') for m in ET.parse(ODIN).getroot().iter('Metadata')]
-        self.assertTrue(compile_patches(ODIN, names, '01.01', SEGMENTS))
+    def test_patch_file_compiles(self):
+        with tempfile.TemporaryDirectory() as folder:
+            xml = Path(folder) / 'game.xml'
+            xml.write_text(REQUIREMENTS)
+            names = [m.get('Name') for m in ET.parse(xml).getroot().iter('Metadata')]
+            self.assertTrue(compile_patches(xml, names, '01.02', SEGMENTS))
 
     def test_requirements_from_patch_notes(self):
         # Notes ask for extra direct memory (shadPS4 "DMEM") and a VBlank rate.

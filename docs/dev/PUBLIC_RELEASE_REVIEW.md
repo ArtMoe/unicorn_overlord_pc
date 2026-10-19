@@ -3,6 +3,19 @@
 Reviewed published main at `b6092bef89e853f93ecc6ea8e4e9dee5922845fe`.
 This is a source review, not verification of unpublished local fixes or a full playthrough.
 
+## Follow-up implementation
+
+The release-support follow-up adds selectable, previewed diagnostics exports; unique bounded
+live logs; saved preparation errors/Python tracebacks; persistent system/settings/GPU-driver
+metadata; explicit GPU-device-loss reporting; notice collection; source/symbol archives; and
+native CI test execution. The findings below describe the original audited revision.
+
+Repository protection was separately confirmed inactive. The updated JSON template is ready
+for a solo maintainer (PRs, current builds and resolved threads, zero self-approval requirement),
+but still requires an owner to apply it through GitHub settings or the documented CLI command.
+Full playthrough, cross-vendor GPU and packaged GUI validation still require real game/hardware
+testing; source and automated tests cannot establish those results.
+
 ## Release judgment
 
 Suitable for an explicitly experimental public test release after the items below are
@@ -25,8 +38,7 @@ Record OS, GPU/driver, CPU, RAM, resolution, settings and how far each tester pl
    explicitly build/run the C++ tests. A successful build does not validate native behaviour.
 3. **Diagnostics completeness:** fix the saved-log omissions and user export workflow below.
 4. **Release communication:** distinguish mutable `latest` test builds from versioned tested
-   releases; list supported dump/version, known problems and actual tested progress. README
-   references an `odin-sphere` branch; open PR #11 already proposes correcting this.
+   releases; list supported dump/version, known problems and actual tested progress.
 5. **Protection setup:** the repository ruleset list returned empty during this review.
    `.github/main-protection.json` is a template, not proof of active protection. Legacy
    branch protection was not verified. Configure required checks/review rules separately,

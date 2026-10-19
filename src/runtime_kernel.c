@@ -364,7 +364,7 @@ static ABI int32_t module_info_for_unwind(uint64_t address,int32_t flags,void *i
     (void)address; (void)flags;
     return info ? ERR(3) : ERR(14);
 }
-/* Odin Sphere cancels worker threads only on shutdown paths; nothing is torn down. */
+/* Games cancel worker threads only on shutdown paths; nothing is torn down. */
 static ABI int32_t pthread_cancel_stub(void *thread) {
     printf("Runtime: scePthreadCancel(%p) ignored\n",thread);
     return 0;

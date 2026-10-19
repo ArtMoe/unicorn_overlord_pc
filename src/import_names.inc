@@ -784,7 +784,7 @@
 {"iKJMWrAumPE#libkernel","getargc"},
 {"FJmglmTMdr4#libkernel","getargv"},
 {"QKd0qM58Qes#libkernel","sceKernelStopUnloadModule"},
-/* Odin Sphere Leifthrasir (CUSA05083); names from shadPS4 aerolib. */
+/* More PS4 library names (from shadPS4 aerolib). */
 {"BpFoboUJoZU#libkernel","sceKernelCreateEventFlag"},
 {"8mql9OcQnd4#libkernel","sceKernelDeleteEventFlag"},
 {"IOnSvHzqu6A#libkernel","sceKernelSetEventFlag"},

@@ -5,9 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <time.h>
 #include "runtime.h"
-#include "odin_render_scale.h"
 #include "unicorn_render_scale.h"
+#include "unicorn_button_icons.h"
+#include "unicorn_native_settings.h"
 #include "gpu/vwgpu.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
 #error This prototype requires x86-64 GCC or Clang (including MinGW).
@@ -335,7 +337,7 @@ static int install_jump(uint64_t at, unsigned length, unsigned char *stub) {
 }
 
 /* Render scale: VW_RENDER_SCALE=<factor> or render_resolution= in vw.ini draws the game at
- * 1920x1080 times the factor (src/odin_render_scale.h, src/unicorn_render_scale.h); the
+ * 1920x1080 times the factor (src/unicorn_render_scale.h); the
  * presenter averages it down to the window. */
 static int render_scale_prefix(const char *text, const char *prefix) {
     for (; *prefix; ++text, ++prefix)
@@ -349,6 +351,7 @@ static float render_scale_value(const char *text) {
     if (render_scale_prefix(text, "native") || render_scale_prefix(text, "1080p")) return 1.0f;
     if (render_scale_prefix(text, "480p")) return 4.0f / 9.0f;
     if (render_scale_prefix(text, "720p")) return 2.0f / 3.0f;
+    if (render_scale_prefix(text, "900p")) return 5.0f / 6.0f;
     if (render_scale_prefix(text, "1440p")) return 4.0f / 3.0f;
     if (render_scale_prefix(text, "1800p")) return 5.0f / 3.0f;
     if (render_scale_prefix(text, "4k") || render_scale_prefix(text, "2160p")) return 2.0f;
@@ -370,76 +373,9 @@ static float render_scale_setting(void) {
     return scale;
 }
 
-static void install_odin_render_scale(const char *app0, Segment *segments, uint64_t count,
-                                      uint64_t size) {
-    char path[4096], serial[32] = "", version[32] = "";
-    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
-    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
-    if (strcmp(serial, "CUSA05083")) return;
-    const float scale = render_scale_setting();
-    if (!(scale > 1.001f)) {
-        /* Below 1080p a scaled target's size (1280x720, ...) is also a texture asset size:
-         * the texture size hooks would misreport those assets. */
-        if (scale > 0.0f && scale < 0.999f) printf("Render scale: below 1080p is not supported for this game; native\n");
-        return;
-    }
-    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(version, "01.01") || scale > 3.0f || !odin_render_scale_signature_match(image, size)) {
-        printf("Render scale: unavailable (game version, code signature or factor %.2f)\n", scale);
-        return;
-    }
-    /* Debug: VW_RENDER_SCALE_PARTS bits 1 targets/viewport immediates, 2 view viewports, 4 heap,
-     * 8 clip scissors, 16 layer buffers, 32 texture sizes (sprites, layer composites). */
-    const char *parts_env = getenv("VW_RENDER_SCALE_PARTS");
-    const unsigned parts = parts_env ? (unsigned)strtoul(parts_env, NULL, 0) : 63;
-    const uint32_t width = (uint32_t)(1920.0f * scale + 0.5f) & ~1u;
-    const uint32_t height = (uint32_t)(1080.0f * scale + 0.5f) & ~1u;
-    /* The stubs scale by the rounded target width (2560/1920 for 1440p), so 1920 maps exactly. */
-    const float exact = (float)width / 1920.0f;
-    unsigned char *stub = allocate(page_size);
-    const struct { uint64_t at; unsigned length, part; unsigned char *stub; } hooks[] = {
-        {ODIN_VIEWPORT_HOOK_OFFSET, ODIN_VIEWPORT_HOOK_LENGTH, 2, stub},
-        {ODIN_SCISSOR_HOOK_OFFSET, 5, 8, stub + 256}, /* the stub tail-jumps to the setter */
-        {ODIN_LAYER_HOOK_OFFSET, ODIN_LAYER_HOOK_LENGTH, 16, stub + 512},
-        {ODIN_TEXSIZE_HOOK_OFFSET, ODIN_TEXSIZE_HOOK_LENGTH, 32, stub + 768},
-        {odin_uvscale_hooks[0], ODIN_UVSCALE_HOOK_LENGTH, 32, stub + 1024},
-        {odin_uvscale_hooks[1], ODIN_UVSCALE_HOOK_LENGTH, 32, stub + 1280},
-    };
-    /* All or nothing: a partly scaled frame draws in two coordinate systems. */
-    for (unsigned i = 0; i < sizeof(hooks) / sizeof(*hooks); ++i)
-        if (!mapped(segments, count, hooks[i].at, hooks[i].length) || !jump_reaches(hooks[i].at, hooks[i].stub)) {
-            printf("Render scale: unavailable (hook at 0x%" PRIx64 " not reachable)\n", hooks[i].at);
-            return;
-        }
-    odin_viewport_build_stub(hooks[0].stub, exact, (uintptr_t)(image + ODIN_VIEWPORT_HOOK_OFFSET + ODIN_VIEWPORT_HOOK_LENGTH));
-    odin_scissor_build_stub(hooks[1].stub, exact, (uintptr_t)(image + ODIN_SCISSOR_TARGET));
-    odin_layer_build_stub(hooks[2].stub, width, height, (uintptr_t)(image + ODIN_LAYER_CALLEE),
-                          (uintptr_t)(image + ODIN_LAYER_HOOK_OFFSET + ODIN_LAYER_HOOK_LENGTH));
-    odin_texsize_build_stub(hooks[3].stub, width, height,
-                            (uintptr_t)(image + ODIN_TEXSIZE_HOOK_OFFSET + ODIN_TEXSIZE_HOOK_LENGTH));
-    for (unsigned i = 0; i < 2; ++i)
-        odin_uvscale_build_stub(hooks[4 + i].stub, width, height,
-                                (uintptr_t)(image + odin_uvscale_hooks[i] + ODIN_UVSCALE_HOOK_LENGTH));
-    protect(stub, page_size, 5);
-    for (unsigned i = 0; i < sizeof(hooks) / sizeof(*hooks); ++i)
-        if (parts & hooks[i].part) install_jump(hooks[i].at, hooks[i].length, hooks[i].stub);
-    const float width_f = (float)width, height_f = (float)height;
-    for (unsigned i = 0; (parts & 1) && i < sizeof(odin_scale_width_imm) / sizeof(*odin_scale_width_imm); ++i) {
-        memcpy(image + odin_scale_width_imm[i], &width, 4);
-        memcpy(image + odin_scale_height_imm[i], &height, 4);
-    }
-    for (unsigned i = 0; (parts & 1) && i < sizeof(odin_scale_width_float) / sizeof(*odin_scale_width_float); ++i) {
-        memcpy(image + odin_scale_width_float[i], &width_f, 4);
-        memcpy(image + odin_scale_height_float[i], &height_f, 4);
-    }
-    /* Scaled targets come from the RENDERBUFFER heap: scale^2 its size. */
-    const uint32_t heap = ((uint32_t)(ODIN_RENDERBUFFER_HEAP_SIZE * scale * scale) + 0x1fffff) & ~0x1fffffu;
-    if (parts & 4) memcpy(image + ODIN_RENDERBUFFER_HEAP_IMM, &heap, 4);
-    printf("Render scale: %.2f (%ux%u, render buffer heap %u MiB)\n", scale, width, height, heap >> 20);
-}
-
-/* Unicorn Overlord: the render size of this launch, 0x0 when native. Above 1080p the game runs
- * its PS4 Pro path (VW_NEO_MODE), up to its native 3840x2160. */
+/* Unicorn Overlord: the render size of this launch, 0x0 when native. Any other size runs the
+ * game's PS4 Pro path (VW_NEO_MODE) with its 3840x2160 replaced: the Pro path lays out every
+ * 2D layer from the target size, so 720p and 900p keep the 1080p framing too. */
 static int unicorn_render_size(const char *app0, uint32_t *width, uint32_t *height) {
     char path[4096], serial[32] = "", version[32] = "";
     snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
@@ -447,7 +383,8 @@ static int unicorn_render_size(const char *app0, uint32_t *width, uint32_t *heig
     sfo_value(path, "APP_VER", version, sizeof(version), NULL);
     if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return 0;
     float scale = render_scale_setting();
-    if (!(scale > 1.001f)) return 0;
+    if (!(scale > 0.0f) || (scale > 0.999f && scale < 1.001f)) return 0;
+    if (scale < 0.5f) scale = 0.5f;
     if (scale > 2.0f) scale = 2.0f;
     *width = (uint32_t)(1920.0f * scale + 0.5f) & ~1u;
     *height = (uint32_t)(1080.0f * scale + 0.5f) & ~1u;
@@ -489,6 +426,103 @@ static void install_unicorn_render_scale(const char *app0, uint64_t size) {
         }
     }
     printf("Render scale: %ux%u (PS4 Pro path)\n", width, height);
+}
+
+/* Unicorn Overlord: a hook after the game's CRI decompressor (FUN_001fdfc0), which every
+ * compressed CPK file passes through: the button icon layout (src/unicorn_button_icons.h).
+ * VW_CRILAYLA_STATS=1 also prints how much the game decompresses and how long it takes. */
+#define UNICORN_CRILAYLA_OFFSET 0x1fdfc0
+/* The first bytes of FUN_001fdfc0 in v01.04: push rbp; push r15; push r14 (the 5 bytes the jump
+ * replaces, copied to the trampoline), then the rest of its prologue. */
+static const unsigned char unicorn_crilayla_signature[] = {
+    0x55, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x89, 0xcf, 0x49, 0x63, 0xc8};
+typedef int (ABI *CriDecompress)(void *, const uint8_t *, int, uint8_t *, int);
+static CriDecompress cri_decompress;
+static int crilayla_stats;
+static volatile uint64_t crilayla_calls, crilayla_bytes, crilayla_ns, crilayla_reported;
+
+static uint64_t monotonic_ns(void) {
+#ifdef _WIN32
+    LARGE_INTEGER t, f;
+    QueryPerformanceCounter(&t);
+    QueryPerformanceFrequency(&f);
+    return (uint64_t)((double)t.QuadPart * 1e9 / (double)f.QuadPart);
+#else
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (uint64_t)t.tv_sec * 1000000000u + (uint64_t)t.tv_nsec;
+#endif
+}
+
+/* The caller (FUN_001fde10) passes the stream without its last 0x100 bytes, which are the
+ * file's uncompressed header, and the output after that header. */
+static ABI int unicorn_cri_decompress_hook(void *context, const uint8_t *src, int srclen, uint8_t *dst, int dstlen) {
+    const uint64_t start = crilayla_stats ? monotonic_ns() : 0;
+    /* The game decompresses in place (the output overwrites the stream), so the header first. */
+    unsigned char header[BUTTON_ICONS_HEADER];
+    const int sprite = srclen > 0 && !memcmp(src + srclen, "FMBS", 4);
+    if (sprite) memcpy(header, src + srclen, sizeof(header));
+    const int result = cri_decompress(context, src, srclen, dst, dstlen);
+    if (sprite && result > 0 && result == dstlen && button_icons_loaded(header, dst, (uint64_t)dstlen))
+        printf("Button icons: %u button groups in Interface_Button.mbs\n", button_icons.groups);
+    if (crilayla_stats) {
+        __atomic_add_fetch(&crilayla_ns, monotonic_ns() - start, __ATOMIC_RELAXED);
+        __atomic_add_fetch(&crilayla_calls, 1, __ATOMIC_RELAXED);
+        const uint64_t bytes = __atomic_add_fetch(&crilayla_bytes, (uint64_t)(dstlen > 0 ? dstlen : 0), __ATOMIC_RELAXED);
+        if (bytes - crilayla_reported >= (64u << 20)) {
+            crilayla_reported = bytes;
+            printf("CRILAYLA: %" PRIu64 " files, %" PRIu64 " MiB, %.0f ms decoding\n", crilayla_calls, bytes >> 20,
+                   crilayla_ns / 1e6);
+        }
+    }
+    return result;
+}
+
+static void install_unicorn_cri_hook(const char *app0, Segment *segments, uint64_t count) {
+    char path[4096], serial[32] = "", version[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
+    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return;
+    const char *stats = getenv("VW_CRILAYLA_STATS");
+    crilayla_stats = stats && *stats && strcmp(stats, "0");
+    const uint64_t at = UNICORN_CRILAYLA_OFFSET;
+    if (!mapped(segments, count, at, sizeof(unicorn_crilayla_signature)) ||
+        memcmp(image + at, unicorn_crilayla_signature, sizeof(unicorn_crilayla_signature))) {
+        printf("Button icons: the game's decompressor is not where v01.04 has it; PlayStation icons only\n");
+        return;
+    }
+    /* stub: movabs rax, hook; jmp rax. trampoline: the 5 replaced bytes; movabs rax, at+5; jmp rax */
+    unsigned char *stub = allocate(page_size);
+    const uintptr_t hook = (uintptr_t)unicorn_cri_decompress_hook, resume = (uintptr_t)(image + at + 5);
+    stub[0] = 0x48; stub[1] = 0xb8; memcpy(stub + 2, &hook, 8); stub[10] = 0xff; stub[11] = 0xe0;
+    unsigned char *trampoline = stub + 64;
+    memcpy(trampoline, image + at, 5);
+    trampoline[5] = 0x48; trampoline[6] = 0xb8; memcpy(trampoline + 7, &resume, 8); trampoline[15] = 0xff; trampoline[16] = 0xe0;
+    protect(stub, page_size, 5);
+    cri_decompress = (CriDecompress)(uintptr_t)trampoline;
+    if (!install_jump(at, 5, stub)) {
+        printf("Button icons: hook not reachable; PlayStation icons only\n");
+        return;
+    }
+    runtime_pad_on_button_icons(button_icons_set_style);
+}
+
+/* Unicorn Overlord: the port's settings in the game's Options screen
+ * (src/unicorn_native_settings.h). */
+static void install_unicorn_native_settings(const char *app0) {
+    char path[4096], serial[32] = "", version[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
+    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return;
+    unsigned char *code = allocate(page_size), *data = allocate(page_size);
+    if (!native_settings_install(image, code, data)) {
+        printf("Options: the game differs from v01.04 here; PC settings only in the Insert menu\n");
+        return;
+    }
+    protect(code, page_size, 5);
+    printf("Options: %u PC rows added to System > Options\n", native_settings.count);
 }
 
 /* G3PATCH2 (patches.py): the patches' image base, then byte writes at image offsets, applied
@@ -809,8 +843,9 @@ int main(int argc, char **argv) {
         _exit(missing ? 1 : 0); /* no destructors: GPU threads are running */
     }
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
-    if (gpu_enabled) install_odin_render_scale(app0, segments, ns, size);
     if (gpu_enabled) install_unicorn_render_scale(app0, size);
+    install_unicorn_cri_hook(app0, segments, ns);
+    if (gpu_enabled) install_unicorn_native_settings(app0);
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif

@@ -154,7 +154,7 @@ static ABI int32_t http_uri_escape(char *out,uint64_t *required,uint64_t prepare
     *out=0; return 0;
 }
 
-/* ---- TUS online storage (Odin Sphere): signed out ---- */
+/* ---- TUS online storage: signed out ---- */
 static ABI int32_t tus_get_data(void) { return NP_SIGNED_OUT; }
 
 static const RuntimeExport online_exports[]={

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # One-shot Windows build: run in the MSYS2 CLANG64 shell from the repository root.
-#   bash packaging/windows/build.sh [game]     (game: unicorn, odin; default unicorn)
+#   bash packaging/windows/build.sh [game]     (game: unicorn; the default)
 # Installs the toolchain, fetches the submodules, builds the static libraries (packaging/deps.sh)
 # and out/vwport.exe with them, and packages dist/<Title> PC/ plus its .zip (packaging/package.py,
-# with a python.org Python): the launcher with vwport.exe inside, and LICENSE.
+# with a python.org Python): the start program, _internal/ (with vwport.exe), LICENSE, licenses/.
 set -euo pipefail
 cd -- "$(dirname -- "$0")/../.."
 if [[ ${MSYSTEM:-} != CLANG64 ]]; then

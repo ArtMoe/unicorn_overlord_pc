@@ -181,7 +181,7 @@ static ABI int32_t mouse_read(int32_t handle,unsigned char *data,int32_t count) 
 static ABI int32_t mouse_close(int32_t handle) { (void)handle; return 0; }
 static ABI int32_t audio_in_open(void) { return AUDIO_IN_NOT_OPENED; }
 
-/* ---- Odin Sphere: touchpad gestures (recognizers open but never report touches; the game
+/* ---- Touchpad gestures (recognizers open but never report touches; the game
  * reads the touchpad button through the pad) and crash dumps (accepted, not written). ---- */
 static ABI int32_t gesture_open(int32_t input,const void *param) { (void)input; (void)param; return new_id(); }
 static ABI int32_t coredump_register(void *handler,uint64_t stack,void *arg) { (void)handler; (void)stack; (void)arg; return 0; }

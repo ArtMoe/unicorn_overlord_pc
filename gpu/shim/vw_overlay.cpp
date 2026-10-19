@@ -331,10 +331,12 @@ void PerformanceTab() {
     }
     ImGui::SeparatorText("Applied on restart");
     if (BeginRows("##restart")) {
-        static const char* const resolution_labels[] = {"Native (1080p)", "1440p", "1800p", "4K"};
+        static const char* const resolution_labels[] = {"Native (1080p)", "720p (less GPU work)",
+                                                        "900p (less GPU work)", "1440p", "1800p", "4K"};
         ChoiceRow("Render resolution", s.render_resolution, resolution_labels, nullptr, int(G::Resolutions.size()),
-                  "Draws the game larger and averages it down to the window: smoother edges, sharper "
-                  "art, more GPU work.");
+                  "Above 1080p: drawn larger and averaged down to the window (smoother edges, sharper "
+                  "art, more GPU work). 720p and 900p: less GPU work for weak GPUs, softer image; the "
+                  "layout stays the same.");
         CheckRow("Game reads GPU data without waiting", s.stale_readback,
                  "Big FPS gain. Switch it off if lighting or objects look wrong.");
         CheckRow("Deferred GPU readbacks", s.deferred_readback,
@@ -383,6 +385,25 @@ void ControlsTab() {
                                          "R3", "Options", "Touchpad", "D-pad up", "D-pad down", "D-pad left",
                                          "D-pad right"};
     const int count = std::min(runtime_pad_button_count(), int(std::size(labels)));
+    {
+        // button_icons= (src/runtime_pad.c, src/unicorn_button_icons.h): the game's own PS4,
+        // Xbox and Switch icons, switched at once.
+        static const char* const keys[] = {"auto", "playstation", "xbox", "nintendo"};
+        static const char* const names[] = {"Auto (the controller in use)", "PlayStation", "Xbox", "Nintendo"};
+        const std::string current = VwSettings::Text("button_icons");
+        int selected = 0;
+        for (int i = 1; i < 4; ++i) {
+            if (current == keys[i]) selected = i;
+        }
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Button icons");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
+        if (ImGui::Combo("##button_icons", &selected, names, 4)) {
+            VwSettings::SetText("button_icons", selected ? keys[selected] : "");
+            dirty = true;
+        }
+    }
     ImGui::TextWrapped("Choose a box, then press the new key or controller button (Esc cancels). Applied at "
                        "once. Sticks and triggers stay as they are; keyboard sticks: WASD and the arrow keys.");
     if (ImGui::BeginTable("##controls", 3, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg)) {

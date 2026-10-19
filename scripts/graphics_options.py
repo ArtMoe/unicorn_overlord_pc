@@ -10,7 +10,7 @@ never did, the next start goes back to the last confirmed values.
 import json
 from pathlib import Path
 
-RESOLUTIONS = ('native', '1440p', '1800p', '4K')
+RESOLUTIONS = ('native', '720p', '900p', '1440p', '1800p', '4K')
 DEFAULTS = {'render_resolution': 'native', 'deferred_readback': '1', 'stale_readback': '1',
             'async_shaders': '1'}
 

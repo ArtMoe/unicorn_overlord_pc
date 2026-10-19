@@ -2,7 +2,7 @@
 // Creates the EXTERN block that make_ghidra_elf.py pointed the GOT at, labels each 8-byte
 // external slot and GOT slot with the import's name (or nid_<NID> when unknown), types GOT
 // slots as pointers, and names the jmp [GOT] thunks after the import.
-// @category odin
+// @category vw
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.PointerDataType;
