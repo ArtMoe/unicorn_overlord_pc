@@ -469,11 +469,45 @@ static void replay_sample(PadData *d) {
     d->left_x=s->axes[0]; d->left_y=s->axes[1]; d->right_x=s->axes[2]; d->right_y=s->axes[3];
     d->l2=s->l2; d->r2=s->r2;
 }
+/* Button icons (src/unicorn_button_icons.h): the setting, else the connected controller's
+ * family. Keyboard only: Xbox letters, the most common prompts on PC. Checked twice a second. */
+static void (*button_icons_listener)(int);
+void runtime_pad_on_button_icons(void (*listener)(int style)) { button_icons_listener=listener; }
+static int button_icons_style(SDL_Gamepad *g) {
+    char text[32]="";
+    const char *env=getenv("VW_BUTTON_ICONS");
+    if (env && *env) snprintf(text,sizeof(text),"%s",env);
+    else vwgpu_setting_text("button_icons",text,sizeof(text));
+    if (!strcmp(text,"playstation")) return 0;
+    if (!strcmp(text,"xbox")) return 1;
+    if (!strcmp(text,"nintendo")) return 2;
+    if (!g) return 1;
+    switch (SDL_GetGamepadType(g)) {
+    case SDL_GAMEPAD_TYPE_PS3: case SDL_GAMEPAD_TYPE_PS4: case SDL_GAMEPAD_TYPE_PS5: return 0;
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO: case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT: case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR: return 2;
+    default: return 1;
+    }
+}
+static void update_button_icons(void) {
+    static int current=-1;
+    static uint64_t last;
+    const uint64_t now=now_us();
+    if (!button_icons_listener || (current>=0 && now-last<500000)) return;
+    last=now;
+    const int style=button_icons_style(current_gamepad());
+    if (style==current) return;
+    static const char *const names[]={"PlayStation","Xbox","Nintendo"};
+    printf("Runtime: button icons: %s\n",names[style]);
+    current=style;
+    button_icons_listener(style);
+}
 /* After the menu or the text dialog closes, buttons still held (the Cross that accepted a
  * name) stay hidden until released: the game would take them as a new press. */
 static int hold_after_capture;
 static void sample(PadData *d) {
     sample_host(d);
+    update_button_icons();
     if (vwgpu_overlay_captures_input()) { hold_after_capture=1; return; }
     record_sample(d);
     read_inject();

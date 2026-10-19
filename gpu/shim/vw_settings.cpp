@@ -21,8 +21,8 @@ const char* Path() {
 }
 
 std::mutex text_mutex;
-std::map<std::string, std::string> texts; // key_map, pad_map
-constexpr const char* TextKeys[] = {"key_map", "pad_map"};
+std::map<std::string, std::string> texts; // key_map, pad_map, button_icons
+constexpr const char* TextKeys[] = {"key_map", "pad_map", "button_icons"};
 
 void Set(Values& v, const std::string& key, const std::string& value) {
     for (const char* text_key : TextKeys) {

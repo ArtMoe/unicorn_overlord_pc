@@ -15,6 +15,7 @@ typedef vw_jmp_buf sigjmp_buf;
 extern __thread sigjmp_buf *runtime_fault_recover;
 /* Restarts the game (in-game settings menu, render resolution change). */
 void runtime_restart(void);
+void runtime_restart_with(const char *name);
 #define ABI __attribute__((sysv_abi))
 typedef void (ABI *GuestCallback)(void);
 void runtime_start(uint64_t capabilities);
@@ -100,6 +101,10 @@ uintptr_t runtime_audio_resolve(const char *name);
 void runtime_audio_report(void);
 uintptr_t runtime_pad_resolve(const char *name);
 void runtime_pad_report(void);
+/* The button icon layout (0 PlayStation, 1 Xbox, 2 Nintendo) from button_icons= (auto, playstation,
+ * xbox, nintendo) or VW_BUTTON_ICONS; in auto the connected controller's. The listener is called
+ * at the first pad read and whenever it changes. */
+void runtime_pad_on_button_icons(void (*listener)(int style));
 uintptr_t runtime_rtc_resolve(const char *name);
 const char *runtime_file_user_dir(void);
 void runtime_savedata_configure(const char *title);

@@ -122,4 +122,6 @@ if [[ ${1:-} == --test ]]; then
     out/json-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_services.c -o out/services-test
     out/services-test
+    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -Isrc tests/test_button_icons.c -o out/button-icons-test
+    out/button-icons-test
 fi

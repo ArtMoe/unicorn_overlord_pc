@@ -5,9 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <time.h>
 #include "runtime.h"
 #include "odin_render_scale.h"
 #include "unicorn_render_scale.h"
+#include "unicorn_button_icons.h"
 #include "gpu/vwgpu.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
 #error This prototype requires x86-64 GCC or Clang (including MinGW).
@@ -494,6 +496,86 @@ static void install_unicorn_render_scale(const char *app0, uint64_t size) {
     printf("Render scale: %ux%u (PS4 Pro path)\n", width, height);
 }
 
+/* Unicorn Overlord: a hook after the game's CRI decompressor (FUN_001fdfc0), which every
+ * compressed CPK file passes through: the button icon layout (src/unicorn_button_icons.h).
+ * VW_CRILAYLA_STATS=1 also prints how much the game decompresses and how long it takes. */
+#define UNICORN_CRILAYLA_OFFSET 0x1fdfc0
+/* The first bytes of FUN_001fdfc0 in v01.04: push rbp; push r15; push r14 (the 5 bytes the jump
+ * replaces, copied to the trampoline), then the rest of its prologue. */
+static const unsigned char unicorn_crilayla_signature[] = {
+    0x55, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x89, 0xcf, 0x49, 0x63, 0xc8};
+typedef int (ABI *CriDecompress)(void *, const uint8_t *, int, uint8_t *, int);
+static CriDecompress cri_decompress;
+static int crilayla_stats;
+static volatile uint64_t crilayla_calls, crilayla_bytes, crilayla_ns, crilayla_reported;
+
+static uint64_t monotonic_ns(void) {
+#ifdef _WIN32
+    LARGE_INTEGER t, f;
+    QueryPerformanceCounter(&t);
+    QueryPerformanceFrequency(&f);
+    return (uint64_t)((double)t.QuadPart * 1e9 / (double)f.QuadPart);
+#else
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (uint64_t)t.tv_sec * 1000000000u + (uint64_t)t.tv_nsec;
+#endif
+}
+
+/* The caller (FUN_001fde10) passes the stream without its last 0x100 bytes, which are the
+ * file's uncompressed header, and the output after that header. */
+static ABI int unicorn_cri_decompress_hook(void *context, const uint8_t *src, int srclen, uint8_t *dst, int dstlen) {
+    const uint64_t start = crilayla_stats ? monotonic_ns() : 0;
+    /* The game decompresses in place (the output overwrites the stream), so the header first. */
+    unsigned char header[BUTTON_ICONS_HEADER];
+    const int sprite = srclen > 0 && !memcmp(src + srclen, "FMBS", 4);
+    if (sprite) memcpy(header, src + srclen, sizeof(header));
+    const int result = cri_decompress(context, src, srclen, dst, dstlen);
+    if (sprite && result > 0 && result == dstlen && button_icons_loaded(header, dst, (uint64_t)dstlen))
+        printf("Button icons: %u button groups in Interface_Button.mbs\n", button_icons.groups);
+    if (crilayla_stats) {
+        __atomic_add_fetch(&crilayla_ns, monotonic_ns() - start, __ATOMIC_RELAXED);
+        __atomic_add_fetch(&crilayla_calls, 1, __ATOMIC_RELAXED);
+        const uint64_t bytes = __atomic_add_fetch(&crilayla_bytes, (uint64_t)(dstlen > 0 ? dstlen : 0), __ATOMIC_RELAXED);
+        if (bytes - crilayla_reported >= (64u << 20)) {
+            crilayla_reported = bytes;
+            printf("CRILAYLA: %" PRIu64 " files, %" PRIu64 " MiB, %.0f ms decoding\n", crilayla_calls, bytes >> 20,
+                   crilayla_ns / 1e6);
+        }
+    }
+    return result;
+}
+
+static void install_unicorn_cri_hook(const char *app0, Segment *segments, uint64_t count) {
+    char path[4096], serial[32] = "", version[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
+    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return;
+    const char *stats = getenv("VW_CRILAYLA_STATS");
+    crilayla_stats = stats && *stats && strcmp(stats, "0");
+    const uint64_t at = UNICORN_CRILAYLA_OFFSET;
+    if (!mapped(segments, count, at, sizeof(unicorn_crilayla_signature)) ||
+        memcmp(image + at, unicorn_crilayla_signature, sizeof(unicorn_crilayla_signature))) {
+        printf("Button icons: the game's decompressor is not where v01.04 has it; PlayStation icons only\n");
+        return;
+    }
+    /* stub: movabs rax, hook; jmp rax. trampoline: the 5 replaced bytes; movabs rax, at+5; jmp rax */
+    unsigned char *stub = allocate(page_size);
+    const uintptr_t hook = (uintptr_t)unicorn_cri_decompress_hook, resume = (uintptr_t)(image + at + 5);
+    stub[0] = 0x48; stub[1] = 0xb8; memcpy(stub + 2, &hook, 8); stub[10] = 0xff; stub[11] = 0xe0;
+    unsigned char *trampoline = stub + 64;
+    memcpy(trampoline, image + at, 5);
+    trampoline[5] = 0x48; trampoline[6] = 0xb8; memcpy(trampoline + 7, &resume, 8); trampoline[15] = 0xff; trampoline[16] = 0xe0;
+    protect(stub, page_size, 5);
+    cri_decompress = (CriDecompress)(uintptr_t)trampoline;
+    if (!install_jump(at, 5, stub)) {
+        printf("Button icons: hook not reachable; PlayStation icons only\n");
+        return;
+    }
+    runtime_pad_on_button_icons(button_icons_set_style);
+}
+
 /* G3PATCH2 (patches.py): the patches' image base, then byte writes at image offsets, applied
  * after relocation. A write may replace a whole base-relative pointer slot (60/90 FPS++ swap
  * function pointers): the patch holds the address at the patches' base, rebased here. */
@@ -814,6 +896,7 @@ int main(int argc, char **argv) {
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
     if (gpu_enabled) install_odin_render_scale(app0, segments, ns, size);
     if (gpu_enabled) install_unicorn_render_scale(app0, size);
+    install_unicorn_cri_hook(app0, segments, ns);
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif

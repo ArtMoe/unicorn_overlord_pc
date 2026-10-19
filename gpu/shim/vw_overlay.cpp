@@ -385,6 +385,25 @@ void ControlsTab() {
                                          "R3", "Options", "Touchpad", "D-pad up", "D-pad down", "D-pad left",
                                          "D-pad right"};
     const int count = std::min(runtime_pad_button_count(), int(std::size(labels)));
+    {
+        // button_icons= (src/runtime_pad.c, src/unicorn_button_icons.h): the game's own PS4,
+        // Xbox and Switch icons, switched at once.
+        static const char* const keys[] = {"auto", "playstation", "xbox", "nintendo"};
+        static const char* const names[] = {"Auto (the controller in use)", "PlayStation", "Xbox", "Nintendo"};
+        const std::string current = VwSettings::Text("button_icons");
+        int selected = 0;
+        for (int i = 1; i < 4; ++i) {
+            if (current == keys[i]) selected = i;
+        }
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Button icons");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
+        if (ImGui::Combo("##button_icons", &selected, names, 4)) {
+            VwSettings::SetText("button_icons", selected ? keys[selected] : "");
+            dirty = true;
+        }
+    }
     ImGui::TextWrapped("Choose a box, then press the new key or controller button (Esc cancels). Applied at "
                        "once. Sticks and triggers stay as they are; keyboard sticks: WASD and the arrow keys.");
     if (ImGui::BeginTable("##controls", 3, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg)) {
