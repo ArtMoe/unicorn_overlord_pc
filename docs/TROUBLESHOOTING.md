@@ -32,6 +32,12 @@ before each start.
 2. Look for a line starting with `STOP:` (something the port does not support yet) or
    `Guest fault` / `Host fault` (a crash, followed by where it happened).
 3. Check the GPU line near the top: the port needs a Vulkan 1.3 GPU and an up-to-date driver.
+4. `Failed to query surface capabilities: ErrorUnknown`: the graphics driver cannot show any
+   Vulkan window at the moment. Seen on Windows with an AMD driver after the PC woke from sleep
+   (other Vulkan programs failed too); restarting the PC fixes it.
+5. If the game closes right after the `GPU selected:` line, start it once with the environment
+   variable `VW_PIPELINE_BINARIES=0` (already the default on NVIDIA) and attach both logs to
+   a bug report.
 
 ## The log says the graphics device was lost
 
