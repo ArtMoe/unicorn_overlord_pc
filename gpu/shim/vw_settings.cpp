@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <mutex>
 #include <string>
@@ -149,11 +150,16 @@ bool GraphicsNeedRestart() {
            v.stale_readback != v.startup_stale_readback;
 }
 
+// Written beside vw.ini, then renamed over it: a crash or a suspend while writing kept an empty
+// or cut-off vw.ini, and every setting went back to its default.
 void Save() {
+    static std::mutex save_mutex; // the overlay and the game's Options screen both save
+    std::scoped_lock save_lock{save_mutex};
     const auto& v = Get();
-    FILE* file = std::fopen(Path(), "w");
+    const std::string temp = std::string(Path()) + ".tmp";
+    FILE* file = std::fopen(temp.c_str(), "w");
     if (!file) {
-        std::printf("Settings: cannot write %s\n", Path());
+        std::printf("Settings: cannot write %s\n", temp.c_str());
         return;
     }
     std::fprintf(file, "# vw settings (in-game menu: Insert / R3+L2)\nshow_fps=%d\ncheck_updates=%d\n",
@@ -187,7 +193,18 @@ void Save() {
             }
         }
     }
-    std::fclose(file);
+    const bool written = !std::ferror(file);
+    if (std::fclose(file) != 0 || !written) {
+        std::printf("Settings: cannot write %s\n", temp.c_str());
+        std::remove(temp.c_str());
+        return;
+    }
+    std::error_code error;
+    std::filesystem::rename(temp, Path(), error);
+    if (error) {
+        std::printf("Settings: cannot replace %s (%s)\n", Path(), error.message().c_str());
+        std::remove(temp.c_str());
+    }
 }
 
 } // namespace VwSettings

@@ -41,18 +41,31 @@ class SaveBackupTest(unittest.TestCase):
     def test_same_second_gets_unique_name(self):
         write(self.save, 'v1')
         first = save_backup.backup(self.user, now=self.clock)
+        write(self.save, 'v2')
         second = save_backup.backup(self.user, now=self.clock)
         self.assertNotEqual(first, second)
         self.assertEqual(len(save_backup.list_backups(self.user)), 2)
 
     def test_keeps_newest_ten(self):
-        write(self.save, 'v')
-        made = [save_backup.backup(self.user, now=self.tick()) for _ in range(12)]
+        made = []
+        for n in range(12):
+            write(self.save, f'v{n}')
+            made.append(save_backup.backup(self.user, now=self.tick()))
         kept = save_backup.list_backups(self.user)
         self.assertEqual(len(kept), save_backup.KEEP)
         self.assertEqual(kept[0], made[-1].name)  # newest first
         self.assertFalse(made[0].exists())
         self.assertFalse(made[1].exists())
+
+    def test_unchanged_saves_do_not_push_out_older_backups(self):
+        write(self.save, 'good')
+        good = save_backup.backup(self.user, now=self.tick())
+        write(self.save, 'bad')
+        for _ in range(12):  # restarts with the same saves
+            save_backup.backup(self.user, now=self.tick())
+        kept = save_backup.list_backups(self.user)
+        self.assertEqual(len(kept), 2)
+        self.assertEqual((good / self.save.relative_to(self.user / 'savedata')).read_text(), 'good')
 
     def test_restore_backs_up_current_first(self):
         write(self.save, 'old')
@@ -67,8 +80,8 @@ class SaveBackupTest(unittest.TestCase):
     def test_restore_oldest_when_full(self):
         write(self.save, 'oldest')
         oldest = save_backup.backup(self.user, now=self.tick())
-        write(self.save, 'later')
-        for _ in range(save_backup.KEEP - 1):
+        for n in range(save_backup.KEEP - 1):
+            write(self.save, f'later {n}')
             save_backup.backup(self.user, now=self.tick())
         save_backup.restore(self.user, oldest.name, now=self.tick())
         self.assertEqual(self.save.read_text(), 'oldest')

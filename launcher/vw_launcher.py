@@ -85,7 +85,9 @@ def load_settings(data):
 
 def save_settings(data, settings):
     data.mkdir(parents=True, exist_ok=True)
-    (data / 'launcher.json').write_text(json.dumps(settings, indent=2), encoding='utf-8')
+    temp = data / 'launcher.json.tmp'  # renamed over it: an interrupted write keeps the old file
+    temp.write_text(json.dumps(settings, indent=2), encoding='utf-8')
+    os.replace(temp, data / 'launcher.json')
 
 
 def check_game(game_info, folder):
@@ -334,6 +336,10 @@ def report_failure(game_info, data, code, game_dir=''):
 def wait_for(pid):
     """Waits (at most 30 s) for the previous game process to end."""
     import time
+    # Linux: the in-game restart exec'd this program in the game's own process (directly, or
+    # through a shell or the bootloader whose child this is); waiting for it would take 30 s.
+    if not WINDOWS and pid in (os.getpid(), os.getppid()):
+        return
     for _ in range(300):
         if WINDOWS:
             import ctypes
@@ -525,8 +531,24 @@ def start_command():
     return [sys.executable, str(Path(sys.argv[0]).resolve())]
 
 
+def restore_library_path():
+    """Linux packaged: the library path the program was started with. PyInstaller puts its own
+    libraries first and every child inherited them: vwport took the bundled Vulkan loader, whose
+    vkCreateWaylandSurfaceKHR is null (a crash on Wayland: Steam Deck game mode, Plasma). This
+    process keeps the libraries it loaded at start; children and an updated AppImage get the
+    original path."""
+    if not FROZEN or WINDOWS:
+        return
+    original = os.environ.pop('LD_LIBRARY_PATH_ORIG', None)
+    if original is None:
+        os.environ.pop('LD_LIBRARY_PATH', None)
+    else:
+        os.environ['LD_LIBRARY_PATH'] = original
+
+
 def main(key):
     """Runs the setup and the game for GAMES[key], or one of the packaged roles (--run, --script)."""
+    restore_library_path()
     args = sys.argv[1:]
     if args and args[0] in ('--run', '--script'):
         sys.exit(run_role(args))
