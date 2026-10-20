@@ -85,7 +85,9 @@ def load_settings(data):
 
 def save_settings(data, settings):
     data.mkdir(parents=True, exist_ok=True)
-    (data / 'launcher.json').write_text(json.dumps(settings, indent=2), encoding='utf-8')
+    temp = data / 'launcher.json.tmp'  # renamed over it: an interrupted write keeps the old file
+    temp.write_text(json.dumps(settings, indent=2), encoding='utf-8')
+    os.replace(temp, data / 'launcher.json')
 
 
 def check_game(game_info, folder):
