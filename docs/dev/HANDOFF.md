@@ -1,41 +1,76 @@
-# Handoff (2026-10-19)
+# Handoff (2026-10-20)
 
 Read this first. The port's history and reverse-engineering notes are in
 [unicorn/HANDOFF.md](unicorn/HANDOFF.md), the GPU pipeline in [parallel_gpu.md](parallel_gpu.md).
+Development moves to the Windows desktop (7800X3D, RX 9070 XT) from here; build there with
+MSYS2 CLANG64 ([../../packaging/windows/README.md](../../packaging/windows/README.md)).
 
-## Open work for the next agent (2026-10-19, evening)
+## Open work for the next agent (2026-10-20)
 
-Finish the first public release. In order:
+In order:
 
-1. **Pull request #18** (branch `claude/settings-checks`): removes the frame rate limit and adds
-   updates from GitHub releases (below). Wait for the Linux and Windows checks, then merge it
-   into `main` with a merge commit (`gh pr merge 18 --merge`); GitHub deletes the branch. The
-   CI then rebuilds the rolling `latest` pre-release. A check run once got stuck (run "completed"
-   while its jobs stayed queued): `gh run rerun <id>` fixed it.
-2. **Test the Windows package from `latest`** (`Unicorn-Overlord-PC-windows.zip`): first-start
-   setup, title, the Options PC section, a battle, save and load. Nobody has run the Windows
-   **update swap** (`--finish-update`, `scripts/updates.install`) on Windows yet: after step 3,
-   start an older build (the `latest` zip counts as older than every release) and take the
-   offered update; check that `data/` (vw.ini, saves, game) survives and the new version starts.
-3. **Publish v0.1.0:** `git tag -a v0.1.0 <tested main commit>` (the message is the release notes
-   players see in the update dialog), `git push origin v0.1.0`. The tag workflow builds and
-   publishes the release with `SHA256SUMS` ([../RELEASING.md](../RELEASING.md)). Never move or
-   delete a published tag. Decide whether to mark it a pre-release in the GitHub UI (the updater
-   offers pre-releases too; GitHub's "Latest" badge only shows normal releases).
-4. The owner asked whether the Insert menu is still needed. Only it has: button remapping
-   (keyboard and controller), the GPU readback switches (the fix for wrong graphics), frames
-   queued, background shader compilation, overlay layout, Change game folder, Apply and
-   restart, and image information. Shrinking it to remapping + troubleshooting is an open option.
+1. **Pull request #23** (branch `claude/nvidia-pipeline-binary`, fixes issue #21): the game
+   crashed at start on an NVIDIA RTX 4050 laptop (Windows 11, driver 610.88). The log's fault
+   `vwport.exe+0x6fba49` resolves with the v1.0.0 Windows symbols to `Instance::CreateDevice`,
+   the instruction after `vkGetPipelineKeyKHR(device, NULL, &key)`: the callee-saved `rdi`
+   came back as 1 and the stack held text, so the stack was overwritten inside the driver.
+   The PR leaves `VK_KHR_pipeline_binary` off on `eNvidiaProprietary`, and
+   `VW_PIPELINE_BINARIES=0` now turns it off at device creation too. Checked on AMD/Linux with
+   the extension off (battle map loads); not on NVIDIA. Merge after its Linux and Windows
+   checks, and ask the reporter on #21 for a new log.
+2. **Audio is too quiet (owner's report: low even with every volume at 100%).** Not fixed.
+   Findings so far:
+   - The game opens one audio port: 8 channels, float, 256 frames (`src/runtime_audio.c`).
+     A 66 s dump of the boot and opening (`VW_AUDIO_DUMP=<prefix>`) has nearly everything in
+     front L/R (RMS about -31 dBFS, peaks about -11 dBFS); center and LFE are silent, the
+     surrounds about 27 dB lower.
+   - The runtime hands those 8 channels to SDL unchanged. When SDL itself downmixes 7.1 to
+     stereo (`SDL_Convert71ToStereo`, SDL 3.4.18) it keeps 0.212 of FL/FR: -13.5 dB.
+   - On Linux (PipeWire, stereo sink) the recorded output of the sink monitor peaks at
+     -12 dBFS, as loud as the game's own mix: there SDL seems to open the device with 8
+     channels and PipeWire downmixes at unity. Not confirmed (a debug print of
+     `SDL_GetAudioDeviceFormat` was started, then stopped when work moved to Windows).
+   - Hypothesis to check first on Windows: WASAPI's stereo endpoint makes SDL do the
+     downmix, so Windows plays about 13.5 dB too quiet. Print the device format at port open
+     (`SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(stream), ...)`), and record the
+     output level with and without a fix.
+   - Fix if confirmed: when the device has fewer than 6 channels, downmix in
+     `output_port()` before `SDL_PutAudioStreamData` (L = FL + 0.707 C + 0.707 SL + 0.707 BL,
+     R likewise, LFE dropped, clamp to [-1, 1]) and open the stream with 2 channels. The
+     queue-level control and the silence padding in `output_port()` use `bytes`: switch them
+     to the size actually sent. Check for clipping in loud scenes (battles).
+3. **Review for NVIDIA.** The owner asked for a pass over NVIDIA-specific risks, comparing
+   with upstream shadPS4 and other emulators' NVIDIA workarounds: extensions the port uses
+   that NVIDIA lacks (the #21 log lists `VK_EXT_shader_stencil_export`,
+   `VK_AMD_shader_image_load_store_lod`, `VK_EXT_shader_atomic_float2` and AMD extensions as
+   unavailable), driver-ID branches in `vk_instance.cpp`, and the pipeline cache path.
+4. **Play test, then v1.2.0.** Play on Windows: first-start setup, title, New Game opening,
+   Continue into the Palevia battle, System > Options PC rows, Insert menu with Apply and
+   restart (1080p to 900p and back), save and load, Change game folder. Then merge, tag
+   `v1.2.0` on the merge commit (`git tag -a`, the message is the release notes) and push the
+   tag ([../RELEASING.md](../RELEASING.md)).
+5. **Issue #14:** asked the reporter (2026-10-20) for a run log with Xbox icons set; the
+   icons work with our dump. Their log will show `Button icons:` or `Render scale:` lines.
 
-### What landed today
+### What landed on 2026-10-20 (v1.1.0, pull request #22)
 
 | Change | Where | Checked |
 |---|---|---|
-| PC section in System → Options (#17, in `main`): Display Mode, VSync, Render Resolution, FSR 1, Sharpening, Strength, Button Icons, Performance Overlay, Check for Updates | `src/unicorn_native_settings.h`, `gpu/shim/vw_settings.cpp` | title and in-game screens, every row kind, Restore Defaults, `vw.ini` |
-| Frame rate limit removed (#18): the game paces itself at 60 Hz | `driver.cpp`, `vw_settings.*`, `vw_overlay.cpp` | no limiter 60.0 FPS / 17 ms worst; a 60 limiter 59.6–59.8 / 20–25 ms; 120/240 = none |
-| Render resolution and FSR 1 checked | | 720p after restart: `Render scale: 1280x720`; FSR 1 at 720p in a 1432×806 window: sharper (edge energy 25.3 → 31.7) |
-| Updates (#18): offer, download, SHA-256 check, Windows swap with rollback, AppImage replace | `scripts/updates.py`, `launcher/vw_launcher.py`, `tests/test_updates.py` | 10 unit tests, live GitHub API read; not on Windows |
-| Tag releases (#18): `vX.Y.Z` tag → release with `SHA256SUMS`; versions from `v*` tags only | `.github/workflows/build.yml` | not run yet (runs on the first tag) |
+| AppImage crashed on Wayland (Steam Deck game mode, Plasma): children inherited PyInstaller's `LD_LIBRARY_PATH` and its old Vulkan loader (`vkCreateWaylandSurfaceKHR` null) | `launcher/vw_launcher.py` (`restore_library_path`) | v1.0.0 crashes under gamescope 1280x800; v1.1.0 release AppImage runs there |
+| Apply and restart closed the game (exit 23): descriptors closed before `execl` while the GPU thread ran | `src/probe.c` (`runtime_restart_with`, close-on-exec) | restarts in about 1 s |
+| 900p then 1080p rendered at 4K: the restart inherited `VW_NEO_MODE`/`VW_INTERNAL_*` | `src/probe.c` (`forget_render_scale_env`) | 1080p to 900p shows 1600x900, back shows 1920x1080 |
+| Signature mismatch rendered 900p at 4K | `src/probe.c` (check before the Pro path) | forced mismatch: 1920x1080 buffers |
+| Change game folder waited 30 s on Linux (own pid) | `launcher/vw_launcher.py` (`wait_for`) | 30.1 s to 0.0 s |
+| `vw.ini`/`launcher.json` emptied by a crash mid-write | `gpu/shim/vw_settings.cpp`, `launcher/vw_launcher.py` | in-game change saved, no `.tmp` left |
+| Restarts pushed good save backups out | `scripts/save_backup.py` | failing test first, 113 Python tests |
+
+v1.1.0 is published (tag on `69feb5b`); the Windows zip of it was only checked by CI.
+
+**Driving the game for tests (Linux):** `VW_PAD_FILE=<file>` takes pad tokens
+(`cross`, `lx=255`, ...); the Insert overlay only reads real input, so use `ydotool` (start
+`ydotoold`; Insert is key 110, the overlay navigates with the arrow keys and Space). On
+Windows, an AutoHotkey or PowerShell `SendInput` script does the same. In battle, Cross on the
+Command Post does nothing during the tutorial; menus accept Cross.
 
 How the updater decides: `scripts/updates.py` docstring. The running version is
 `_internal/runtime/VERSION` (`git describe --match 'v[0-9]*'`); `vX.Y.Z-N-g<hash>` is newer than
@@ -90,8 +125,9 @@ before this fix has no vtables or function tables: re-import a new `eboot_ghidra
 - **Opening "banding":** every pass of the opening draws into RGBA8 targets, as on a PS4; frames
   show no lost precision. A deband filter in the presenter would be the only fix.
 - **Button icons:** the sprite file has four variants per button (Switch, PS4 dark, PS4 light,
-  Xbox; rufaswan's Web2D_Games documents the format). Changing the setting while playing:
-  icons already on screen keep theirs; whether new prompts follow was not checked.
+  Xbox; rufaswan's Web2D_Games documents the format). Changing the setting while playing
+  switches the style at once (`Runtime: button icons: Nintendo` in the log); whether icons
+  already on screen change was not checked.
 - **bbport (bloodborne_pc 0.6) replaced shadPS4** with its own command processor, shader
   translator and renderer (2026-10-13/15). It is still a PM4 → Vulkan translator with the same
   two-stage pipeline; its measured CPU gains on 8-thread CPUs come from fewer draw-prep workers,
@@ -127,6 +163,9 @@ before this fix has no vtables or function tables: re-import a new `eboot_ghidra
 
 ## Working on it
 
+- Windows build: MSYS2 CLANG64 shell, `bash build.sh` (development) or
+  `bash packaging/windows/build.sh unicorn` (the release folder); details and the Linux/Windows
+  differences in [../../packaging/windows/README.md](../../packaging/windows/README.md).
 - Linux build: `bash build.sh` (unset a cross toolchain's CC/CXX/CMAKE_SYSROOT/LDFLAGS first).
   Tests: `python -m unittest discover -s tests`, `bash build.sh --test`, the GPU tests
   (`packaging/test-native.sh` lists them).
