@@ -401,16 +401,41 @@ static void set_env(const char *name, const char *value) {
 #endif
 }
 
+/* The variables below that this launch set itself. "Apply and restart" removes them: the next
+ * launch inherits this environment, and a VW_NEO_MODE left over from 900p made a restart to
+ * 1080p draw the Pro path at 3840x2160. */
+static const char *render_scale_env[3];
+
+/* keep: a value already set (VW_INTERNAL_* for testing) stays. */
+static void set_render_scale_env(const char *name, const char *value, int keep) {
+    const int had = getenv(name) != NULL;
+    if (had && keep) return;
+    set_env(name, value);
+    if (had) return;
+    for (unsigned i = 0; i < 3; ++i)
+        if (!render_scale_env[i]) { render_scale_env[i] = name; break; }
+}
+
+static void forget_render_scale_env(void) {
+    for (unsigned i = 0; i < 3 && render_scale_env[i]; ++i) {
+#ifdef _WIN32
+        _putenv_s(render_scale_env[i], "");
+#else
+        unsetenv(render_scale_env[i]);
+#endif
+    }
+}
+
 /* Before the GPU starts: the Pro path and a video output of the render size. */
 static void prepare_unicorn_render_scale(const char *app0) {
     uint32_t width, height;
     if (!unicorn_render_size(app0, &width, &height)) return;
     char text[16];
-    set_env("VW_NEO_MODE", "1");
+    set_render_scale_env("VW_NEO_MODE", "1", 0);
     snprintf(text, sizeof(text), "%u", width);
-    if (!getenv("VW_INTERNAL_WIDTH")) set_env("VW_INTERNAL_WIDTH", text);
+    set_render_scale_env("VW_INTERNAL_WIDTH", text, 1);
     snprintf(text, sizeof(text), "%u", height);
-    if (!getenv("VW_INTERNAL_HEIGHT")) set_env("VW_INTERNAL_HEIGHT", text);
+    set_render_scale_env("VW_INTERNAL_HEIGHT", text, 1);
 }
 
 /* After relocation: Pro sizes below 4K replace the game's 3840x2160 immediates. */
@@ -567,11 +592,14 @@ static void apply_patches(const char *path, Segment *segments, uint64_t ns, cons
     printf("Patches: %" PRIu64 " writes, %" PRIu64 " bytes applied, %" PRIu64 " pointers rebased\n",count,bytes,rebased);
 }
 /* Restarts the game through run.py (the settings menu: a new render resolution is a patch
- * applied at start). Descriptors are closed first so the old GPU device and its memory are
- * released before the new process opens its own. */
+ * applied at start). Descriptors are closed by the exec itself (close-on-exec) so the old GPU
+ * device and its memory are released before the new process opens its own. Closing them
+ * before the exec raced the GPU thread, which found its device gone, failed an assertion and
+ * ended the process (exit 23) instead of restarting. */
 /* Ends this process and starts the command in the environment variable `name` (set by run.py). */
 void runtime_restart_with(const char *name) {
     fflush(NULL);
+    forget_render_scale_env();
 #ifdef _WIN32
     const char *command=getenv(name);
     printf("Runtime: restarting through %s\n",name);
@@ -592,7 +620,8 @@ void runtime_restart_with(const char *name) {
     const char *command=getenv(name);
     printf("Runtime: restarting through %s\n",name);
     if (!command || !*command) { fprintf(stderr,"runtime_restart: %s is not set\n",name); _exit(1); }
-    syscall(SYS_close_range, 3u, ~0u, 0u);
+    /* CLOSE_RANGE_CLOEXEC (Linux 5.11); older kernels close them here as before. */
+    if (syscall(SYS_close_range, 3u, ~0u, 4u) != 0) syscall(SYS_close_range, 3u, ~0u, 0u);
     execl("/bin/sh", "sh", "-c", command, (char *)NULL);
     perror("runtime_restart: exec");
     _exit(1);
