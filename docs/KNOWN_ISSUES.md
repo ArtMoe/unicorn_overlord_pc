@@ -72,7 +72,21 @@ Measured on the test system above, 1080p:
   a change without a restart has not been checked. Restart the game after changing it.
 - On Linux with AMD GPUs, `RADV_DEBUG=nohiz` is set automatically to avoid rendering errors.
 - On laptops with two GPUs the port picks the discrete one.
+- **NVIDIA:** not tested by the developer (no NVIDIA hardware). v1.0.0 crashed at start on an
+  RTX 4050 laptop inside NVIDIA's pipeline-binary support (v1.1.0 has the same code); v1.2.0
+  leaves that feature off on NVIDIA, so shaders compile the normal way. NVIDIA takes workaround
+  paths AMD does not (clip distances, integer fragment inputs, shared-memory barriers), so
+  reports of graphics errors on NVIDIA are very welcome. GTX 10-series (Pascal) cards have no
+  fragment barycentrics and use a different integer-input workaround (`VW_INTERP_INT_FIX=0`
+  turns it off).
 - Needs a Vulkan 1.3 GPU and a recent driver. macOS is not supported.
+
+## Audio
+
+- The game outputs 7.1. On a stereo device the port mixes it to stereo itself (since v1.2.0);
+  before, the system's conversion played it about 13 dB too quietly. The log line
+  `Runtime: audio device N ch` shows what the device reported. `VW_AUDIO_DOWNMIX=0` restores
+  the old behaviour.
 
 ## Builds
 
