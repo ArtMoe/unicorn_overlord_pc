@@ -47,7 +47,7 @@ WINDOWS = os.name == 'nt'
 GAMES = {
     'unicorn': {
         'title_id': 'CUSA36381', 'app_version': '01.04',
-        'version_hint': 'the base game with the 1.04 update (English patch) applied',
+        'version_hint': 'the base game with the 1.04 update applied',
         'name': 'Unicorn Overlord', 'title': 'Unicorn Overlord', 'run_dir': 'run_uo',
         'colors': {'bg': '#0a1222', 'gold': '#c8a254', 'gold_hi': '#f0d48a'},
     },
