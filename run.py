@@ -204,6 +204,15 @@ def main():
     # Relative paths (VW_GAME_DIR, VW_DATA_DIR) are from the port.
     os.chdir(PORT)
     env = os.environ
+    # The packaged launcher (PyInstaller) points LD_LIBRARY_PATH at its own libraries; vwport and
+    # the programs it starts get the original. With the bundled Vulkan loader, vwport crashed on
+    # Wayland (vkCreateWaylandSurfaceKHR was null): Steam Deck game mode, Plasma Wayland.
+    if getattr(sys, 'frozen', False) and not WINDOWS:
+        original = env.pop('LD_LIBRARY_PATH_ORIG', None)
+        if original is None:
+            env.pop('LD_LIBRARY_PATH', None)
+        else:
+            env['LD_LIBRARY_PATH'] = original
     data = Path(env.get('VW_DATA_DIR', PORT))
     out = data / 'out'
     out.mkdir(parents=True, exist_ok=True)
