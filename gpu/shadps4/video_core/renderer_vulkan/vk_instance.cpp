@@ -9,6 +9,7 @@
 #include "common/assert.h"
 #include "common/debug.h"
 #include "common/types.h"
+#include "core/emulator_settings.h"
 #include "imgui/renderer/imgui_core.h"
 #include "sdl_window.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
@@ -274,7 +275,15 @@ bool Instance::CreateDevice() {
 
     // Optional
     maintenance_5 = add_extension(VK_KHR_MAINTENANCE_5_EXTENSION_NAME);
-    pipeline_binaries = maintenance_5 &&
+    // vw: not on NVIDIA's driver: the game crashed at start inside its vkGetPipelineKeyKHR (the
+    // global key query below; 610.88, Windows, issue #21) with the stack overwritten. Pipelines
+    // then compile as without the extension. VW_PIPELINE_BINARIES=0 also leaves it off.
+    const bool binaries_allowed = driver_id != vk::DriverId::eNvidiaProprietary &&
+                                  EmulatorSettingsImpl::Flag("VW_PIPELINE_BINARIES", true);
+    if (!binaries_allowed) {
+        LOG_INFO(Render_Vulkan, "Pipeline binaries off for this driver");
+    }
+    pipeline_binaries = binaries_allowed && maintenance_5 &&
         feature_chain.get<vk::PhysicalDeviceMaintenance5FeaturesKHR>().maintenance5 &&
         feature_chain.get<vk::PhysicalDevicePipelineBinaryFeaturesKHR>().pipelineBinaries &&
         add_extension(VK_KHR_PIPELINE_BINARY_EXTENSION_NAME);
