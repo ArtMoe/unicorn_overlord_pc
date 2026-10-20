@@ -525,8 +525,24 @@ def start_command():
     return [sys.executable, str(Path(sys.argv[0]).resolve())]
 
 
+def restore_library_path():
+    """Linux packaged: the library path the program was started with. PyInstaller puts its own
+    libraries first and every child inherited them: vwport took the bundled Vulkan loader, whose
+    vkCreateWaylandSurfaceKHR is null (a crash on Wayland: Steam Deck game mode, Plasma). This
+    process keeps the libraries it loaded at start; children and an updated AppImage get the
+    original path."""
+    if not FROZEN or WINDOWS:
+        return
+    original = os.environ.pop('LD_LIBRARY_PATH_ORIG', None)
+    if original is None:
+        os.environ.pop('LD_LIBRARY_PATH', None)
+    else:
+        os.environ['LD_LIBRARY_PATH'] = original
+
+
 def main(key):
     """Runs the setup and the game for GAMES[key], or one of the packaged roles (--run, --script)."""
+    restore_library_path()
     args = sys.argv[1:]
     if args and args[0] in ('--run', '--script'):
         sys.exit(run_role(args))
