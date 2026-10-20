@@ -6,6 +6,7 @@ run.py makes one before every start; the launcher lists them and restores one. A
 first backs up the current saves, so it can always be undone.
 """
 import datetime
+import filecmp
 from pathlib import Path
 import shutil
 
@@ -46,8 +47,18 @@ def _copy(user_dir, now):
     return target
 
 
+def _same_files(a, b):
+    files = sorted(p.relative_to(a) for p in a.rglob('*') if p.is_file())
+    return files == sorted(p.relative_to(b) for p in b.rglob('*') if p.is_file()) and \
+        all(filecmp.cmp(a / f, b / f, shallow=False) for f in files)
+
+
 def backup(user_dir, now=None, keep=KEEP):
-    """Copies savedata; returns the new folder, or None when there is nothing to save."""
+    """Copies savedata; returns the new folder, or None when there is nothing to save or the
+    saves equal the newest backup (restarts must not push the older backups out)."""
+    newest = list_backups(user_dir)[:1]
+    if newest and _same_files(Path(user_dir) / 'savedata', backups_dir(user_dir) / newest[0]):
+        return None
     made = _copy(user_dir, now)
     if made:
         _prune(user_dir, keep)
