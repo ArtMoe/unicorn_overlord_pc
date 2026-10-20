@@ -426,10 +426,18 @@ static void forget_render_scale_env(void) {
     }
 }
 
-/* Before the GPU starts: the Pro path and a video output of the render size. */
-static void prepare_unicorn_render_scale(const char *app0) {
+/* Before the GPU starts: the Pro path and a video output of the render size. Without the code
+ * the patch expects the game stays native: the unpatched Pro path draws at 3840x2160, so 900p
+ * picked on such an eboot ran at 4K. */
+static int render_scale_ready;
+static void prepare_unicorn_render_scale(const char *app0, uint64_t size) {
     uint32_t width, height;
     if (!unicorn_render_size(app0, &width, &height)) return;
+    if ((width != 3840 || height != 2160) && !unicorn_render_scale_signature_match(image, size)) {
+        printf("Render scale: unavailable (code signature); the game renders at 1920x1080\n");
+        return;
+    }
+    render_scale_ready = 1;
     char text[16];
     set_render_scale_env("VW_NEO_MODE", "1", 0);
     snprintf(text, sizeof(text), "%u", width);
@@ -439,14 +447,10 @@ static void prepare_unicorn_render_scale(const char *app0) {
 }
 
 /* After relocation: Pro sizes below 4K replace the game's 3840x2160 immediates. */
-static void install_unicorn_render_scale(const char *app0, uint64_t size) {
+static void install_unicorn_render_scale(const char *app0) {
     uint32_t width, height;
-    if (!unicorn_render_size(app0, &width, &height)) return;
+    if (!render_scale_ready || !unicorn_render_size(app0, &width, &height)) return;
     if (width != 3840 || height != 2160) {
-        if (!unicorn_render_scale_signature_match(image, size)) {
-            printf("Render scale: unavailable (code signature); the game renders at 3840x2160\n");
-            return;
-        }
         for (unsigned i = 0; i < 3; ++i) {
             memcpy(image + unicorn_width_imm[i], &width, 4);
             memcpy(image + unicorn_height_imm[i], &height, 4);
@@ -825,7 +829,7 @@ int main(int argc, char **argv) {
         uint64_t sdk=0;
         if (procparam) memcpy(&sdk,image+procparam+16,8); /* procparam: size, magic, count, sdk_version */
         VwGpuConfig gpu={title,serial,user_dir ? user_dir : "user",(uint32_t)sdk,attributes,1920,1080};
-        prepare_unicorn_render_scale(app0);
+        prepare_unicorn_render_scale(app0, size);
         gpu_enabled=1; /* page tracking starts while the rasterizer registers guest memory */
         if (vwgpu_init(&gpu)) fail("GPU initialization failed");
         printf("GPU: window and Vulkan presenter ready; SDK 0x%08x, %u HLE symbols\n",(unsigned)sdk,vwgpu_symbol_count());
@@ -877,7 +881,7 @@ int main(int argc, char **argv) {
         _exit(missing ? 1 : 0); /* no destructors: GPU threads are running */
     }
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
-    if (gpu_enabled) install_unicorn_render_scale(app0, size);
+    if (gpu_enabled) install_unicorn_render_scale(app0);
     install_unicorn_cri_hook(app0, segments, ns);
     if (gpu_enabled) install_unicorn_native_settings(app0);
 #ifdef _WIN32
