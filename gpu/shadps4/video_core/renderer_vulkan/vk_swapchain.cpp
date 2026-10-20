@@ -227,7 +227,9 @@ void Swapchain::SetSurfaceProperties() {
     const auto [capabilities_result, capabilities] =
         instance.GetPhysicalDevice().getSurfaceCapabilitiesKHR(surface);
     ASSERT_MSG(capabilities_result == vk::Result::eSuccess,
-               "Failed to query surface capabilities: {}", vk::to_string(capabilities_result));
+               "Failed to query surface capabilities: {} (the graphics driver cannot show this "
+               "window; seen on Windows after the PC woke from sleep: restart the PC)",
+               vk::to_string(capabilities_result));
 
     extent = capabilities.currentExtent;
     if (capabilities.currentExtent.width == std::numeric_limits<u32>::max()) {
