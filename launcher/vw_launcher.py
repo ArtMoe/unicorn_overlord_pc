@@ -334,6 +334,10 @@ def report_failure(game_info, data, code, game_dir=''):
 def wait_for(pid):
     """Waits (at most 30 s) for the previous game process to end."""
     import time
+    # Linux: the in-game restart exec'd this program in the game's own process (directly, or
+    # through a shell or the bootloader whose child this is); waiting for it would take 30 s.
+    if not WINDOWS and pid in (os.getpid(), os.getppid()):
+        return
     for _ in range(300):
         if WINDOWS:
             import ctypes
