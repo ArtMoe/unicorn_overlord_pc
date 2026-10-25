@@ -103,13 +103,7 @@ int main(void) {
     assert(mask == (0x1d680cu | 1u << 23));
     assert(image[0x2b590] == 0xe9 && image[0x735490] == 0xe9 && image[0x738f70] == 0xe9);
 
-    /* Texts: the added rows' ids, else the sheet's own table. */
-    assert(!strcmp(native_settings_text(NULL, NATIVE_TEXT + 64 + NATIVE_LABEL), "Size"));
-    assert(!strcmp(native_settings_text(NULL, NATIVE_TEXT + 64 + NATIVE_HELP + 1), "How big."));
-    assert(!strcmp(native_settings_text(NULL, NATIVE_TEXT + 64 + NATIVE_CHOICE + 1), "Large"));
-    assert(!native_settings_text(NULL, NATIVE_TEXT + 64 + NATIVE_CHOICE + 2));
-    assert(!strcmp(native_settings_text(NULL, NATIVE_TEXT + 3 * 64 + NATIVE_FORMAT), "%.0f%%"));
-    assert(!native_settings_text(NULL, NATIVE_TEXT + ROWS * 64));
+    /* Texts: the sheet's own table, else the added rows' ids. */
     unsigned char sheet[0x130] = {0}, table[0x30] = {0};
     const char *strings[2] = {"System", "Sound"};
     const unsigned char *table_address = table;
@@ -118,6 +112,25 @@ int main(void) {
     memcpy(table + 0x14, &count, 4);
     memcpy(table + 0x20, strings, sizeof(strings));
     assert(native_settings_text(sheet, 1) == strings[1] && !native_settings_text(sheet, 2) && !native_settings_text(sheet, -1));
+    assert(!strcmp(native_settings_text(sheet, NATIVE_TEXT + 64 + NATIVE_LABEL), "Size"));
+    assert(!strcmp(native_settings_text(sheet, NATIVE_TEXT + 64 + NATIVE_HELP + 1), "How big."));
+    assert(!strcmp(native_settings_text(sheet, NATIVE_TEXT + 64 + NATIVE_CHOICE + 1), "Large"));
+    assert(!native_settings_text(sheet, NATIVE_TEXT + 64 + NATIVE_CHOICE + 2));
+    assert(!strcmp(native_settings_text(sheet, NATIVE_TEXT + 3 * 64 + NATIVE_FORMAT), "%.0f%%"));
+    assert(!native_settings_text(sheet, NATIVE_TEXT + ROWS * 64));
+
+    /* The story text (UcScriptMsgConv.fms) has 489,999 ids: all of them are its own (issue #34). */
+    const uint32_t story_count = 489999;
+    unsigned char *story = calloc(1, 0x20 + (size_t)story_count * 8);
+    const char *line = "Queen Ilenia...";
+    assert(story);
+    memcpy(story + 0x14, &story_count, 4);
+    memcpy(story + 0x20 + 0x40000 * 8, &line, 8);
+    memcpy(story + 0x20 + (size_t)(story_count - 1) * 8, &line, 8);
+    memcpy(sheet + 0x128, &story, 8);
+    assert(native_settings_text(sheet, 0x40000) == line && native_settings_text(sheet, (int)story_count - 1) == line);
+    assert(NATIVE_TEXT > (int)story_count);
+    free(story);
 
     /* Opening loads the settings; the update applies a row that changed and keeps its value on open. */
     for (unsigned i = 0; i < ROWS; ++i) t->values[i] = -1.0f;
