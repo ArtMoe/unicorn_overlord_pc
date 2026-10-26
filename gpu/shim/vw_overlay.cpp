@@ -334,6 +334,10 @@ void PerformanceTab() {
                   "Above 1080p: drawn larger and averaged down to the window (smoother edges, sharper "
                   "art, more GPU work). 720p and 900p: less GPU work for weak GPUs, softer image; the "
                   "layout stays the same.");
+        static const char* const aspect_labels[] = {"16:9", "21:9 (ultrawide)", "32:9 (super ultrawide)"};
+        ChoiceRow("Aspect ratio", s.aspect_ratio, aspect_labels, nullptr, int(G::AspectRatios.size()),
+                  "Wider than 16:9: more of the scene at the sides, for an ultrawide monitor. Menus and "
+                  "text stay 16:9 in the middle. On a 16:9 screen it shows black bars above and below.");
         CheckRow("Game reads GPU data without waiting", s.stale_readback,
                  "Big FPS gain. Switch it off if lighting or objects look wrong.");
         CheckRow("Deferred GPU readbacks", s.deferred_readback,
@@ -539,7 +543,7 @@ void OverlayTab() {
 // Startup options changed since this launch (applied by "Apply and restart").
 int RestartChanges() {
     const auto& s = VwSettings::Get();
-    return (s.render_resolution != s.startup_render_resolution) +
+    return (s.render_resolution != s.startup_render_resolution) + (s.aspect_ratio != s.startup_aspect_ratio) +
            (s.deferred_readback != s.startup_deferred_readback) + (s.stale_readback != s.startup_stale_readback);
 }
 
