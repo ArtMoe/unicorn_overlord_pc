@@ -150,6 +150,7 @@ Presenter::Presenter(Frontend::WindowSDL& window_, AmdGpu::Liverpool* liverpool_
         free_queue.push(&frame);
     }
 
+    anime4k_pass.Create(device, instance.GetAllocator());
     fsr_pass.Create(device, instance.GetAllocator(), num_images);
     pp_pass.Create(device, swapchain.GetSurfaceFormat().format);
     VwOverlay::Init(instance, swapchain.GetSurfaceFormat().format, num_images);
@@ -450,11 +451,21 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
 
     // vw: FSR 1, RCAS and its strength come from the in-game menu, every frame.
     const auto& graphics = VwSettings::Get();
+    // vw: Anime4K first (#32): it restores the game's image and may double its size; FSR 1,
+    // sharpening and the scaling then work on its result. An sRGB view samples linear light.
+    const vk::Extent2D game_size = image_size;
+    if (!frame->is_hdr) {
+        image_view = anime4k_pass.Render(cmdbuf, image_view, image_size, {frame->width, frame->height},
+                                         graphics.anime4k,
+                                         view_info.format == vk::Format::eR8G8B8A8Srgb ||
+                                             view_info.format == vk::Format::eB8G8R8A8Srgb);
+    }
     fsr_settings.enable = graphics.fsr1;
     fsr_settings.use_rcas = graphics.rcas;
     fsr_settings.rcas_attenuation = VwGraphics::RcasAttenuation(graphics.rcas_strength);
-    VwSettings::Get().image_width = int(image_size.width);
-    VwSettings::Get().image_height = int(image_size.height);
+    VwSettings::Get().image_width = int(game_size.width);
+    VwSettings::Get().image_height = int(game_size.height);
+    VwSettings::Get().anime4k_upscaled = image_size != game_size;
     VwSettings::Get().window_width = int(frame->width);
     VwSettings::Get().window_height = int(frame->height);
     VwSettings::Get().rcas_applied =

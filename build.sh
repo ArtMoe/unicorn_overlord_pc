@@ -130,4 +130,6 @@ if [[ ${1:-} == --test ]]; then
     out/button-icons-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -Isrc tests/test_native_settings.c -o out/native-settings-test
     out/native-settings-test
+    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -Isrc tests/test_ultrawide.c -o out/ultrawide-test
+    out/ultrawide-test
 fi

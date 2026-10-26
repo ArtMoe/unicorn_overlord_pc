@@ -97,6 +97,25 @@ def eboot_matches(game, profile):
         return False
 
 
+# sha256 of the eboot.bin the port's code hooks (render resolution, aspect ratio, button icons, the
+# Options rows) were made for. Another build of the same version has its code elsewhere: the hooks
+# check it and stay off, and their settings then do nothing (issue #14).
+SUPPORTED_EBOOTS={'CUSA36381':'de8e4970ae6ab39278bd61cd7818d7844adf934e1909e1356476a28d239414c4'}
+
+
+def eboot_supported(game):
+    """True for the eboot.bin the PC features were made for, False for another build, None when
+    the game has no known build or eboot.bin cannot be read."""
+    expected=SUPPORTED_EBOOTS.get(game_title_id(game))
+    if not expected:
+        return None
+    import hashlib
+    try:
+        return hashlib.sha256((Path(game)/'eboot.bin').read_bytes()).hexdigest()==expected
+    except OSError:
+        return None
+
+
 def selected_patches(xml, app_version, extra, only=False):
     """The file's isEnabled patches for this version, then the names in extra (";"-separated).
     only: extra is the whole selection (the launcher's), without the file's defaults."""

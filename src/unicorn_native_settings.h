@@ -31,7 +31,9 @@
 
 #define NATIVE_GAME_ROWS 21u
 #define NATIVE_MAX_ROWS 11u   /* ids 21..31: within the 32-bit masks; (id & 0x1b) == 1 is a game row */
-#define NATIVE_TEXT 0x40000   /* text id = NATIVE_TEXT + row * 64 + slot */
+/* text id = NATIVE_TEXT + row * 64 + slot. FUN_0002b590 serves every sheet: the story text
+ * (UcScriptMsgConv.fms) has 489,999 ids, so the port's ids start past the largest sheet. */
+#define NATIVE_TEXT 0x100000
 enum { NATIVE_LABEL = 0, NATIVE_HELP = 1, NATIVE_FORMAT = 31, NATIVE_CHOICE = 32 };
 
 /* The screen object (UcUI_Option) and its rows. */
@@ -66,6 +68,16 @@ typedef struct {
 static NativeSettings native_settings;
 
 static ABI const char *native_settings_text(const unsigned char *sheet, int id) {
+    /* FUN_0002b590: the sheet's string table (count at 0x14, pointers from 0x20). */
+    const unsigned char *table;
+    uint32_t count;
+    memcpy(&table, sheet + 0x128, sizeof(table));
+    memcpy(&count, table + 0x14, sizeof(count));
+    if (id >= 0 && (uint32_t)id < count) {
+        const char *text;
+        memcpy(&text, table + 0x20 + (uint64_t)id * 8, sizeof(text));
+        return text;
+    }
     if (id >= NATIVE_TEXT) {
         const unsigned row = (unsigned)(id - NATIVE_TEXT) / 64, slot = (unsigned)(id - NATIVE_TEXT) % 64;
         if (row >= native_settings.count) return NULL;
@@ -75,15 +87,7 @@ static ABI const char *native_settings_text(const unsigned char *sheet, int id) 
         if (slot >= NATIVE_CHOICE) return slot - NATIVE_CHOICE < (unsigned)r->count ? r->choices[slot - NATIVE_CHOICE] : NULL;
         return r->help; /* NATIVE_HELP + the row's value */
     }
-    /* FUN_0002b590: the sheet's string table (count at 0x14, pointers from 0x20). */
-    const unsigned char *table;
-    uint32_t count;
-    memcpy(&table, sheet + 0x128, sizeof(table));
-    memcpy(&count, table + 0x14, sizeof(count));
-    if (id < 0 || (uint32_t)id >= count) return NULL;
-    const char *text;
-    memcpy(&text, table + 0x20 + (uint64_t)id * 8, sizeof(text));
-    return text;
+    return NULL;
 }
 
 static ABI void native_settings_open(void *ui) {

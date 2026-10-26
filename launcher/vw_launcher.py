@@ -73,7 +73,7 @@ def run_role(argv):
 
 
 sys.path.insert(0, str(RUNTIME / 'scripts'))
-from patches import game_app_version, game_title_id  # noqa: E402
+from patches import eboot_supported, game_app_version, game_title_id  # noqa: E402
 
 
 def load_settings(data):
@@ -107,6 +107,13 @@ def check_game(game_info, folder):
     return True, f'{name}  ·  {title_id}  ·  v{version}'
 
 
+OTHER_BUILD = ('This eboot.bin is a different build of version {version} than the one the PC port '
+               'was made for (another region or update package).\n\nThe game runs, but the PC '
+               'features that change the game\'s code stay off: Render Resolution, Button Icons '
+               'and the PC rows in the game\'s Options. The base game with the 1.04 update '
+               '(English patch) has the supported build.\n\nUse this folder anyway?')
+
+
 def tk_root():
     """A hidden Tk root for the dialogs (no launcher window)."""
     import tkinter as tk
@@ -137,6 +144,12 @@ def choose_game(game_info, start):
             if not folder:
                 return None
             ok, message = check_game(game_info, folder)
+            if ok and eboot_supported(folder) is False:
+                if messagebox.askyesno(f"{game_info['name']}: setup",
+                                       OTHER_BUILD.format(version=game_info['app_version']),
+                                       icon='warning', parent=root):
+                    return folder
+                continue
             if ok:
                 return folder
             if not messagebox.askretrycancel(f"{game_info['name']}: setup", message, parent=root):
@@ -307,15 +320,69 @@ def export_diagnostics(root, data, game_dir):
     preview.wait_window()
 
 
+MEMORY_HINT = ('Windows could not give the game the memory it needs (about 6 GB of RAM and page file).\n'
+               'Close other programs, and in Task Manager end any vwport.exe still running (a game closed '
+               'with Alt+F4 can stay). If it keeps happening, let Windows manage the page file size.\n\n')
+
+
+def failure_hint(log_text):
+    """An explanation for a failure the log shows, or ''."""
+    return MEMORY_HINT if 'of guest memory (error' in log_text else ''
+
+
+def parse_tasklist(output):
+    """Process ids from `tasklist /FO CSV /NH` lines ("vwport.exe","1234",...)."""
+    pids = []
+    for line in output.splitlines():
+        fields = [field.strip('"') for field in line.strip().split('","')]
+        if len(fields) > 1 and fields[0].lower() == 'vwport.exe' and fields[1].isdigit():
+            pids.append(int(fields[1]))
+    return pids
+
+
+def end_leftover_game(game_info):
+    """Windows: a game process still running (closed with Alt+F4 but not gone) keeps its 6 GB, and
+    the next start then fails for memory (issue #35). Offers to end it."""
+    if not WINDOWS:
+        return
+    try:
+        listing = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq vwport.exe', '/FO', 'CSV', '/NH'],
+                                 capture_output=True, text=True, errors='replace', timeout=10,
+                                 creationflags=0x08000000).stdout  # CREATE_NO_WINDOW
+    except (OSError, subprocess.SubprocessError):
+        return
+    pids = parse_tasklist(listing)
+    if not pids:
+        return
+    from tkinter import messagebox
+    root = tk_root()
+    try:
+        end = messagebox.askyesno(
+            game_info['name'], 'The game from an earlier start is still running in the background '
+            f'(vwport.exe, process {", ".join(map(str, pids))}). It holds the memory the game needs, '
+            'so a new start would fail.\n\nEnd it now? Progress since the last save in it is lost.',
+            icon='warning', parent=root)
+    finally:
+        root.destroy()
+    if end:
+        for pid in pids:
+            subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True, creationflags=0x08000000)
+            wait_for(pid)
+
+
 def report_failure(game_info, data, code, game_dir=''):
     """The game stopped with an error: offer a diagnostics ZIP for an issue, or the log itself."""
     log = data / 'last_run.log'
+    try:
+        hint = failure_hint(log.read_text(encoding='utf-8', errors='replace'))
+    except OSError:
+        hint = ''
     try:
         from tkinter import messagebox
         root = tk_root()
         try:
             answer = messagebox.askyesnocancel(
-                game_info['name'], f'The game stopped with an error (code {code}).\n\n'
+                game_info['name'], f'The game stopped with an error (code {code}).\n\n{hint}'
                 'Yes: save a diagnostics ZIP to attach to a GitHub issue (you review it first).\n'
                 f'No: open the log of this run ({log}).\n\n'
                 'docs/TROUBLESHOOTING.md in the repository explains what to look for.',
@@ -591,6 +658,7 @@ def main(key):
     # run.py turns it into VW_CHOOSE_GAME_COMMAND for the in-game menu.
     os.environ['VW_START_COMMAND'] = (subprocess.list2cmdline if WINDOWS else shlex.join)(start_command())
     data.mkdir(parents=True, exist_ok=True)
+    end_leftover_game(game_info)
     try:
         code = run_role(['--run'])
     except SystemExit as stop:

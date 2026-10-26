@@ -21,6 +21,11 @@ inline constexpr std::array<const char*, DisplayModeCount> DisplayModeNames = {
 inline constexpr std::array<std::string_view, 5> Resolutions = {"native", "720p", "900p", "1800p",
                                                                 "4K"};
 
+/// Aspect ratios of the game's image (the probe's ultrawide patch, src/unicorn_ultrawide.h):
+/// wider than 16:9 shows more of the scene at the sides; menus stay 16:9 in the middle. 21:9
+/// is 64:27 (2560x1080). Index 0 is the default.
+inline constexpr std::array<std::string_view, 3> AspectRatios = {"16:9", "21:9", "32:9"};
+
 template <typename T, std::size_t N>
 constexpr int IndexOf(const std::array<T, N>& values, const T& value, int fallback) {
     for (std::size_t i = 0; i < N; ++i) {
@@ -35,6 +40,11 @@ inline int ParseDisplayMode(std::string_view text) {
 /// Index into Resolutions; unknown text is native.
 inline int ParseResolution(std::string_view text) {
     return IndexOf(Resolutions, text, 0);
+}
+
+/// Index into AspectRatios; unknown text is 16:9.
+inline int ParseAspectRatio(std::string_view text) {
+    return IndexOf(AspectRatios, text, 0);
 }
 
 /// Frames the GPU command thread may queue ahead of the GPU; 0 = unbounded.
@@ -56,6 +66,19 @@ inline bool FsrPassRuns(bool fsr1, bool rcas, int in_w, int in_h, int out_w, int
     const bool upscale = in_w < out_w && in_h < out_h;
     const bool same = in_w == out_w && in_h == out_h;
     return (fsr1 && upscale) || (rcas && same);
+}
+
+/// Anime4K (host_passes/anime4k_pass.cpp), a line-art upscaler: off, or its restore and x2
+/// upscale models in the small (Fast) or medium (Quality) size.
+enum Anime4k : int { Anime4kOff = 0, Anime4kFast = 1, Anime4kQuality = 2, Anime4kCount };
+inline constexpr std::array<const char*, Anime4kCount> Anime4kNames = {"Off", "Fast", "Quality"};
+inline int ParseAnime4k(int value) {
+    return value >= 0 && value < Anime4kCount ? value : Anime4kOff;
+}
+/// Anime4K's x2 upscale runs when the window is over 1.2 times the image both ways (its mpv
+/// condition); otherwise only the restore model runs and FSR 1 or the scaling does the rest.
+inline bool Anime4kUpscales(int in_w, int in_h, int out_w, int out_h) {
+    return out_w * 5 > in_w * 6 && out_h * 5 > in_h * 6;
 }
 
 } // namespace VwGraphics

@@ -287,6 +287,9 @@ void ImageTab() {
     const bool rcas_blocked = s.rcas && !s.rcas_applied;
     ImGui::SeparatorText("Scaling and sharpening");
     if (BeginRows("##scaling")) {
+        ChoiceRow("Anime4K", s.anime4k, G::Anime4kNames.data(), nullptr, G::Anime4kCount,
+                  "Redraws the game's lines and art sharper. When the window is larger than the game's image "
+                  "it also doubles the image, before FSR 1. Quality costs the most GPU time.");
         CheckRow("Upscale with FSR 1", s.fsr1,
                  "Enlarges a smaller game image to the window. For more FPS: Render resolution 720p + FSR 1.");
         ImGui::BeginDisabled(rcas_blocked);
@@ -307,7 +310,11 @@ void ImageTab() {
         InfoRow("Game image", text);
         std::snprintf(text, sizeof(text), "%d x %d", ww, wh);
         InfoRow("Window", text);
-        InfoRow("FSR 1", !s.fsr1 ? "off" : upscaling ? "active" : "no effect (image not smaller than window)");
+        InfoRow("Anime4K", !s.anime4k ? "off" : s.anime4k_upscaled ? "restore and x2 upscale" : "restore");
+        InfoRow("FSR 1", !s.fsr1                ? "off"
+                         : s.anime4k_upscaled   ? "no effect (Anime4K enlarged the image)"
+                         : upscaling            ? "active"
+                                                : "no effect (image not smaller than window)");
         InfoRow("Sharpening", s.rcas_applied ? (downscaling ? "applied (CAS)" : "applied") : "not applied");
         InfoRow("Supersampling", downscaling ? "on: the larger image is averaged down to the window" : "off");
         ImGui::EndTable();
@@ -334,6 +341,12 @@ void PerformanceTab() {
                   "Above 1080p: drawn larger and averaged down to the window (smoother edges, sharper "
                   "art, more GPU work). 720p and 900p: less GPU work for weak GPUs, softer image; the "
                   "layout stays the same.");
+        static const char* const aspect_labels[] = {"16:9", "21:9 (ultrawide)", "32:9 (super ultrawide)"};
+        ChoiceRow("Aspect ratio (experimental)", s.aspect_ratio, aspect_labels, nullptr, int(G::AspectRatios.size()),
+                  "Wider than 16:9: more of the scene at the sides, for an ultrawide monitor. Menus and "
+                  "text stay 16:9 in the middle. On a 16:9 screen it shows black bars above and below. "
+                  "Experimental: not yet tested on an ultrawide monitor; reports are welcome (README, "
+                  "Ultrawide).");
         CheckRow("Game reads GPU data without waiting", s.stale_readback,
                  "Big FPS gain. Switch it off if lighting or objects look wrong.");
         CheckRow("Deferred GPU readbacks", s.deferred_readback,
@@ -399,6 +412,23 @@ void ControlsTab() {
         if (ImGui::Combo("##button_icons", &selected, names, 4)) {
             VwSettings::SetText("button_icons", selected ? keys[selected] : "");
             dirty = true;
+        }
+    }
+    {
+        // stick_dead_zone= (src/runtime_pad.c): sticks that rest off centre drift without it.
+        auto& s = VwSettings::Get();
+        int zone = s.stick_dead_zone;
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Stick dead zone");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
+        if (ImGui::SliderInt("##stick_dead_zone", &zone, 0, VwSettings::StickDeadZoneMax, "%d%%",
+                             ImGuiSliderFlags_AlwaysClamp)) {
+            Store(s.stick_dead_zone, zone, true);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("How far a stick moves before the game sees it. Raise it if the cursor or "
+                              "camera drifts by itself.");
         }
     }
     ImGui::TextWrapped("Choose a box, then press the new key or controller button (Esc cancels). Applied at "
@@ -522,7 +552,7 @@ void OverlayTab() {
 // Startup options changed since this launch (applied by "Apply and restart").
 int RestartChanges() {
     const auto& s = VwSettings::Get();
-    return (s.render_resolution != s.startup_render_resolution) +
+    return (s.render_resolution != s.startup_render_resolution) + (s.aspect_ratio != s.startup_aspect_ratio) +
            (s.deferred_readback != s.startup_deferred_readback) + (s.stale_readback != s.startup_stale_readback);
 }
 

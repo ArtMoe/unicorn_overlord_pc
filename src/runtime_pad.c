@@ -62,7 +62,19 @@ static size_t reads;
 static uint8_t connected_count;
 
 static uint64_t now_us(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return (uint64_t)t.tv_sec*1000000u+(uint64_t)t.tv_nsec/1000u; }
-static uint8_t axis(int16_t v) { int x=(v+32768)>>8; return (uint8_t)(x<0 ? 0 : x>255 ? 255 : x); }
+/* A stick through a round dead zone of zone percent (vw.ini stick_dead_zone): many sticks rest
+ * off centre (issue #28), and the game took that for a held direction. Past the zone the travel
+ * is rescaled, so the stick still moves smoothly from the centre to the edge. */
+static void stick(int16_t raw_x, int16_t raw_y, int zone, uint8_t *out_x, uint8_t *out_y) {
+    float x=raw_x<-32767 ? -1.0f : raw_x/32767.0f, y=raw_y<-32767 ? -1.0f : raw_y/32767.0f;
+    const float length=SDL_sqrtf(x*x+y*y), dead=(zone<0 ? 0 : zone>90 ? 90 : zone)/100.0f;
+    if (length<=dead) { *out_x=*out_y=128; return; }
+    const float scale=((length>1.0f ? 1.0f : length)-dead)/(1.0f-dead)/length;
+    x*=scale; y*=scale;
+    const int ix=(int)SDL_floorf(128.0f+x*127.5f), iy=(int)SDL_floorf(128.0f+y*127.5f);
+    *out_x=(uint8_t)(ix<0 ? 0 : ix>255 ? 255 : ix);
+    *out_y=(uint8_t)(iy<0 ? 0 : iy>255 ? 255 : iy);
+}
 static uint8_t trigger(int16_t v) { int x=v>>7; return (uint8_t)(x<0 ? 0 : x>255 ? 255 : x); }
 static uint16_t touch_axis(float v, int max) {
     return (uint16_t)(v<=0.0f ? 0 : v>=1.0f ? max : (int)(v*max+0.5f));
@@ -320,8 +332,9 @@ static void sample_host(PadData *d) {
         for (size_t i=0;i<pad_map.count;++i)
             if (SDL_GetGamepadButton(g,(SDL_GamepadButton)pad_map.entries[i].source)) d->buttons|=pad_map.entries[i].ps;
         const uint32_t mapped=d->buttons;
-        d->left_x=axis(SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_LEFTX)); d->left_y=axis(SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_LEFTY));
-        d->right_x=axis(SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTX)); d->right_y=axis(SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTY));
+        const int zone=vwgpu_stick_dead_zone();
+        stick(SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_LEFTX),SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_LEFTY),zone,&d->left_x,&d->left_y);
+        stick(SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTX),SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHTY),zone,&d->right_x,&d->right_y);
         d->l2=trigger(SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_LEFT_TRIGGER)); d->r2=trigger(SDL_GetGamepadAxis(g,SDL_GAMEPAD_AXIS_RIGHT_TRIGGER));
         if (d->l2>30) d->buttons|=BTN_L2;
         if (d->r2>30) d->buttons|=BTN_R2;
