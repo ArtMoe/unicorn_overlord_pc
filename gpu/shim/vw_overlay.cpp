@@ -335,9 +335,11 @@ void PerformanceTab() {
                   "art, more GPU work). 720p and 900p: less GPU work for weak GPUs, softer image; the "
                   "layout stays the same.");
         static const char* const aspect_labels[] = {"16:9", "21:9 (ultrawide)", "32:9 (super ultrawide)"};
-        ChoiceRow("Aspect ratio", s.aspect_ratio, aspect_labels, nullptr, int(G::AspectRatios.size()),
+        ChoiceRow("Aspect ratio (experimental)", s.aspect_ratio, aspect_labels, nullptr, int(G::AspectRatios.size()),
                   "Wider than 16:9: more of the scene at the sides, for an ultrawide monitor. Menus and "
-                  "text stay 16:9 in the middle. On a 16:9 screen it shows black bars above and below.");
+                  "text stay 16:9 in the middle. On a 16:9 screen it shows black bars above and below. "
+                  "Experimental: not yet tested on an ultrawide monitor; reports are welcome (README, "
+                  "Ultrawide).");
         CheckRow("Game reads GPU data without waiting", s.stale_readback,
                  "Big FPS gain. Switch it off if lighting or objects look wrong.");
         CheckRow("Deferred GPU readbacks", s.deferred_readback,

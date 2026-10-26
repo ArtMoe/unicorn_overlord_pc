@@ -244,8 +244,8 @@ const VwgpuSettingRow Rows[RowCount] = {
      "starts.",
      VWGPU_ROW_CHOICE, int(std::size(ResolutionNames)), ResolutionNames, 0, 0, 0, 0, nullptr},
     {"Aspect Ratio",
-     "Wider than 16:9 shows more of the scene at the sides, for an ultrawide monitor; menus stay 16:9 "
-     "in the middle.\nTakes effect the next time the game starts.",
+     "Experimental. Wider than 16:9 shows more of the scene at the sides, for an ultrawide monitor; "
+     "menus stay 16:9 in the middle.\nTakes effect the next time the game starts.",
      VWGPU_ROW_CHOICE, int(std::size(AspectNames)), AspectNames, 0, 0, 0, 0, nullptr},
     {"FSR 1 Upscaling", "Upscales a render resolution smaller than the window with AMD FSR 1.", VWGPU_ROW_SWITCH,
      0, nullptr, 0, 0, 0, 0, nullptr},
