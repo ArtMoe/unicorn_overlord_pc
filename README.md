@@ -73,7 +73,8 @@ python launcher/unicorn_launcher.py
 
 The game's own **System → Options** screen (from the title or the in-game menu) has a **PC**
 section at the end: display mode, VSync, render resolution (applied at the next
-start), FSR 1 upscaling, sharpening and its strength, button icons and the performance overlay.
+start), FSR 1 upscaling, sharpening and its strength, button icons, the stick dead zone and the
+performance overlay.
 Settings are saved in `vw.ini`; **Restore Defaults** resets them too.
 
 > **Every render resolution change requires a restart.** Press **Insert** to open the overlay
@@ -89,13 +90,15 @@ four tabs:
 - **Controls:** keyboard and controller button bindings, saved in `vw.ini`, and the
   **button icons** the game shows: Auto (follows the controller in use), PlayStation, Xbox or
   Nintendo. The Xbox and Nintendo icons are the game's own, from its Xbox and Switch releases.
+  The **stick dead zone** (15% by default) stops sticks that rest off centre from drifting:
+  raise it if the cursor or camera still moves by itself.
 
 Settings are kept in `vw.ini` in the data directory. The Overlay tab also has a
 **Change game folder** button to reopen setup.
 
 **Updates:** at start the program looks for a newer release on GitHub and asks before
 downloading it; the update keeps your settings, saves and installed game. Turn it off with
-**Check for Updates** in the game's Options (PC section) or in the Insert menu.
+**Check for updates at start** in the Insert menu.
 
 Something wrong? See [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) and
 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Every run writes a log to `logs/` in the

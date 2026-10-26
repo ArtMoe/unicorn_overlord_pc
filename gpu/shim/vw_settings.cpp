@@ -90,6 +90,8 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.stale_readback = i != 0;
     } else if (key == "restart_unconfirmed") {
         v.restart_unconfirmed = i != 0;
+    } else if (key == "stick_dead_zone") {
+        v.stick_dead_zone = std::clamp(i, 0, StickDeadZoneMax);
     }
 }
 
@@ -132,6 +134,7 @@ void Load() {
         {"VW_ASYNC_SHADERS", "async_shaders"}, {"VW_DEFERRED_READBACK", "deferred_readback"},
         {"VW_STALE_READBACK", "stale_readback"}, {"VW_FSR1", "fsr1"},
         {"VW_RCAS", "rcas"},                   {"VW_FRAMES_AHEAD", "frames_queued"},
+        {"VW_STICK_DEAD_ZONE", "stick_dead_zone"},
     };
     for (const auto& [env, key] : env_keys) {
         if (const char* value = std::getenv(env); value && value[0]) {
@@ -176,7 +179,7 @@ void Save() {
                  "display_mode=%s\nvsync=%d\nasync_shaders=%d\n"
                  "fsr1=%d\nrcas=%d\nrcas_strength=%d\nframes_queued=%d\n"
                  "render_resolution=%s\ndeferred_readback=%d\nstale_readback=%d\n"
-                 "restart_unconfirmed=%d\n",
+                 "restart_unconfirmed=%d\nstick_dead_zone=%d\n",
                  VwGraphics::DisplayModeKeys[std::clamp(v.display_mode.load(), 0, 2)].data(),
                  int(v.vsync.load()), int(v.async_shaders.load()),
                  int(v.fsr1.load()), int(v.rcas.load()), v.rcas_strength.load(), v.frames_queued.load(),
@@ -184,7 +187,7 @@ void Save() {
                                                       int(VwGraphics::Resolutions.size()) - 1)]
                      .data(),
                  int(v.deferred_readback.load()), int(v.stale_readback.load()),
-                 int(v.restart_unconfirmed.load()));
+                 int(v.restart_unconfirmed.load()), v.stick_dead_zone.load());
     {
         std::scoped_lock lock{text_mutex};
         for (const char* key : TextKeys) {
@@ -216,7 +219,7 @@ namespace G = VwGraphics;
 
 enum Row {
     Heading, DisplayMode, Vsync, Resolution, Fsr1, Sharpening, SharpeningStrength, ButtonIcons,
-    Overlay, CheckUpdates, RowCount
+    StickDeadZone, Overlay, RowCount
 };
 
 constexpr const char* DisplayModes[] = {"Windowed", "Borderless", "Fullscreen"};
@@ -242,11 +245,13 @@ const VwgpuSettingRow Rows[RowCount] = {
      0, 100, 1, "%.0f%%"},
     {"Button Icons", "The button icons in prompts.\nAuto follows the controller in use.", VWGPU_ROW_CHOICE,
      int(std::size(IconNames)), IconNames, 0, 0, 0, 0, nullptr},
+    {"Stick Dead Zone",
+     "How far a stick moves before the game sees it.\nRaise it if the cursor or camera drifts by itself.\n"
+     "(Range: 0% to 40%)",
+     VWGPU_ROW_SLIDER, 0, nullptr, 15, 0, float(VwSettings::StickDeadZoneMax), 1, "%.0f%%"},
     {"Performance Overlay",
      "Shows the frame rate and other measurements in a corner.\nMore settings: Insert or R3+L2.", VWGPU_ROW_SWITCH, 0,
      nullptr, 0, 0, 0, 0, nullptr},
-    {"Check for Updates", "At start, looks for a newer version of the PC port.\nIt asks before downloading anything.",
-     VWGPU_ROW_SWITCH, 0, nullptr, 1, 0, 0, 0, nullptr},
 };
 
 int IconIndex() {
@@ -258,6 +263,10 @@ int IconIndex() {
 }
 
 } // namespace
+
+extern "C" int vwgpu_stick_dead_zone(void) {
+    return VwSettings::Get().stick_dead_zone.load();
+}
 
 extern "C" int vwgpu_setting_rows(const VwgpuSettingRow** rows) {
     if (rows) *rows = Rows;
@@ -274,8 +283,8 @@ extern "C" float vwgpu_setting_value(int row) {
     case Sharpening: return v.rcas ? 1.0f : 0.0f;
     case SharpeningStrength: return float(v.rcas_strength.load());
     case ButtonIcons: return float(IconIndex());
+    case StickDeadZone: return float(v.stick_dead_zone.load());
     case Overlay: return v.show_fps ? 1.0f : 0.0f;
-    case CheckUpdates: return v.check_updates ? 1.0f : 0.0f;
     default: return 0.0f;
     }
 }
@@ -295,8 +304,8 @@ extern "C" void vwgpu_setting_set(int row, float value) {
     case Sharpening: v.rcas = i != 0; break;
     case SharpeningStrength: v.rcas_strength = std::clamp(i, int(r.min), int(r.max)); break;
     case ButtonIcons: VwSettings::SetText("button_icons", choice ? IconKeys[choice] : ""); break;
+    case StickDeadZone: v.stick_dead_zone = std::clamp(i, int(r.min), int(r.max)); break;
     case Overlay: v.show_fps = i != 0; break;
-    case CheckUpdates: v.check_updates = i != 0; break;
     }
     VwSettings::Save();
 }

@@ -110,11 +110,7 @@ int main() {
                              "button_icons=xbox\n", "show_fps=1\n"}) {
         assert(written.find(line) != std::string::npos);
     }
-    const int updates = count - 1;
-    assert(!std::strcmp(rows[updates].label, "Check for Updates") && vwgpu_setting_value(updates) == 1.0f);
-    vwgpu_setting_set(updates, 0.0f);
-    assert(!v.check_updates && Read(path).find("check_updates=0\n") != std::string::npos);
-    vwgpu_setting_set(updates, 1.0f);
+    assert(!std::strcmp(rows[count - 1].label, "Performance Overlay"));  // updates: the Insert menu only
     vwgpu_setting_set(icons, 0.0f);  // Auto: no key in the file
     assert(VwSettings::Text("button_icons").empty() && vwgpu_setting_value(icons) == 0.0f);
     std::remove(path);

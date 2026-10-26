@@ -3,7 +3,8 @@
 #include <unistd.h>
 #include "../src/runtime_pad.c"
 
-static int capture;
+static int capture, dead_zone=15;
+int vwgpu_stick_dead_zone(void) { return dead_zone; }
 int vwgpu_overlay_captures_input(void) { return capture; }
 int vwgpu_setting_text(const char *key, char *out, uint64_t size) { (void)key; (void)out; (void)size; return 0; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
@@ -74,6 +75,28 @@ int main(void) {
     SDL_UpdateJoysticks();
     SDL_UpdateGamepads();
     assert(pad_read_state(1,&data)==0 && data.touch_count==1 && data.touches[0].x==480);
+
+    /* Sticks: a stick resting off centre inside the dead zone reads centred (issue #28); past it
+     * the travel is rescaled, so a full push still reaches the edge. */
+    uint8_t x, y;
+    stick(3500,-2500,15,&x,&y);
+    assert(x==128 && y==128);
+    stick(32767,0,15,&x,&y);
+    assert(x==255 && y==128);
+    stick(-32768,0,15,&x,&y);
+    assert(x==0 && y==128);
+    stick(0,-6500,15,&x,&y);
+    assert(x==128 && y==120);
+    stick(4000,-3000,0,&x,&y);
+    assert(x==143 && y==116);
+    assert(SDL_SetJoystickVirtualAxis(joystick,SDL_GAMEPAD_AXIS_LEFTX,3000));
+    assert(SDL_SetJoystickVirtualAxis(joystick,SDL_GAMEPAD_AXIS_RIGHTY,32767));
+    SDL_UpdateJoysticks();
+    SDL_UpdateGamepads();
+    assert(pad_read_state(1,&data)==0 && data.left_x==128 && data.left_y==128 && data.right_y==255);
+    dead_zone=0;
+    assert(pad_read_state(1,&data)==0 && data.left_x>128);
+    dead_zone=15;
     SDL_CloseJoystick(joystick);
     if (gamepad) SDL_CloseGamepad(gamepad);
     gamepad=NULL;

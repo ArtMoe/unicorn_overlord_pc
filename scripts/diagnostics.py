@@ -14,7 +14,7 @@ LAUNCH_KEYS = ('VW_PATCHES', 'VW_PATCHES_ONLY', 'VW_RENDER_SCALE', 'VW_NEO_MODE'
                'VW_FSR1', 'VW_RCAS', 'VW_FRAMES_AHEAD', 'VW_FPS_LIMIT')
 SETTING_KEYS = ('render_resolution', 'deferred_readback', 'stale_readback', 'async_shaders',
                 'display_mode', 'vsync', 'fsr1', 'rcas', 'rcas_strength',
-                'frames_queued', 'show_fps', 'overlay_fps', 'overlay_frametime', 'overlay_scale')
+                'frames_queued', 'stick_dead_zone', 'show_fps', 'overlay_fps', 'overlay_frametime', 'overlay_scale')
 
 
 def system_info():

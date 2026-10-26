@@ -33,6 +33,9 @@ struct Values {
     /// Set by the presenter: the game's image and the window it is shown in, in pixels.
     std::atomic<int> image_width{0}, image_height{0}, window_width{0}, window_height{0};
     std::atomic<int> frames_queued{1};
+    /// Controls: the sticks' dead zone in percent of their travel (src/runtime_pad.c). Worn or
+    /// non-PlayStation sticks rest off centre, and the game reads that as a held direction.
+    std::atomic<int> stick_dead_zone{15};
     // Startup: run.py turns them into patches and environment variables; "Apply and restart".
     std::atomic<int> render_resolution{0};
     std::atomic<bool> deferred_readback{true};
@@ -45,6 +48,8 @@ struct Values {
 };
 
 Values& Get();
+
+constexpr int StickDeadZoneMax = 40;
 
 /// Text settings: "key_map" and "pad_map" (button remapping, src/runtime_pad.c format).
 std::string Text(const std::string& key);

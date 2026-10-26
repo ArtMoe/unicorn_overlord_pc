@@ -401,6 +401,23 @@ void ControlsTab() {
             dirty = true;
         }
     }
+    {
+        // stick_dead_zone= (src/runtime_pad.c): sticks that rest off centre drift without it.
+        auto& s = VwSettings::Get();
+        int zone = s.stick_dead_zone;
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Stick dead zone");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
+        if (ImGui::SliderInt("##stick_dead_zone", &zone, 0, VwSettings::StickDeadZoneMax, "%d%%",
+                             ImGuiSliderFlags_AlwaysClamp)) {
+            Store(s.stick_dead_zone, zone, true);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("How far a stick moves before the game sees it. Raise it if the cursor or "
+                              "camera drifts by itself.");
+        }
+    }
     ImGui::TextWrapped("Choose a box, then press the new key or controller button (Esc cancels). Applied at "
                        "once. Sticks and triggers stay as they are; keyboard sticks: WASD and the arrow keys.");
     if (ImGui::BeginTable("##controls", 3, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_RowBg)) {
