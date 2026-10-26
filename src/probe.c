@@ -502,6 +502,8 @@ static void install_unicorn_render_scale(void) {
         float *values = allocate(page_size);
         if (!unicorn_ultrawide_apply(image, width, height, values))
             printf("Aspect ratio: unavailable (no memory in reach); the image is stretched\n");
+        else
+            printf("Aspect ratio: %.3f (%ux%u), experimental\n", (double)width / height, width, height);
         protect(values, page_size, 4);
     }
     printf("Render scale: %ux%u (PS4 Pro path)\n", width, height);
