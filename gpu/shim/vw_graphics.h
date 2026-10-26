@@ -21,6 +21,11 @@ inline constexpr std::array<const char*, DisplayModeCount> DisplayModeNames = {
 inline constexpr std::array<std::string_view, 5> Resolutions = {"native", "720p", "900p", "1800p",
                                                                 "4K"};
 
+/// Aspect ratios of the game's image (the probe's ultrawide patch, src/unicorn_ultrawide.h):
+/// wider than 16:9 shows more of the scene at the sides; menus stay 16:9 in the middle. 21:9
+/// is 64:27 (2560x1080). Index 0 is the default.
+inline constexpr std::array<std::string_view, 3> AspectRatios = {"16:9", "21:9", "32:9"};
+
 template <typename T, std::size_t N>
 constexpr int IndexOf(const std::array<T, N>& values, const T& value, int fallback) {
     for (std::size_t i = 0; i < N; ++i) {
@@ -35,6 +40,11 @@ inline int ParseDisplayMode(std::string_view text) {
 /// Index into Resolutions; unknown text is native.
 inline int ParseResolution(std::string_view text) {
     return IndexOf(Resolutions, text, 0);
+}
+
+/// Index into AspectRatios; unknown text is 16:9.
+inline int ParseAspectRatio(std::string_view text) {
+    return IndexOf(AspectRatios, text, 0);
 }
 
 /// Frames the GPU command thread may queue ahead of the GPU; 0 = unbounded.

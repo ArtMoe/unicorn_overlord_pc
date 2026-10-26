@@ -111,6 +111,15 @@ for smoother edges and sharper art. Every size uses the game's own PS4 Pro path 
 at that size, which lays out the 2D layers from the target size, so the framing and the HUD stay
 the same at every resolution.
 
+### Ultrawide
+
+**Aspect ratio** in the menu (Performance, applied on restart), `aspect_ratio=` in `vw.ini` or
+`VW_ASPECT_RATIO`: `21:9` (2560×1080 at native resolution) or `32:9` show more of the battle map
+and scenes at the sides instead of stretching them; menus and text stay 16:9 in the middle.
+`VW_ASPECT_RATIO` also takes any `W:H`, such as `43:18` for 3440×1440. It combines with the
+render resolution: 4K at 21:9 renders 5120×2160. On a 16:9 screen a wider image gets black bars
+above and below.
+
 ### Keyboard
 
 | Key | Button |
