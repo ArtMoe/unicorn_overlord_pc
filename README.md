@@ -83,7 +83,11 @@ Settings are saved in `vw.ini`; **Restore Defaults** resets them too.
 In game, **Insert** (R3+L2 on a controller) opens the port's overlay menu with every setting. It has
 four tabs:
 
-- **Image:** display mode, VSync, FSR 1 and RCAS sharpening.
+- **Image:** display mode, VSync, **Anime4K**, FSR 1 and RCAS sharpening. Anime4K (Fast or
+  Quality) redraws the game's line art sharper; when the window is more than 1.2 times the game's
+  image both ways, it also doubles the image before FSR 1 and the scaling. It costs GPU time per
+  frame, measured on an RX 560X-class GPU at 1080p: Fast 3.3 ms, Quality 7.5 ms (a frame at 60 FPS
+  has 16.7 ms), so Quality is meant for a stronger GPU.
 - **Performance:** render resolution, frames queued and the GPU readback options.
 - **Overlay:** the performance overlay.
 - **Controls:** keyboard and controller button bindings, saved in `vw.ini`, and the
@@ -229,6 +233,7 @@ Libraries and tools used:
 | [sirit](https://github.com/shadps4-emu/sirit), [SPIRV-Headers](https://github.com/KhronosGroup/SPIRV-Headers), [glslang](https://github.com/KhronosGroup/glslang) | Shader generation |
 | [Vulkan](https://www.vulkan.org) headers, [Vulkan Memory Allocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) | Graphics API |
 | AMD FidelityFX FSR 1 and CAS | Upscaling and sharpening |
+| [Anime4K](https://github.com/bloc97/Anime4K) | Line-art restore and upscale (Image tab) |
 | [Zydis](https://github.com/zyantific/zydis), [xbyak](https://github.com/herumi/xbyak) | x86 decoding and code generation |
 | [fmt](https://github.com/fmtlib/fmt), [Boost](https://www.boost.org), [magic_enum](https://github.com/Neargye/magic_enum), [robin-map](https://github.com/Tessil/robin-map), [half](https://half.sourceforge.net), [xxHash](https://github.com/Cyan4973/xxHash), [zlib](https://zlib.net), [miniz](https://github.com/richgel999/miniz) | Support libraries |
 | [DejaVu fonts](https://dejavu-fonts.github.io) | Menu font |

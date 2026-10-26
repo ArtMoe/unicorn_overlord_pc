@@ -287,6 +287,9 @@ void ImageTab() {
     const bool rcas_blocked = s.rcas && !s.rcas_applied;
     ImGui::SeparatorText("Scaling and sharpening");
     if (BeginRows("##scaling")) {
+        ChoiceRow("Anime4K", s.anime4k, G::Anime4kNames.data(), nullptr, G::Anime4kCount,
+                  "Redraws the game's lines and art sharper. When the window is larger than the game's image "
+                  "it also doubles the image, before FSR 1. Quality costs the most GPU time.");
         CheckRow("Upscale with FSR 1", s.fsr1,
                  "Enlarges a smaller game image to the window. For more FPS: Render resolution 720p + FSR 1.");
         ImGui::BeginDisabled(rcas_blocked);
@@ -307,7 +310,11 @@ void ImageTab() {
         InfoRow("Game image", text);
         std::snprintf(text, sizeof(text), "%d x %d", ww, wh);
         InfoRow("Window", text);
-        InfoRow("FSR 1", !s.fsr1 ? "off" : upscaling ? "active" : "no effect (image not smaller than window)");
+        InfoRow("Anime4K", !s.anime4k ? "off" : s.anime4k_upscaled ? "restore and x2 upscale" : "restore");
+        InfoRow("FSR 1", !s.fsr1                ? "off"
+                         : s.anime4k_upscaled   ? "no effect (Anime4K enlarged the image)"
+                         : upscaling            ? "active"
+                                                : "no effect (image not smaller than window)");
         InfoRow("Sharpening", s.rcas_applied ? (downscaling ? "applied (CAS)" : "applied") : "not applied");
         InfoRow("Supersampling", downscaling ? "on: the larger image is averaged down to the window" : "off");
         ImGui::EndTable();

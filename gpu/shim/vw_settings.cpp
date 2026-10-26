@@ -76,6 +76,8 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.async_shaders = i != 0;
     } else if (key == "fsr1") {
         v.fsr1 = i != 0;
+    } else if (key == "anime4k") {
+        v.anime4k = VwGraphics::ParseAnime4k(value.empty() ? -1 : i);
     } else if (key == "rcas") {
         v.rcas = i != 0;
     } else if (key == "rcas_strength") {
@@ -130,7 +132,7 @@ void Load() {
     // Environment overrides (scripts, A/B tests).
     const std::pair<const char*, const char*> env_keys[] = {
         {"VW_ASYNC_SHADERS", "async_shaders"}, {"VW_DEFERRED_READBACK", "deferred_readback"},
-        {"VW_STALE_READBACK", "stale_readback"}, {"VW_FSR1", "fsr1"},
+        {"VW_STALE_READBACK", "stale_readback"}, {"VW_FSR1", "fsr1"}, {"VW_ANIME4K", "anime4k"},
         {"VW_RCAS", "rcas"},                   {"VW_FRAMES_AHEAD", "frames_queued"},
     };
     for (const auto& [env, key] : env_keys) {
@@ -174,12 +176,12 @@ void Save() {
                  v.overlay_opacity.load(), v.overlay_layout.load(), v.menu_tab.load());
     std::fprintf(file,
                  "display_mode=%s\nvsync=%d\nasync_shaders=%d\n"
-                 "fsr1=%d\nrcas=%d\nrcas_strength=%d\nframes_queued=%d\n"
+                 "fsr1=%d\nanime4k=%d\nrcas=%d\nrcas_strength=%d\nframes_queued=%d\n"
                  "render_resolution=%s\ndeferred_readback=%d\nstale_readback=%d\n"
                  "restart_unconfirmed=%d\n",
                  VwGraphics::DisplayModeKeys[std::clamp(v.display_mode.load(), 0, 2)].data(),
                  int(v.vsync.load()), int(v.async_shaders.load()),
-                 int(v.fsr1.load()), int(v.rcas.load()), v.rcas_strength.load(), v.frames_queued.load(),
+                 int(v.fsr1.load()), v.anime4k.load(), int(v.rcas.load()), v.rcas_strength.load(), v.frames_queued.load(),
                  VwGraphics::Resolutions[std::clamp(v.render_resolution.load(), 0,
                                                       int(VwGraphics::Resolutions.size()) - 1)]
                      .data(),
