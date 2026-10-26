@@ -219,7 +219,7 @@ namespace G = VwGraphics;
 
 enum Row {
     Heading, DisplayMode, Vsync, Resolution, Fsr1, Sharpening, SharpeningStrength, ButtonIcons,
-    StickDeadZone, Overlay, CheckUpdates, RowCount
+    StickDeadZone, Overlay, RowCount
 };
 
 constexpr const char* DisplayModes[] = {"Windowed", "Borderless", "Fullscreen"};
@@ -252,8 +252,6 @@ const VwgpuSettingRow Rows[RowCount] = {
     {"Performance Overlay",
      "Shows the frame rate and other measurements in a corner.\nMore settings: Insert or R3+L2.", VWGPU_ROW_SWITCH, 0,
      nullptr, 0, 0, 0, 0, nullptr},
-    {"Check for Updates", "At start, looks for a newer version of the PC port.\nIt asks before downloading anything.",
-     VWGPU_ROW_SWITCH, 0, nullptr, 1, 0, 0, 0, nullptr},
 };
 
 int IconIndex() {
@@ -287,7 +285,6 @@ extern "C" float vwgpu_setting_value(int row) {
     case ButtonIcons: return float(IconIndex());
     case StickDeadZone: return float(v.stick_dead_zone.load());
     case Overlay: return v.show_fps ? 1.0f : 0.0f;
-    case CheckUpdates: return v.check_updates ? 1.0f : 0.0f;
     default: return 0.0f;
     }
 }
@@ -309,7 +306,6 @@ extern "C" void vwgpu_setting_set(int row, float value) {
     case ButtonIcons: VwSettings::SetText("button_icons", choice ? IconKeys[choice] : ""); break;
     case StickDeadZone: v.stick_dead_zone = std::clamp(i, int(r.min), int(r.max)); break;
     case Overlay: v.show_fps = i != 0; break;
-    case CheckUpdates: v.check_updates = i != 0; break;
     }
     VwSettings::Save();
 }
