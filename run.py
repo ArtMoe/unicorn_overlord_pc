@@ -271,10 +271,13 @@ def main():
             run_script('content_profile.py', game, '--out', out, '--sku', sku)
             prepare_cache.store(out, prepare_key)
 
-        from patches import (eboot_matches, game_app_version, game_profile, game_title_id,
+        from patches import (eboot_matches, eboot_supported, game_app_version, game_profile, game_title_id,
                              patch_requirements, selected_patches)
         profile = game_profile(game_title_id(game))
         LOG.write(f'Game: {game_title_id(game)} v{game_app_version(game)} · {original_game}')
+        if eboot_supported(game) is False:
+            LOG.write('Game: eboot.bin is another build than the supported one; render resolution, '
+                      'button icons and the Options rows stay off (issue #14)')
         support.update(game=game_title_id(game), game_version=game_app_version(game))
         diagnostics.write_summary(LOG.path, support)
         patched = bool(profile) and ((game_app_version(game) == profile[2] and eboot_matches(game, profile))

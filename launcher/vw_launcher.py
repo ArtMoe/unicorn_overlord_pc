@@ -73,7 +73,7 @@ def run_role(argv):
 
 
 sys.path.insert(0, str(RUNTIME / 'scripts'))
-from patches import game_app_version, game_title_id  # noqa: E402
+from patches import eboot_supported, game_app_version, game_title_id  # noqa: E402
 
 
 def load_settings(data):
@@ -107,6 +107,13 @@ def check_game(game_info, folder):
     return True, f'{name}  ·  {title_id}  ·  v{version}'
 
 
+OTHER_BUILD = ('This eboot.bin is a different build of version {version} than the one the PC port '
+               'was made for (another region or update package).\n\nThe game runs, but the PC '
+               'features that change the game\'s code stay off: Render Resolution, Button Icons '
+               'and the PC rows in the game\'s Options. The base game with the 1.04 update '
+               '(English patch) has the supported build.\n\nUse this folder anyway?')
+
+
 def tk_root():
     """A hidden Tk root for the dialogs (no launcher window)."""
     import tkinter as tk
@@ -137,6 +144,12 @@ def choose_game(game_info, start):
             if not folder:
                 return None
             ok, message = check_game(game_info, folder)
+            if ok and eboot_supported(folder) is False:
+                if messagebox.askyesno(f"{game_info['name']}: setup",
+                                       OTHER_BUILD.format(version=game_info['app_version']),
+                                       icon='warning', parent=root):
+                    return folder
+                continue
             if ok:
                 return folder
             if not messagebox.askretrycancel(f"{game_info['name']}: setup", message, parent=root):
