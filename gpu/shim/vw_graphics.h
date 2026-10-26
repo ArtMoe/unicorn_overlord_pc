@@ -68,4 +68,17 @@ inline bool FsrPassRuns(bool fsr1, bool rcas, int in_w, int in_h, int out_w, int
     return (fsr1 && upscale) || (rcas && same);
 }
 
+/// Anime4K (host_passes/anime4k_pass.cpp), a line-art upscaler: off, or its restore and x2
+/// upscale models in the small (Fast) or medium (Quality) size.
+enum Anime4k : int { Anime4kOff = 0, Anime4kFast = 1, Anime4kQuality = 2, Anime4kCount };
+inline constexpr std::array<const char*, Anime4kCount> Anime4kNames = {"Off", "Fast", "Quality"};
+inline int ParseAnime4k(int value) {
+    return value >= 0 && value < Anime4kCount ? value : Anime4kOff;
+}
+/// Anime4K's x2 upscale runs when the window is over 1.2 times the image both ways (its mpv
+/// condition); otherwise only the restore model runs and FSR 1 or the scaling does the rest.
+inline bool Anime4kUpscales(int in_w, int in_h, int out_w, int out_h) {
+    return out_w * 5 > in_w * 6 && out_h * 5 > in_h * 6;
+}
+
 } // namespace VwGraphics

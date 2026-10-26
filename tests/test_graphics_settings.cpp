@@ -35,13 +35,18 @@ int main() {
     assert(G::FsrPassRuns(true, false, 1280, 720, 2560, 1440) && !G::FsrPassRuns(false, false, 1280, 720, 2560, 1440));
     assert(G::FsrPassRuns(false, true, 1920, 1080, 1920, 1080) && !G::FsrPassRuns(true, false, 1920, 1080, 1920, 1080));
     assert(!G::FsrPassRuns(true, true, 2560, 1440, 1920, 1080));  // larger image: regular scaling
+    assert(G::ParseAnime4k(2) == G::Anime4kQuality && G::ParseAnime4k(3) == G::Anime4kOff && G::ParseAnime4k(-1) == 0);
+    // Anime4K's x2 runs above 1.2 times both ways: 1080p to 1440p, not 1080p to 1200p or 1080p.
+    assert(G::Anime4kUpscales(1920, 1080, 2560, 1440) && G::Anime4kUpscales(1280, 720, 1920, 1080));
+    assert(!G::Anime4kUpscales(1920, 1080, 1920, 1200) && !G::Anime4kUpscales(1920, 1080, 1920, 1080));
+    assert(!G::Anime4kUpscales(1920, 1080, 2304, 1296));  // exactly 1.2: no
 
     const char* path = "graphics-settings-test.ini";
     {
         std::ofstream out(path);
         out << "display_mode=borderless\nvsync=0\nfps_limit=240\nasync_shaders=0\n"
                "render_resolution=1800p\naspect_ratio=21:9\ndeferred_readback=0\nstale_readback=1\n"
-               "fsr1=1\nrcas=0\nrcas_strength=40\nframes_queued=2\n";
+               "fsr1=1\nanime4k=1\nrcas=0\nrcas_strength=40\nframes_queued=2\n";
     }
     _putenv_s("VW_CONFIG", path);
     _putenv_s("VW_ASYNC_SHADERS", "");
@@ -50,6 +55,7 @@ int main() {
     assert(v.display_mode == G::Borderless && !v.vsync && !v.async_shaders);
     assert(v.render_resolution == 3 && v.aspect_ratio == 1 && !v.deferred_readback && v.stale_readback);
     assert(v.fsr1 && !v.rcas && v.rcas_strength == 40 && v.frames_queued == 2);
+    assert(v.anime4k == G::Anime4kFast);
     assert(!VwSettings::GraphicsNeedRestart());
     v.render_resolution = 1;  // 720p
     assert(VwSettings::GraphicsNeedRestart());
@@ -64,7 +70,7 @@ int main() {
     const std::string saved = Read(path);
     for (const char* line : {"display_mode=borderless\n", "vsync=0\n", "async_shaders=0\n",
                              "render_resolution=1800p\n", "aspect_ratio=21:9\n", "deferred_readback=0\n",
-                             "stale_readback=1\n", "fsr1=1\n", "rcas=0\n", "rcas_strength=40\n",
+                             "stale_readback=1\n", "fsr1=1\n", "anime4k=1\n", "rcas=0\n", "rcas_strength=40\n",
                              "frames_queued=2\n"}) {
         assert(saved.find(line) != std::string::npos);
     }
@@ -73,13 +79,13 @@ int main() {
     {
         std::ofstream out(path);
         out << "display_mode=huge\nfps_limit=7\nrender_resolution=8K\naspect_ratio=5:4\n"
-               "rcas_strength=250\nframes_queued=9\n";
+               "rcas_strength=250\nframes_queued=9\nanime4k=7\n";
     }
     _putenv_s("VW_ASYNC_SHADERS", "1");  // the environment still wins at start
     v.async_shaders = false;
     VwSettings::Load();
     assert(v.display_mode == G::Windowed && v.render_resolution == 0 && v.aspect_ratio == 0);
-    assert(v.rcas_strength == 75 && v.frames_queued == 1);
+    assert(v.rcas_strength == 75 && v.frames_queued == 1 && v.anime4k == G::Anime4kOff);
     assert(v.async_shaders);
 
     // The rows of the game's Options screen (vwgpu.h).

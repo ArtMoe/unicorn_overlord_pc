@@ -8,6 +8,7 @@
 #include <condition_variable>
 
 #include "core/libraries/videoout/buffer.h"
+#include "video_core/renderer_vulkan/host_passes/anime4k_pass.h"
 #include "video_core/renderer_vulkan/host_passes/fsr_pass.h"
 #include "video_core/renderer_vulkan/host_passes/pp_pass.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
@@ -117,6 +118,7 @@ private:
 
     Frontend::WindowSDL& window;
     Instance instance;
+    HostPasses::Anime4kPass anime4k_pass;
     HostPasses::FsrPass fsr_pass;
     HostPasses::FsrPass::Settings fsr_settings{};
     HostPasses::PostProcessingPass::Settings pp_settings{};
