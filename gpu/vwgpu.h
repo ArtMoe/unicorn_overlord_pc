@@ -37,6 +37,8 @@ int vwgpu_choice_poll(void);
 int vwgpu_overlay_captures_input(void);
 /* A text setting of vw.ini ("key_map", "pad_map"): 1 and the value in out when it is set. */
 int vwgpu_setting_text(const char *key, char *out, uint64_t size);
+/* The sticks' dead zone in percent of their travel (vw.ini stick_dead_zone). */
+int vwgpu_stick_dead_zone(void);
 /* The port's settings as rows of the game's own Options screen (src/unicorn_native_settings.h).
  * kind: 0 section heading, 1 list of choices, 2 off/on, 3 slider from min to max in steps.
  * Values are floats as the game keeps them: a choice index, 0 or 1, or the slider value.

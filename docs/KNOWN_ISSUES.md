@@ -66,6 +66,10 @@ Measured on the test system above, 1080p:
 
 ## Graphics
 
+- **Ultrawide (21:9, 32:9) is experimental.** It was made on a 16:9 screen and checked there
+  with black bars; nobody has tried it on an ultrawide monitor yet. Menus and text stay 16:9 in
+  the middle. Please report how it looks with the **Ultrawide report** issue template (README,
+  Ultrawide).
 - The two GPU readback options are **on by default** because they are faster. If something
   looks wrong (black screen, missing or flickering graphics, wrong lighting or shadows), turn
   them off: in-game menu (**Insert**) → Performance → "Game reads GPU data without waiting" and

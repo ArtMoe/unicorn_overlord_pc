@@ -1,0 +1,47 @@
+import hashlib
+from pathlib import Path
+import tempfile
+import unittest
+from unittest import mock
+
+import paths  # noqa: F401  (scripts/ on the path)
+import patches
+
+
+class EbootBuild(unittest.TestCase):
+    """Issue #14: another build of v01.04 turned the code hooks off without a word."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.game = Path(self.temp.name)
+        (self.game / 'eboot.bin').write_bytes(b'supported build')
+        known = {'CUSA36381': hashlib.sha256(b'supported build').hexdigest()}
+        for patcher in (mock.patch.object(patches, 'SUPPORTED_EBOOTS', known),
+                        mock.patch.object(patches, 'game_title_id', return_value='CUSA36381')):
+            self.addCleanup(patcher.stop)
+            started = patcher.start()
+        self.title = started
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_the_supported_build(self):
+        self.assertIs(patches.eboot_supported(self.game), True)
+
+    def test_another_build(self):
+        (self.game / 'eboot.bin').write_bytes(b'official Asia build')
+        self.assertIs(patches.eboot_supported(self.game), False)
+
+    def test_unknown_game_or_missing_eboot(self):
+        self.title.return_value = 'CUSA00000'
+        self.assertIsNone(patches.eboot_supported(self.game))
+        self.title.return_value = 'CUSA36381'
+        (self.game / 'eboot.bin').unlink()
+        self.assertIsNone(patches.eboot_supported(self.game))
+
+    def test_the_hash_is_the_v0104_english_patch_build(self):
+        self.assertEqual(len(patches.SUPPORTED_EBOOTS['CUSA36381']), 64)
+
+
+if __name__ == '__main__':
+    unittest.main()

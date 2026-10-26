@@ -25,6 +25,8 @@ struct Values {
     std::atomic<bool> vsync{true};
     std::atomic<bool> async_shaders{true};
     std::atomic<bool> fsr1{false};
+    /// Anime4K preset (VwGraphics::Anime4k), before FSR 1.
+    std::atomic<int> anime4k{0};
     std::atomic<bool> rcas{true};
     std::atomic<int> rcas_strength{75};
     /// Set by the presenter: sharpening ran on the last frame (it needs FSR 1 when the game's
@@ -32,9 +34,15 @@ struct Values {
     std::atomic<bool> rcas_applied{false};
     /// Set by the presenter: the game's image and the window it is shown in, in pixels.
     std::atomic<int> image_width{0}, image_height{0}, window_width{0}, window_height{0};
+    /// Set by the presenter: Anime4K doubled the image on the last frame.
+    std::atomic<bool> anime4k_upscaled{false};
     std::atomic<int> frames_queued{1};
+    /// Controls: the sticks' dead zone in percent of their travel (src/runtime_pad.c). Worn or
+    /// non-PlayStation sticks rest off centre, and the game reads that as a held direction.
+    std::atomic<int> stick_dead_zone{15};
     // Startup: run.py turns them into patches and environment variables; "Apply and restart".
     std::atomic<int> render_resolution{0};
+    std::atomic<int> aspect_ratio{0};
     std::atomic<bool> deferred_readback{true};
     std::atomic<bool> stale_readback{true};
     /// Index into VwGraphics::TextLanguages; the probe reads text_language= itself.
@@ -42,11 +50,13 @@ struct Values {
     /// Set before an "Apply and restart"; cleared once the new launch shows the game. run.py
     /// restores the previous startup options when a launch never cleared it.
     std::atomic<bool> restart_unconfirmed{false};
-    int startup_render_resolution = 0, startup_text_language = 0;
+    int startup_render_resolution = 0, startup_aspect_ratio = 0, startup_text_language = 0;
     bool startup_deferred_readback = true, startup_stale_readback = true;
 };
 
 Values& Get();
+
+constexpr int StickDeadZoneMax = 40;
 
 /// Text settings: "key_map" and "pad_map" (button remapping, src/runtime_pad.c format).
 std::string Text(const std::string& key);

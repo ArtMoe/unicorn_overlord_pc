@@ -17,11 +17,11 @@ class GraphicsOptionsTest(unittest.TestCase):
         self.temp.cleanup()
 
     def test_defaults_and_invalid_values(self):
-        self.ini.write_text('render_resolution=8K\nstale_readback=yes\n', encoding='utf-8')
+        self.ini.write_text('render_resolution=8K\naspect_ratio=5:4\nstale_readback=yes\n', encoding='utf-8')
         options, reverted = g.prepare(self.ini, self.state)
         self.assertFalse(reverted)
-        self.assertEqual(options, {'render_resolution': 'native', 'deferred_readback': '1',
-                                   'stale_readback': '1', 'async_shaders': '1'})
+        self.assertEqual(options, {'render_resolution': 'native', 'aspect_ratio': '16:9',
+                                   'deferred_readback': '1', 'stale_readback': '1', 'async_shaders': '1'})
 
     def test_write_keys_keeps_other_lines(self):
         self.ini.write_text('# comment\nshow_fps=1\nrcas=1\n', encoding='utf-8')

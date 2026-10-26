@@ -73,7 +73,8 @@ python launcher/unicorn_launcher.py
 
 The game's own **System → Options** screen (from the title or the in-game menu) has a **PC**
 section at the end: display mode, VSync, render resolution (applied at the next
-start), FSR 1 upscaling, sharpening and its strength, button icons and the performance overlay.
+start), FSR 1 upscaling, sharpening and its strength, button icons, the stick dead zone and the
+performance overlay.
 Settings are saved in `vw.ini`; **Restore Defaults** resets them too.
 
 > **Every render resolution change requires a restart.** Press **Insert** to open the overlay
@@ -83,19 +84,25 @@ Settings are saved in `vw.ini`; **Restore Defaults** resets them too.
 In game, **Insert** (R3+L2 on a controller) opens the port's overlay menu with every setting. It has
 four tabs:
 
-- **Image:** display mode, VSync, FSR 1 and RCAS sharpening.
+- **Image:** display mode, VSync, **Anime4K**, FSR 1 and RCAS sharpening. Anime4K (Fast or
+  Quality) redraws the game's line art sharper; when the window is more than 1.2 times the game's
+  image both ways, it also doubles the image before FSR 1 and the scaling. It costs GPU time per
+  frame, measured on an RX 560X-class GPU at 1080p: Fast 3.3 ms, Quality 7.5 ms (a frame at 60 FPS
+  has 16.7 ms), so Quality is meant for a stronger GPU.
 - **Performance:** render resolution, frames queued and the GPU readback options.
 - **Overlay:** the performance overlay.
 - **Controls:** keyboard and controller button bindings, saved in `vw.ini`, and the
   **button icons** the game shows: Auto (follows the controller in use), PlayStation, Xbox or
   Nintendo. The Xbox and Nintendo icons are the game's own, from its Xbox and Switch releases.
+  The **stick dead zone** (15% by default) stops sticks that rest off centre from drifting:
+  raise it if the cursor or camera still moves by itself.
 
 Settings are kept in `vw.ini` in the data directory. The Overlay tab also has a
 **Change game folder** button to reopen setup.
 
 **Updates:** at start the program looks for a newer release on GitHub and asks before
 downloading it; the update keeps your settings, saves and installed game. Turn it off with
-**Check for Updates** in the game's Options (PC section) or in the Insert menu.
+**Check for updates at start** in the Insert menu.
 
 Something wrong? See [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) and
 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). Every run writes a log to `logs/` in the
@@ -110,6 +117,26 @@ restart) or with `VW_RENDER_SCALE`: `720p` and `900p` for weak GPUs, `1800p` and
 for smoother edges and sharper art. Every size uses the game's own PS4 Pro path (`VW_NEO_MODE=1`)
 at that size, which lays out the 2D layers from the target size, so the framing and the HUD stay
 the same at every resolution.
+
+### Ultrawide (experimental)
+
+**Aspect ratio** in the menu (Performance, applied on restart), `aspect_ratio=` in `vw.ini` or
+`VW_ASPECT_RATIO`: `21:9` (2560×1080 at native resolution) or `32:9` show more of the battle map
+and scenes at the sides instead of stretching them; menus and text stay 16:9 in the middle.
+`VW_ASPECT_RATIO` also takes any `W:H`, such as `43:18` for 3440×1440. It combines with the
+render resolution: 4K at 21:9 renders 5120×2160. On a 16:9 screen a wider image gets black bars
+above and below.
+
+It is experimental: it was made on a 16:9 laptop and has not been tested on an ultrawide monitor.
+Reports are welcome, whether it looks right or wrong. Open an issue with the **Ultrawide report**
+template and attach:
+
+- the diagnostics ZIP: start the program with `--export-diagnostics` (or answer **Yes** in the
+  error dialog after a crash). It holds the log with the `Aspect ratio:` and `Render scale:`
+  lines and your `vw.ini` settings, with your folders redacted.
+- screenshots of the battle map, a story scene with text, a menu, and anything stretched,
+  cut off or misplaced (Win+Shift+S on Windows, Spectacle or your desktop's tool on Linux);
+- your monitor's resolution and the display mode (Windowed, Borderless or Fullscreen).
 
 ### Keyboard
 
@@ -229,6 +256,7 @@ Libraries and tools used:
 | [sirit](https://github.com/shadps4-emu/sirit), [SPIRV-Headers](https://github.com/KhronosGroup/SPIRV-Headers), [glslang](https://github.com/KhronosGroup/glslang) | Shader generation |
 | [Vulkan](https://www.vulkan.org) headers, [Vulkan Memory Allocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator) | Graphics API |
 | AMD FidelityFX FSR 1 and CAS | Upscaling and sharpening |
+| [Anime4K](https://github.com/bloc97/Anime4K) | Line-art restore and upscale (Image tab) |
 | [Zydis](https://github.com/zyantific/zydis), [xbyak](https://github.com/herumi/xbyak) | x86 decoding and code generation |
 | [fmt](https://github.com/fmtlib/fmt), [Boost](https://www.boost.org), [magic_enum](https://github.com/Neargye/magic_enum), [robin-map](https://github.com/Tessil/robin-map), [half](https://half.sourceforge.net), [xxHash](https://github.com/Cyan4973/xxHash), [zlib](https://zlib.net), [miniz](https://github.com/richgel999/miniz) | Support libraries |
 | [DejaVu fonts](https://dejavu-fonts.github.io) | Menu font |

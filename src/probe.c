@@ -8,6 +8,7 @@
 #include <time.h>
 #include "runtime.h"
 #include "unicorn_render_scale.h"
+#include "unicorn_ultrawide.h"
 #include "unicorn_button_icons.h"
 #include "unicorn_native_settings.h"
 #include "gpu/vwgpu.h"
@@ -360,24 +361,51 @@ static float render_scale_value(const char *text) {
     return strtof(text, NULL);
 }
 
-/* VW_RENDER_SCALE, else render_resolution= in vw.ini (VW_CONFIG; the menu's "Render
- * resolution", applied on restart). */
-static float render_scale_setting(void) {
-    const char *env = getenv("VW_RENDER_SCALE");
-    if (env && *env) return render_scale_value(env);
+/* The environment variable, else key= in vw.ini (VW_CONFIG), into value (empty when neither). */
+static void startup_setting(const char *env_name, const char *key, char *value, size_t size) {
+    value[0] = 0;
+    const char *env = getenv(env_name);
+    if (env && *env) {
+        snprintf(value, size, "%s", env);
+        return;
+    }
     const char *config = getenv("VW_CONFIG");
     FILE *f = config ? fopen(config, "r") : NULL;
-    float scale = 1.0f;
+    const size_t length = strlen(key);
     char line[256];
     while (f && fgets(line, sizeof(line), f))
-        if (!strncmp(line, "render_resolution=", 18)) scale = render_scale_value(line + 18);
+        if (!strncmp(line, key, length) && line[length] == '=') {
+            snprintf(value, size, "%s", line + length + 1);
+            value[strcspn(value, "\r\n")] = 0;
+        }
     if (f) fclose(f);
-    return scale;
+}
+
+/* VW_RENDER_SCALE, else render_resolution= in vw.ini (the menu's "Render resolution",
+ * applied on restart). */
+static float render_scale_setting(void) {
+    char value[64];
+    startup_setting("VW_RENDER_SCALE", "render_resolution", value, sizeof(value));
+    return value[0] ? render_scale_value(value) : 1.0f;
+}
+
+/* VW_ASPECT_RATIO, else aspect_ratio= in vw.ini (the menu's "Aspect ratio", applied on
+ * restart): "16:9" (the default), "21:9" (64:27, 2560x1080), "32:9" or any "W:H". Never
+ * below 16:9. */
+static float aspect_ratio_setting(void) {
+    char value[64];
+    startup_setting("VW_ASPECT_RATIO", "aspect_ratio", value, sizeof(value));
+    float w = 0.0f, h = 0.0f;
+    if (!strcmp(value, "21:9")) w = 64.0f, h = 27.0f;
+    else if (sscanf(value, "%f:%f", &w, &h) != 2) w = 16.0f, h = 9.0f;
+    const float ratio = w > 0.0f && h > 0.0f ? w / h : 0.0f;
+    return ratio > 16.0f / 9.0f + 0.001f && ratio <= 4.0f ? ratio : 16.0f / 9.0f;
 }
 
 /* Unicorn Overlord: the render size of this launch, 0x0 when native. Any other size runs the
  * game's PS4 Pro path (VW_NEO_MODE) with its 3840x2160 replaced: the Pro path lays out every
- * 2D layer from the target size, so 720p and 900p keep the 1080p framing too. */
+ * 2D layer from the target size, so 720p and 900p keep the 1080p framing too. An aspect ratio
+ * wider than 16:9 widens the size (src/unicorn_ultrawide.h). */
 static int unicorn_render_size(const char *app0, uint32_t *width, uint32_t *height) {
     char path[4096], serial[32] = "", version[32] = "";
     snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
@@ -385,11 +413,13 @@ static int unicorn_render_size(const char *app0, uint32_t *width, uint32_t *heig
     sfo_value(path, "APP_VER", version, sizeof(version), NULL);
     if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return 0;
     float scale = render_scale_setting();
-    if (!(scale > 0.0f) || (scale > 0.999f && scale < 1.001f)) return 0;
+    if (!(scale > 0.0f)) scale = 1.0f;
     if (scale < 0.5f) scale = 0.5f;
     if (scale > 2.0f) scale = 2.0f;
-    *width = (uint32_t)(1920.0f * scale + 0.5f) & ~1u;
+    const float aspect = aspect_ratio_setting();
+    if (scale > 0.999f && scale < 1.001f && aspect == 16.0f / 9.0f) return 0;
     *height = (uint32_t)(1080.0f * scale + 0.5f) & ~1u;
+    *width = (uint32_t)((float)*height * aspect + 0.5f) & ~1u;
     return 1;
 }
 
@@ -430,6 +460,7 @@ static void forget_render_scale_env(void) {
  * the patch expects the game stays native: the unpatched Pro path draws at 3840x2160, so 900p
  * picked on such an eboot ran at 4K. */
 static int render_scale_ready;
+static uint32_t render_width, render_height; /* the size prepare_unicorn_render_scale chose */
 static void prepare_unicorn_render_scale(const char *app0, uint64_t size) {
     uint32_t width, height;
     if (!unicorn_render_size(app0, &width, &height)) return;
@@ -437,6 +468,13 @@ static void prepare_unicorn_render_scale(const char *app0, uint64_t size) {
         printf("Render scale: unavailable (code signature); the game renders at 1920x1080\n");
         return;
     }
+    if (width * 9 > height * 16 && !unicorn_ultrawide_signature_match(image, size)) {
+        width = (height * 16 / 9) & ~1u;
+        printf("Aspect ratio: unavailable (code signature); the game renders at 16:9\n");
+        if (width == 1920 && height == 1080) return;
+    }
+    render_width = width;
+    render_height = height;
     render_scale_ready = 1;
     char text[16];
     set_render_scale_env("VW_NEO_MODE", "1", 0);
@@ -447,9 +485,9 @@ static void prepare_unicorn_render_scale(const char *app0, uint64_t size) {
 }
 
 /* After relocation: Pro sizes below 4K replace the game's 3840x2160 immediates. */
-static void install_unicorn_render_scale(const char *app0) {
-    uint32_t width, height;
-    if (!render_scale_ready || !unicorn_render_size(app0, &width, &height)) return;
+static void install_unicorn_render_scale(void) {
+    if (!render_scale_ready) return;
+    const uint32_t width = render_width, height = render_height;
     if (width != 3840 || height != 2160) {
         for (unsigned i = 0; i < 3; ++i) {
             memcpy(image + unicorn_width_imm[i], &width, 4);
@@ -458,6 +496,15 @@ static void install_unicorn_render_scale(const char *app0) {
         const float widthf = (float)width, heightf = (float)height;
         memcpy(image + unicorn_width_float, &widthf, 4);
         memcpy(image + unicorn_height_float, &heightf, 4);
+    }
+    if (width * 9 > height * 16) {
+        /* The floats the patched instructions read: a page near the image (as for the CRI hook). */
+        float *values = allocate(page_size);
+        if (!unicorn_ultrawide_apply(image, width, height, values))
+            printf("Aspect ratio: unavailable (no memory in reach); the image is stretched\n");
+        else
+            printf("Aspect ratio: %.3f (%ux%u), experimental\n", (double)width / height, width, height);
+        protect(values, page_size, 4);
     }
     printf("Render scale: %ux%u (PS4 Pro path)\n", width, height);
 }
@@ -955,7 +1002,7 @@ int main(int argc, char **argv) {
         _exit(missing ? 1 : 0); /* no destructors: GPU threads are running */
     }
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
-    if (gpu_enabled) install_unicorn_render_scale(app0);
+    if (gpu_enabled) install_unicorn_render_scale();
     install_unicorn_cri_hook(app0, segments, ns);
     if (gpu_enabled) install_unicorn_native_settings(app0);
     install_unicorn_text_language(app0);
