@@ -11,7 +11,11 @@
  * reads them changes every icon it draws. A later change rewrites the entries too, but an icon
  * already playing keeps its keyframes (checked); new prompts after a change are not checked. The file is found when the CRI decompressor
  * (FUN_001fdfc0) has decoded it: header = the 0x100 raw bytes after the compressed stream.
- * Section layout (pointer at 0xf8, count at 0x6c) as documented by rufaswan's Web2D_Games. */
+ * Section layout (pointer at 0xf8, count at 0x6c) as documented by rufaswan's Web2D_Games.
+ * The groups are named after the Switch buttons by position (BUTTON_B is the bottom one, PS4
+ * Cross), but BUTTON_A_3 and BUTTON_B_3 draw their own letters: BUTTON_B_3 is the Xbox B, the
+ * right button. Those two groups show each other's Xbox icon. The X and Y groups already draw
+ * the Xbox letter of their position (BUTTON_Y_3, PS4 Square, is the Xbox X; checked in Options). */
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -32,6 +36,7 @@ typedef struct {
     unsigned char *saved;   /* the original entries */
     uint32_t count, groups;
     uint16_t group[BUTTON_ICONS_MAX_GROUPS][4]; /* Switch, PS4 dark, PS4 light, Xbox */
+    uint8_t xbox[BUTTON_ICONS_MAX_GROUPS];      /* the group whose Xbox icon each group shows */
     int style;
 } ButtonIcons;
 
@@ -72,10 +77,27 @@ static uint32_t button_icons_find_groups(const unsigned char *entries, uint32_t 
     return found;
 }
 
+/* The Xbox icon of each group: the same group, or for A and B the other one (BUTTON_B, the bottom
+ * button, shows BUTTON_A_3). */
+static void button_icons_pair_xbox(ButtonIcons *b) {
+    static const char *const swaps[][2] = {{"BUTTON_A", "BUTTON_B"}};
+    for (uint32_t g = 0; g < b->groups; ++g) {
+        b->xbox[g] = (uint8_t)g;
+        const unsigned char *entry = b->saved + b->group[g][0] * BUTTON_ICONS_ENTRY;
+        for (size_t s = 0; s < sizeof(swaps) / sizeof(*swaps); ++s)
+            for (int side = 0; side < 2; ++side) {
+                if (!button_icons_named(entry, swaps[s][side])) continue;
+                for (uint32_t h = 0; h < b->groups; ++h)
+                    if (button_icons_named(b->saved + b->group[h][0] * BUTTON_ICONS_ENTRY, swaps[s][!side]))
+                        b->xbox[g] = (uint8_t)h;
+            }
+    }
+}
+
 /* Points the PS4 entries at the style's keyframes (the original ones for PlayStation). */
 static void button_icons_write(ButtonIcons *b, int style) {
     for (uint32_t g = 0; g < b->groups; ++g) {
-        const uint16_t source = style == BUTTON_ICONS_XBOX       ? b->group[g][3]
+        const uint16_t source = style == BUTTON_ICONS_XBOX       ? b->group[b->xbox[g]][3]
                                 : style == BUTTON_ICONS_NINTENDO ? b->group[g][0]
                                                                  : 0;
         for (int k = 1; k <= 2; ++k) {
@@ -120,6 +142,7 @@ static int button_icons_loaded(const unsigned char *header, unsigned char *body,
     button_icons.saved = saved;
     button_icons.count = count;
     button_icons.groups = button_icons_find_groups(entries, count, button_icons.group, BUTTON_ICONS_MAX_GROUPS);
+    button_icons_pair_xbox(&button_icons);
     button_icons_write(&button_icons, button_icons.style);
     pthread_mutex_unlock(&button_icons_lock);
     return 1;
