@@ -35,7 +35,12 @@ before each start.
 4. `Failed to query surface capabilities: ErrorUnknown`: the graphics driver cannot show any
    Vulkan window at the moment. Seen on Windows with an AMD driver after the PC woke from sleep
    (other Vulkan programs failed too); restarting the PC fixes it.
-5. If the game closes right after the `GPU selected:` line, start it once with the environment
+5. `STOP: cannot create 6080 MiB of guest memory (error 1450)` (Windows): the game reserves its
+   console's memory (about 6 GB) at start, and Windows had too little RAM and page file left.
+   Most often an earlier copy closed with Alt+F4 is still running: end `vwport.exe` in Task
+   Manager (the launcher offers to do it), or restart the PC. Otherwise close other programs and
+   let Windows manage the page file size (System → Advanced system settings → Performance).
+6. If the game closes right after the `GPU selected:` line, start it once with the environment
    variable `VW_PIPELINE_BINARIES=0` (already the default on NVIDIA) and attach both logs to
    a bug report.
 
