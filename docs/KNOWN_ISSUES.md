@@ -40,7 +40,10 @@ fonts (`Font_4K/*_KO*.ftx`) are there, a Korean text file is not. The executable
 the separate Korean release (untested). Without it, Korean falls back to the game's default.
 
 The start program refuses other regions (US, EU, Japan) and other versions; they have different
-executables and the port's code hooks would not match.
+executables and the port's code hooks would not match. It also refuses another build of 01.04
+(another region or update package, such as the Hong Kong 1.05 dump in #33): setup and every
+start check that `eboot.bin` has SHA-256 `de8e4970…` (#14). `VW_ALLOW_OTHER_EBOOT=1` starts one
+anyway, for testing only.
 
 ## Performance
 
@@ -66,6 +69,11 @@ Measured on the test system above, 1080p:
 
 ## Graphics
 
+- **Chapter title card shows one box with the English patch** (#49): the card that opens a
+  chapter ("Call to Action") shows a single square instead of the title. The game draws those
+  titles in a large font that, in the Chinese releases the patch builds on, holds only the
+  Chinese titles' characters. The rest of the chapter is unaffected. Not fixed yet: pointing the
+  font at the English release's large font crashed the game when the card opened.
 - **Ultrawide (21:9, 32:9) is experimental.** It was made on a 16:9 screen and checked there
   with black bars; nobody has tried it on an ultrawide monitor yet. Menus and text stay 16:9 in
   the middle. Please report how it looks with the **Ultrawide report** issue template (README,

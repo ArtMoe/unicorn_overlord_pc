@@ -43,5 +43,39 @@ class EbootBuild(unittest.TestCase):
         self.assertEqual(len(patches.SUPPORTED_EBOOTS['CUSA36381']), 64)
 
 
+class SetupRefusesAnotherBuild(unittest.TestCase):
+    """Issue #14: setup no longer offers to use another build of v01.04; it asks for another folder."""
+
+    def setUp(self):
+        import sys
+        sys.path.insert(0, str(paths.ROOT / 'launcher'))
+        import vw_launcher
+        self.launcher = vw_launcher
+        self.temp = tempfile.TemporaryDirectory()
+        self.game = Path(self.temp.name)
+        (self.game / 'eboot.bin').write_bytes(b'supported build')
+        known = {'CUSA36381': hashlib.sha256(b'supported build').hexdigest()}
+        for patcher in (mock.patch.object(patches, 'SUPPORTED_EBOOTS', known),
+                        mock.patch.object(vw_launcher, 'game_title_id', return_value='CUSA36381'),
+                        mock.patch.object(patches, 'game_title_id', return_value='CUSA36381'),
+                        mock.patch.object(vw_launcher, 'game_app_version', return_value='01.04')):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_the_supported_build_is_accepted(self):
+        ok, message = self.launcher.check_game(self.launcher.GAMES['unicorn'], str(self.game))
+        self.assertTrue(ok, message)
+
+    def test_another_build_is_refused(self):
+        (self.game / 'eboot.bin').write_bytes(b'Hong Kong 1.05 build')
+        ok, message = self.launcher.check_game(self.launcher.GAMES['unicorn'], str(self.game))
+        self.assertFalse(ok)
+        self.assertIn('cannot run it', message)
+        self.assertNotIn('anyway', message)
+
+
 if __name__ == '__main__':
     unittest.main()
