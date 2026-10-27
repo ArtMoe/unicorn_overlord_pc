@@ -4,7 +4,7 @@
 set -euo pipefail
 cd -- "$(dirname -- "$0")/.."
 case $(uname -s) in
-MINGW*|MSYS*) directory=out/gpu; suffix=.exe ;;
+MINGW*|MSYS*) directory=out/gpu-static; suffix=.exe ;;  # build.sh --static (packaging)
 *) directory=out/static; suffix= ;;
 esac
 tests=(pipeline-binary-cache png-decode aliasing blend-rewrite depth-stencil-state
