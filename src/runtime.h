@@ -101,6 +101,10 @@ uintptr_t runtime_audio_resolve(const char *name);
 void runtime_audio_report(void);
 uintptr_t runtime_pad_resolve(const char *name);
 void runtime_pad_report(void);
+/* 1 when Circle is the confirm button (confirm_button=circle in vw.ini or VW_CONFIRM_BUTTON):
+ * O accepts and X cancels. The game is told through sceSystemServiceParamGetInt's enter button,
+ * so its prompts follow; 0 for Cross, the default. */
+int runtime_pad_confirm_circle(void);
 /* The button icon layout (0 PlayStation, 1 Xbox, 2 Nintendo) from button_icons= (auto, playstation,
  * xbox, nintendo) or VW_BUTTON_ICONS; in auto the connected controller's. The listener is called
  * at the first pad read and whenever it changes. */

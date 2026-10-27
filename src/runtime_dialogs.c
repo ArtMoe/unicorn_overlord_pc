@@ -250,7 +250,7 @@ static ABI int32_t ime_init(const ImeParam *param, const void *extended) {
     const char *name=getenv("VW_USER_NAME");
     const char *start=initial[0] ? initial : name && *name ? name : "Hunter";
     if (!vwgpu_text_input_begin(start,prompt[0] ? prompt : "Text")) ime_complete(0,start);
-    else printf("Runtime: ImeDialog opened: shown on screen; keyboard Enter or Cross accepts, Esc or Circle cancels\n");
+    else printf("Runtime: ImeDialog opened: shown on screen; keyboard Enter or the confirm button accepts, Esc or the other one cancels\n");
     return 0;
 }
 static ABI int32_t ime_status(void) {

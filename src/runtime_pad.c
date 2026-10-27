@@ -5,7 +5,9 @@
  *   WASD left stick, arrow keys right stick, Space Cross, LShift Circle,
  *   E Square, Q Triangle, 1 L1, 3 R1, R L2, F R2, Z L3, C R3,
  *   Enter Options, Tab left touchpad, Backspace right touchpad,
- *   IJKL d-pad (I up, K down, J left, L right). */
+ *   IJKL d-pad (I up, K down, J left, L right).
+ * confirm_button=circle in vw.ini (or VW_CONFIRM_BUTTON) makes Circle the confirm button - O
+ * accepts and X cancels, the Japanese layout - and Space and LShift swap with it. */
 #define _GNU_SOURCE
 #include "runtime.h"
 #include "gpu/vwgpu.h"
@@ -194,12 +196,34 @@ static int apply_button_map(ButtonMap *map, const char *spec, bool keyboard) {
 /* The defaults above, kept for "Reset" and to tell remapped buttons apart (runtime_pad_spec). */
 static ButtonMap pad_defaults, key_defaults;
 
+/* confirm_button= (vw.ini) or VW_CONFIRM_BUTTON: 1 when Circle accepts and Cross cancels (O/X,
+ * the Japanese layout), 0 for Cross (the PS4 default). Read on every call: the game asks the
+ * system once, at its start (sceSystemServiceParamGetInt 1000, src/runtime_services.c). */
+int runtime_pad_confirm_circle(void) {
+    char text[16]="";
+    const char *env=getenv("VW_CONFIRM_BUTTON");
+    if (env && *env) snprintf(text,sizeof(text),"%s",env);
+    else vwgpu_setting_text("confirm_button",text,sizeof(text));
+    return !strcmp(text,"circle");
+}
+/* Cross and Circle the other way round in a map. */
+static void swap_cross_circle(ButtonMap *map) {
+    for (size_t i=0;i<map->count;++i) {
+        const uint32_t ps=map->entries[i].ps;
+        map->entries[i].ps=ps==BTN_CROSS ? BTN_CIRCLE : ps==BTN_CIRCLE ? BTN_CROSS : ps;
+    }
+}
+
 /* Order: the defaults, then the in-game Controls tab (vw.ini pad_map/key_map), then the
  * environment. */
 static void load_button_maps(void) {
     static bool loaded;
     if (loaded) return;
     loaded=true;
+    /* With Circle as the confirm button the keyboard follows it: Space still accepts (as Circle,
+     * the button the prompts show) and Left Shift cancels. The controller keeps its buttons by
+     * position, where Circle is already the right-hand one. */
+    if (runtime_pad_confirm_circle()) swap_cross_circle(&key_map);
     pad_defaults=pad_map;
     key_defaults=key_map;
     char saved[1024];

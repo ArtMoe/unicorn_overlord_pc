@@ -53,6 +53,7 @@ static ABI int32_t user_event(int32_t *event) {
 
 /* ---- SystemService ---- */
 static int language(void) { const char *v=getenv("VW_LANGUAGE"); return v ? atoi(v) : 1; }
+static int enter_button_logged;
 static ABI int32_t system_param(int32_t id,int32_t *value) {
     if (!value) return SYSTEM_PARAMETER;
     switch (id) {
@@ -66,7 +67,13 @@ static ABI int32_t system_param(int32_t id,int32_t *value) {
 #endif
     case 5: *value=0; break;                    /* summer time */
     case 7: *value=0; break;                    /* parental level off */
-    case 1000: *value=1; break;                 /* enter button = cross */
+    case 1000:                                  /* enter button: 0 = Circle, 1 = Cross */
+        *value=runtime_pad_confirm_circle() ? 0 : 1;
+        if (!enter_button_logged) {
+            enter_button_logged=1;
+            printf("Runtime: enter button: %s\n",*value ? "Cross (X)" : "Circle (O)");
+        }
+        break;
     default: fprintf(stderr,"STOP: unsupported system parameter %d\n",id); exit(21);
     }
     return 0;
