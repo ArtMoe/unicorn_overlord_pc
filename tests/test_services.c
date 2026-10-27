@@ -14,6 +14,8 @@ int64_t runtime_file_close(int fd) { (void)fd; return 0; }
 static int choice_next=-1;
 int vwgpu_choice_begin(const char *title, const char *const *items, const char *const *images, int count, int focus) { (void)title; (void)items; (void)images; (void)focus; return count>0; }
 int vwgpu_choice_poll(void) { return choice_next; }
+static int confirm_circle; /* what vw.ini holds (confirm_button=, read by src/runtime_pad.c) */
+int runtime_pad_confirm_circle(void) { return confirm_circle; }
 int runtime_savedata_param(int32_t user, const char *dir, void *param) { (void)user; (void)dir; (void)param; return -1; }
 int runtime_savedata_icon(int32_t user, const char *dir, char *out, size_t size) { (void)user; (void)dir; (void)out; (void)size; return -1; }
 
@@ -84,6 +86,13 @@ int main(void) {
     assert(trophy_unlock_state(1,1,NULL,&count)==TROPHY_INVALID && trophy_release(0)==TROPHY_INVALID);
 
     float ratio=0; assert(safe_area(&ratio)==0 && ratio==1.0f && safe_area(NULL)==SYSTEM_PARAMETER);
+
+    /* Enter button: Cross by default, Circle with confirm_button=circle (O accepts, X cancels). */
+    int32_t enter=0;
+    assert(system_param(1000,&enter)==0 && enter==1);
+    confirm_circle=1;
+    assert(system_param(1000,&enter)==0 && enter==0);
+    confirm_circle=0;
     puts("services test: ok");
     return 0;
 }

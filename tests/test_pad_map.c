@@ -73,6 +73,19 @@ int main(void) {
     runtime_pad_reset(1);
     runtime_pad_spec(1,text,sizeof(text));
     assert(!text[0]);
+
+    /* confirm_button=circle (VW_CONFIRM_BUTTON): Space and Left Shift swap, so Space still accepts
+     * (as Circle, the button the prompts show); the controller keeps Circle on the right. */
+    assert(!runtime_pad_confirm_circle()); /* no VW_CONFIRM_BUTTON here */
+    assert(pressed_by(&key_defaults,SDL_SCANCODE_SPACE)==BTN_CROSS);
+    ButtonMap circle=key_defaults;
+    swap_cross_circle(&circle);
+    assert(pressed_by(&circle,SDL_SCANCODE_SPACE)==BTN_CIRCLE);
+    assert(pressed_by(&circle,SDL_SCANCODE_LSHIFT)==BTN_CROSS);
+    assert(pressed_by(&circle,SDL_SCANCODE_E)==BTN_SQUARE && pressed_by(&circle,SDL_SCANCODE_Q)==BTN_TRIANGLE);
+    assert(pressed_by(&pad_defaults,SDL_GAMEPAD_BUTTON_SOUTH)==BTN_CROSS);
+    assert(pressed_by(&pad_defaults,SDL_GAMEPAD_BUTTON_EAST)==BTN_CIRCLE);
+
     runtime_pad_describe(0,0,text,sizeof(text));
     assert(!strcmp(text,"A / Cross"));
     puts("PASS: pad and key maps");
