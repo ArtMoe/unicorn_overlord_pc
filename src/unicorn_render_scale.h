@@ -3,6 +3,7 @@
 #define UNICORN_RENDER_SCALE_H
 #include <stdint.h>
 #include <string.h>
+#include "unicorn_build.h"
 
 /* Unicorn Overlord CUSA36381 v01.04: render above 1920x1080 (docs/dev/unicorn/HANDOFF.md).
  * On a PS4 Pro (sceKernelIsNeoMode, cached by FUN_00218680) the game draws natively at
@@ -21,7 +22,7 @@ static const uint32_t unicorn_height_float = 0xaf31a8;
 /* Each operand follows the `mov ecx` opcode (0xb9) and holds 3840 or 2160. */
 static inline int unicorn_render_scale_signature_match(const unsigned char *image, uint64_t size) {
     for (unsigned i = 0; i < 3; ++i) {
-        const uint32_t w = unicorn_width_imm[i], h = unicorn_height_imm[i];
+        const uint32_t w = unicorn_address(unicorn_width_imm[i]), h = unicorn_address(unicorn_height_imm[i]);
         uint32_t wv, hv;
         if (w + 4 > size || h + 4 > size || image[w - 1] != 0xb9 || image[h - 1] != 0xb9) return 0;
         memcpy(&wv, image + w, 4);
@@ -29,9 +30,9 @@ static inline int unicorn_render_scale_signature_match(const unsigned char *imag
         if (wv != 3840 || hv != 2160) return 0;
     }
     float wf, hf;
-    if (unicorn_height_float + 4 > size) return 0;
-    memcpy(&wf, image + unicorn_width_float, 4);
-    memcpy(&hf, image + unicorn_height_float, 4);
+    if (unicorn_address(unicorn_height_float) + 4 > size) return 0;
+    memcpy(&wf, image + unicorn_address(unicorn_width_float), 4);
+    memcpy(&hf, image + unicorn_address(unicorn_height_float), 4);
     return wf == 3840.0f && hf == 2160.0f;
 }
 

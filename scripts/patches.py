@@ -97,10 +97,12 @@ def eboot_matches(game, profile):
         return False
 
 
-# sha256 of the eboot.bin the port's code hooks (render resolution, aspect ratio, button icons, the
-# Options rows) were made for. Another build of the same version has its code elsewhere: the hooks
-# check it and stay off, and their settings then do nothing (issue #14).
-SUPPORTED_EBOOTS={'CUSA36381':'de8e4970ae6ab39278bd61cd7818d7844adf934e1909e1356476a28d239414c4'}
+# sha256 of the eboot.bin builds the port's code hooks (render resolution, aspect ratio, button
+# icons, the Options rows) know (src/unicorn_build.h): v01.04 (the 1.04 update, also under the fan
+# English patch) and the Hong Kong base game 01.00 master 1.05 (#33). Any other build is refused
+# (issue #14).
+SUPPORTED_EBOOTS={'CUSA36381':('de8e4970ae6ab39278bd61cd7818d7844adf934e1909e1356476a28d239414c4',
+                               'fff894f5f889c19ba09b4af1cd7b8b403649a85540ff45137728218edc7c8eaf')}
 
 
 def eboot_supported(game):
@@ -111,7 +113,7 @@ def eboot_supported(game):
         return None
     import hashlib
     try:
-        return hashlib.sha256((Path(game)/'eboot.bin').read_bytes()).hexdigest()==expected
+        return hashlib.sha256((Path(game)/'eboot.bin').read_bytes()).hexdigest() in expected
     except OSError:
         return None
 

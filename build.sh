@@ -136,4 +136,6 @@ if [[ ${1:-} == --test ]]; then
     out/native-settings-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -Isrc tests/test_ultrawide.c -o out/ultrawide-test
     out/ultrawide-test
+    "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -Isrc tests/test_build.c -o out/build-test
+    out/build-test
 fi

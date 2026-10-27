@@ -54,7 +54,7 @@ builds and releases are made.
 
 - 64-bit Linux, or Windows 10 (1903+) / 11.
 - A Vulkan 1.3 GPU.
-- Your own dump of the game with the 1.04 update merged in, as a folder containing `eboot.bin`,
+- Your own dump of the game with the 1.04 update merged in (or the Hong Kong 1.05 package), as a folder containing `eboot.bin`,
   `sce_module`, `sce_sys` and the `.CPK` files (about 7 GB).
 
 ## Playing
