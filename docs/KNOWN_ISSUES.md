@@ -24,8 +24,12 @@ Results from other hardware are welcome in the issues.
 
 ## Supported dump only
 
-Only **CUSA36381 (Asia) version 01.04**: the base game with the 1.04 update merged on
-top. The fan English patch only replaces the text files (`Unicorn_CN.CPK`, `Unicorn_TW.CPK`) and
+**CUSA36381 (Asia) version 01.04**: the base game with the 1.04 update merged on
+top. Also the **Hong Kong 1.05 package** (`HP0177-CUSA36381_00-UNICORNOVERLORD0-A0100-V0105`,
+#33): its `param.sfo` says version 01.00 (master 1.05), and its `eboot.bin` is another build with
+the same code at other addresses, which `src/unicorn_build.h` maps. It has Traditional and
+Simplified Chinese, Korean and Japanese text, no English; tested to the opening scenes with every
+PC feature (Options rows, render resolution, 21:9, button icons, text language). The fan English patch only replaces the text files (`Unicorn_CN.CPK`, `Unicorn_TW.CPK`) and
 `param.sfo`; its `eboot.bin` is the official one, so both work.
 
 Text language: the game picks it from the PS4 system language, and on any language but Korean or
@@ -40,9 +44,9 @@ fonts (`Font_4K/*_KO*.ftx`) are there, a Korean text file is not. The executable
 the separate Korean release (untested). Without it, Korean falls back to the game's default.
 
 The start program refuses other regions (US, EU, Japan) and other versions; they have different
-executables and the port's code hooks would not match. It also refuses another build of 01.04
-(another region or update package, such as the Hong Kong 1.05 dump in #33): setup and every
-start check that `eboot.bin` has SHA-256 `de8e4970…` (#14). `VW_ALLOW_OTHER_EBOOT=1` starts one
+executables and the port's code hooks would not match. It also refuses any other build of
+`eboot.bin` (another region or update package): setup and every start check its SHA-256 against
+the two known builds (#14). `VW_ALLOW_OTHER_EBOOT=1` starts one
 anyway, for testing only.
 
 ## Performance

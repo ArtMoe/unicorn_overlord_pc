@@ -255,8 +255,8 @@ def main():
     from patches import eboot_supported
     if eboot_supported(game) is False and not env.get('VW_ALLOW_OTHER_EBOOT'):
         fail('eboot.bin is another build than the supported one (another region or update package), '
-             'so the port cannot run it. It needs CUSA36381 v01.04, eboot.bin SHA-256 de8e4970... '
-             '(issue #14). VW_ALLOW_OTHER_EBOOT=1 starts it anyway, for testing.')
+             'so the port cannot run it. It needs CUSA36381 v01.04 or the Hong Kong 1.05 '
+             'package (issue #14). VW_ALLOW_OTHER_EBOOT=1 starts it anyway, for testing.')
     original_game = game.resolve()
     game = Path(run_script('mods.py', game, '--out', out,
                            '--mods-dir', env.get('VW_MODS_DIR', data / 'mods'),

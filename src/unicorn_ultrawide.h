@@ -3,6 +3,7 @@
 #define UNICORN_ULTRAWIDE_H
 #include <stdint.h>
 #include <string.h>
+#include "unicorn_build.h"
 
 /* Unicorn Overlord CUSA36381 v01.04: a render size wider than 16:9 shows more of the scene at
  * the sides (Hor+) instead of stretching it; menus and text keep their 16:9 layout in the
@@ -67,7 +68,7 @@ static inline int32_t unicorn_ultrawide_disp(const unsigned char *image, uint32_
 
 static inline int unicorn_ultrawide_float_is(const unsigned char *image, uint32_t at, float value) {
     float f;
-    memcpy(&f, image + at, 4);
+    memcpy(&f, image + unicorn_address(at), 4);
     return f == value;
 }
 
@@ -75,7 +76,7 @@ static inline int unicorn_ultrawide_signature_match(const unsigned char *image, 
     static const float quad[8] = {-960, -540, 960, -540, 960, 540, -960, 540}, rect[4] = {-960, -540, 960, 540};
     if (unicorn_ultrawide_quad + sizeof(quad) > size) return 0;
     for (unsigned i = 0; i < UNICORN_ULTRAWIDE_ORTHOS; ++i) {
-        const uint32_t at = unicorn_ultrawide_ortho[i].imm, length = unicorn_ultrawide_ortho[i].length;
+        const uint32_t at = unicorn_address(unicorn_ultrawide_ortho[i].imm), length = unicorn_ultrawide_ortho[i].length;
         uint32_t value;
         memcpy(&value, image + at, 4);
         if (value != UNICORN_ULTRAWIDE_ORTHO_1920 || memcmp(image + at - length, unicorn_ultrawide_ortho[i].opcode, length))
@@ -91,9 +92,9 @@ static inline int unicorn_ultrawide_signature_match(const unsigned char *image, 
             !unicorn_ultrawide_float_is(image, unicorn_ultrawide_fill[i] + 4, i ? 540.0f : -540.0f))
             return 0;
     for (unsigned i = 0; i < UNICORN_ULTRAWIDE_LOADS; ++i) {
-        const uint32_t at = unicorn_ultrawide_loads[i].at;
+        const uint32_t at = unicorn_address(unicorn_ultrawide_loads[i].at);
         if (image[at] != 0xc5 || (image[at + 3] & 0xc7) != 0x05 ||
-            (int64_t)at + 8 + unicorn_ultrawide_disp(image, at) != unicorn_ultrawide_loads[i].target)
+            (int64_t)at + 8 + unicorn_ultrawide_disp(image, at) != unicorn_address(unicorn_ultrawide_loads[i].target))
             return 0;
     }
     return 1;
@@ -105,27 +106,27 @@ static inline int unicorn_ultrawide_signature_match(const unsigned char *image, 
 static inline int unicorn_ultrawide_apply(unsigned char *image, uint32_t width, uint32_t height, float *values) {
     for (unsigned i = 0; i < UNICORN_ULTRAWIDE_LOADS; ++i) {
         const int64_t disp = (int64_t)((intptr_t)(values + unicorn_ultrawide_loads[i].value) -
-                                       (intptr_t)(image + unicorn_ultrawide_loads[i].at + 8));
+                                       (intptr_t)(image + unicorn_address(unicorn_ultrawide_loads[i].at) + 8));
         if (disp != (int32_t)disp) return 0;
     }
     const float design = 1080.0f * (float)width / (float)height, half = design / 2.0f, left = -half;
     const float ortho = 2.0f / design, aspect = (float)height / (float)width;
-    for (unsigned i = 0; i < UNICORN_ULTRAWIDE_ORTHOS; ++i) memcpy(image + unicorn_ultrawide_ortho[i].imm, &ortho, 4);
-    memcpy(image + unicorn_ultrawide_aspect, &aspect, 4);
+    for (unsigned i = 0; i < UNICORN_ULTRAWIDE_ORTHOS; ++i) memcpy(image + unicorn_address(unicorn_ultrawide_ortho[i].imm), &ortho, 4);
+    memcpy(image + unicorn_address(unicorn_ultrawide_aspect), &aspect, 4);
     static const unsigned quad_left[] = {0, 6}, quad_right[] = {2, 4};
     for (unsigned i = 0; i < 2; ++i) {
-        memcpy(image + unicorn_ultrawide_quad + 4 * quad_left[i], &left, 4);
-        memcpy(image + unicorn_ultrawide_quad + 4 * quad_right[i], &half, 4);
+        memcpy(image + unicorn_address(unicorn_ultrawide_quad + 4 * quad_left[i]), &left, 4);
+        memcpy(image + unicorn_address(unicorn_ultrawide_quad + 4 * quad_right[i]), &half, 4);
     }
-    memcpy(image + unicorn_ultrawide_rect, &left, 4);
-    memcpy(image + unicorn_ultrawide_rect + 8, &half, 4);
-    memcpy(image + unicorn_ultrawide_fill[0], &left, 4);
-    memcpy(image + unicorn_ultrawide_fill[1], &half, 4);
+    memcpy(image + unicorn_address(unicorn_ultrawide_rect), &left, 4);
+    memcpy(image + unicorn_address(unicorn_ultrawide_rect + 8), &half, 4);
+    memcpy(image + unicorn_address(unicorn_ultrawide_fill[0]), &left, 4);
+    memcpy(image + unicorn_address(unicorn_ultrawide_fill[1]), &half, 4);
     values[UNICORN_ULTRAWIDE_WIDTH] = design;
     values[UNICORN_ULTRAWIDE_LEFT] = left;
     values[UNICORN_ULTRAWIDE_RIGHT] = half;
     for (unsigned i = 0; i < UNICORN_ULTRAWIDE_LOADS; ++i) {
-        const uint32_t at = unicorn_ultrawide_loads[i].at;
+        const uint32_t at = unicorn_address(unicorn_ultrawide_loads[i].at);
         const int32_t disp = (int32_t)((intptr_t)(values + unicorn_ultrawide_loads[i].value) - (intptr_t)(image + at + 8));
         memcpy(image + at + 4, &disp, 4);
     }

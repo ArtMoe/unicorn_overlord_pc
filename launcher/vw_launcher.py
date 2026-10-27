@@ -49,7 +49,7 @@ WINDOWS = os.name == 'nt'
 GAMES = {
     'unicorn': {
         'title_id': 'CUSA36381', 'app_version': '01.04',
-        'version_hint': 'the base game with the 1.04 update applied',
+        'version_hint': 'the base game with the 1.04 update applied, or the Hong Kong 1.05 package',
         'name': 'Unicorn Overlord', 'title': 'Unicorn Overlord', 'run_dir': 'run_uo',
         'colors': {'bg': '#0a1222', 'gold': '#c8a254', 'gold_hi': '#f0d48a'},
         # Both have the same eboot.bin; the fan English patch replaces the Chinese text files
@@ -133,11 +133,13 @@ def check_game(game_info, folder):
     title, version = game_title_id(game), game_app_version(game)
     if title != title_id:
         return False, f'This is {title or "an unknown game"}, not {name} ({title_id}).'
-    if version != app_version:
+    supported = eboot_supported(game)
+    if version != app_version and not supported:
         return False, f'This dump is version {version}. The port needs {app_version}: {game_info["version_hint"]}.'
-    if eboot_supported(game) is False:
+    if supported is False:
         return False, OTHER_BUILD.format(version=app_version)
-    return True, f'{name}  ·  {title_id}  ·  v{version}'
+    build = f'v{version}' if version == app_version else f'v{version} (Hong Kong 1.05 package)'
+    return True, f'{name}  ·  {title_id}  ·  {build}'
 
 
 def detect_dump(folder):
@@ -220,8 +222,8 @@ def choose_dump(game_info, root, kind=None, language=None):
 OTHER_BUILD = ('This eboot.bin is a different build of version {version} than the one the PC port '
                'was made for (another region or update package), so the port cannot run it: its code '
                'changes would land in the wrong places. Use the Asia version CUSA36381 with the 1.04 '
-               'update merged in (official or with the fan English patch); its eboot.bin has '
-               'SHA-256 de8e4970... (issue #14).')
+               'update merged in (official or with the fan English patch), or the Hong Kong 1.05 '
+               'package (issue #14).')
 
 
 def tk_root():

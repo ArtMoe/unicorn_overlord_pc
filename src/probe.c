@@ -7,6 +7,7 @@
 #include <inttypes.h>
 #include <time.h>
 #include "runtime.h"
+#include "unicorn_build.h"
 #include "unicorn_render_scale.h"
 #include "unicorn_ultrawide.h"
 #include "unicorn_button_icons.h"
@@ -402,16 +403,28 @@ static float aspect_ratio_setting(void) {
     return ratio > 16.0f / 9.0f + 0.001f && ratio <= 4.0f ? ratio : 16.0f / 9.0f;
 }
 
+/* Unicorn Overlord: the CUSA36381 builds the code changes know (src/unicorn_build.h), from
+ * param.sfo: v01.04 (APP_VER 01.04), or the Hong Kong base game 01.00 master 1.05 (APP_VER
+ * 01.00, VERSION 01.05). Sets unicorn_build; 0 for any other game or version. */
+static int unicorn_known_build(const char *app0) {
+    char path[4096], serial[32] = "", app[32] = "", master[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    sfo_value(path, "APP_VER", app, sizeof(app), NULL);
+    sfo_value(path, "VERSION", master, sizeof(master), NULL);
+    if (strcmp(serial, "CUSA36381")) return 0;
+    if (!strcmp(app, "01.04")) unicorn_build = UNICORN_V0104;
+    else if (!strcmp(app, "01.00") && !strcmp(master, "01.05")) unicorn_build = UNICORN_HK0105;
+    else return 0;
+    return 1;
+}
+
 /* Unicorn Overlord: the render size of this launch, 0x0 when native. Any other size runs the
  * game's PS4 Pro path (VW_NEO_MODE) with its 3840x2160 replaced: the Pro path lays out every
  * 2D layer from the target size, so 720p and 900p keep the 1080p framing too. An aspect ratio
  * wider than 16:9 widens the size (src/unicorn_ultrawide.h). */
 static int unicorn_render_size(const char *app0, uint32_t *width, uint32_t *height) {
-    char path[4096], serial[32] = "", version[32] = "";
-    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
-    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
-    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return 0;
+    if (!unicorn_known_build(app0)) return 0;
     float scale = render_scale_setting();
     if (!(scale > 0.0f)) scale = 1.0f;
     if (scale < 0.5f) scale = 0.5f;
@@ -490,12 +503,12 @@ static void install_unicorn_render_scale(void) {
     const uint32_t width = render_width, height = render_height;
     if (width != 3840 || height != 2160) {
         for (unsigned i = 0; i < 3; ++i) {
-            memcpy(image + unicorn_width_imm[i], &width, 4);
-            memcpy(image + unicorn_height_imm[i], &height, 4);
+            memcpy(image + unicorn_address(unicorn_width_imm[i]), &width, 4);
+            memcpy(image + unicorn_address(unicorn_height_imm[i]), &height, 4);
         }
         const float widthf = (float)width, heightf = (float)height;
-        memcpy(image + unicorn_width_float, &widthf, 4);
-        memcpy(image + unicorn_height_float, &heightf, 4);
+        memcpy(image + unicorn_address(unicorn_width_float), &widthf, 4);
+        memcpy(image + unicorn_address(unicorn_height_float), &heightf, 4);
     }
     if (width * 9 > height * 16) {
         /* The floats the patched instructions read: a page near the image (as for the CRI hook). */
@@ -560,14 +573,10 @@ static ABI int unicorn_cri_decompress_hook(void *context, const uint8_t *src, in
 }
 
 static void install_unicorn_cri_hook(const char *app0, Segment *segments, uint64_t count) {
-    char path[4096], serial[32] = "", version[32] = "";
-    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
-    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
-    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return;
+    if (!unicorn_known_build(app0)) return;
     const char *stats = getenv("VW_CRILAYLA_STATS");
     crilayla_stats = stats && *stats && strcmp(stats, "0");
-    const uint64_t at = UNICORN_CRILAYLA_OFFSET;
+    const uint64_t at = unicorn_address(UNICORN_CRILAYLA_OFFSET);
     if (!mapped(segments, count, at, sizeof(unicorn_crilayla_signature)) ||
         memcmp(image + at, unicorn_crilayla_signature, sizeof(unicorn_crilayla_signature))) {
         printf("Button icons: the game's decompressor is not where v01.04 has it; PlayStation icons only\n");
@@ -592,11 +601,7 @@ static void install_unicorn_cri_hook(const char *app0, Segment *segments, uint64
 /* Unicorn Overlord: the port's settings in the game's Options screen
  * (src/unicorn_native_settings.h). */
 static void install_unicorn_native_settings(const char *app0) {
-    char path[4096], serial[32] = "", version[32] = "";
-    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
-    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
-    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return;
+    if (!unicorn_known_build(app0)) return;
     unsigned char *code = allocate(page_size), *data = allocate(page_size);
     if (!native_settings_install(image, code, data)) {
         printf("Options: the game differs from v01.04 here; PC settings only in the Insert menu\n");
@@ -644,11 +649,8 @@ static int unicorn_text_language_setting(void) {
 }
 
 static void install_unicorn_text_language(const char *app0) {
-    char path[4096], serial[32] = "", version[32] = "";
-    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
-    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
-    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return;
+    char path[4096];
+    if (!unicorn_known_build(app0)) return;
     const int language = unicorn_text_language_setting();
     if (language < 0) return;
     static const char *const names[] = {"Japanese", "", "", "", "", "", "Korean", "Traditional Chinese",
@@ -667,7 +669,7 @@ static void install_unicorn_text_language(const char *app0) {
         }
         fclose(ko);
     }
-    const uint64_t at = UNICORN_TEXT_LANGUAGE_OFFSET;
+    const uint64_t at = unicorn_address(UNICORN_TEXT_LANGUAGE_OFFSET);
     if (memcmp(image + at, unicorn_text_language_signature, sizeof(unicorn_text_language_signature))) {
         printf("Text language: the game differs from v01.04 here; the game's default\n");
         return;
