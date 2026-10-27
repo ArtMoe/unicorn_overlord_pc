@@ -56,9 +56,14 @@ Values& Get();
 
 constexpr int StickDeadZoneMax = 40;
 
-/// Text settings: "key_map" and "pad_map" (button remapping, src/runtime_pad.c format).
+/// Text settings: "key_map" and "pad_map" (button remapping, src/runtime_pad.c format),
+/// "button_icons" (playstation, xbox, nintendo) and "confirm_button" (circle; empty is Cross).
 std::string Text(const std::string& key);
 void SetText(const std::string& key, const std::string& value);
+
+/// Circle is the confirm button (confirm_button=circle): O accepts and X cancels, and the game's
+/// prompts follow. The game asks at its start; the port's own dialogs follow at once.
+bool ConfirmIsCircle();
 
 /// Reads the file, then the environment overrides. Called once at start.
 void Load();

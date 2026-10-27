@@ -142,6 +142,15 @@ ImGuiKey KeyFromSdl(SDL_Keycode key) {
 }
 
 ImGuiKey KeyFromGamepad(u8 button) {
+    // With Circle as the confirm button the menu follows the game's prompts: Circle accepts
+    // (ImGui's face-down) and Cross goes back.
+    if (VwSettings::ConfirmIsCircle()) {
+        if (button == SDL_GAMEPAD_BUTTON_SOUTH) {
+            button = SDL_GAMEPAD_BUTTON_EAST;
+        } else if (button == SDL_GAMEPAD_BUTTON_EAST) {
+            button = SDL_GAMEPAD_BUTTON_SOUTH;
+        }
+    }
     switch (button) {
     case SDL_GAMEPAD_BUTTON_SOUTH: return ImGuiKey_GamepadFaceDown;
     case SDL_GAMEPAD_BUTTON_EAST: return ImGuiKey_GamepadFaceRight;
@@ -412,6 +421,26 @@ void ControlsTab() {
         if (ImGui::Combo("##button_icons", &selected, names, 4)) {
             VwSettings::SetText("button_icons", selected ? keys[selected] : "");
             dirty = true;
+        }
+    }
+    {
+        // confirm_button= (src/runtime_pad.c, src/runtime_services.c): the enter button the game
+        // is told, so O accepts and X cancels with the prompts to match.
+        static const char* const values[] = {"", "circle"};
+        static const char* const names[] = {"Cross (X)", "Circle (O)"};
+        int selected = VwSettings::ConfirmIsCircle() ? 1 : 0;
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted("Confirm button");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
+        if (ImGui::Combo("##confirm_button", &selected, names, 2)) {
+            VwSettings::SetText("confirm_button", values[selected]);
+            dirty = true;
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Which button accepts: Cross (X, the PS4 default) or Circle (O, the "
+                              "Japanese default). The game's own prompts follow.\nThe game reads it "
+                              "when it starts; this menu and the save list follow at once.");
         }
     }
     {
@@ -922,7 +951,10 @@ bool HandleChoiceEvent(const SDL_Event& event) {
     } else if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
         const u8 button = event.gbutton.button;
         move = button == SDL_GAMEPAD_BUTTON_DPAD_UP ? -1 : button == SDL_GAMEPAD_BUTTON_DPAD_DOWN ? 1 : 0;
-        finish = button == SDL_GAMEPAD_BUTTON_SOUTH ? 1 : button == SDL_GAMEPAD_BUTTON_EAST ? 2 : 0;
+        // The confirm button accepts, the other face button cancels (confirm_button=).
+        const bool face = button == SDL_GAMEPAD_BUTTON_SOUTH || button == SDL_GAMEPAD_BUTTON_EAST;
+        const bool accept = (button == SDL_GAMEPAD_BUTTON_SOUTH) != VwSettings::ConfirmIsCircle();
+        finish = face ? (accept ? 1 : 2) : 0;
     } else {
         return event.type == SDL_EVENT_KEY_UP || event.type == SDL_EVENT_GAMEPAD_BUTTON_UP;
     }

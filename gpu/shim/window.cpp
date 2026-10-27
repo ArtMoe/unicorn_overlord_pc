@@ -146,12 +146,14 @@ bool WindowSDL::PollEvents() {
             UpdateTextTitle();
             continue;
         }
-        // The controller finishes the text dialog too: Cross (A) accepts, Circle (B) cancels.
+        // The controller finishes the text dialog too: the confirm button accepts, the other one
+        // cancels (Cross and Circle, or Circle and Cross with confirm_button=circle).
         if (text_active && event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN &&
             (event.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH ||
              event.gbutton.button == SDL_GAMEPAD_BUTTON_EAST)) {
             std::scoped_lock lock{text_mutex};
-            text_state = event.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH ? 1 : 2;
+            const bool south = event.gbutton.button == SDL_GAMEPAD_BUTTON_SOUTH;
+            text_state = south != VwSettings::ConfirmIsCircle() ? 1 : 2;
             text_active = false;
             SDL_StopTextInput(window);
             UpdateTextTitle();

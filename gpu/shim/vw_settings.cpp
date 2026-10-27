@@ -23,8 +23,8 @@ const char* Path() {
 }
 
 std::mutex text_mutex;
-std::map<std::string, std::string> texts; // key_map, pad_map, button_icons
-constexpr const char* TextKeys[] = {"key_map", "pad_map", "button_icons"};
+std::map<std::string, std::string> texts; // key_map, pad_map, button_icons, confirm_button
+constexpr const char* TextKeys[] = {"key_map", "pad_map", "button_icons", "confirm_button"};
 
 void Set(Values& v, const std::string& key, const std::string& value) {
     for (const char* text_key : TextKeys) {
@@ -107,6 +107,12 @@ std::string Text(const std::string& key) {
     return it == texts.end() ? std::string{} : it->second;
 }
 
+// confirm_button= (src/runtime_pad.c): the game is told Circle is its enter button, so O accepts
+// and X cancels, and its prompts follow.
+bool ConfirmIsCircle() {
+    return Text("confirm_button") == "circle";
+}
+
 void SetText(const std::string& key, const std::string& value) {
     std::scoped_lock lock{text_mutex};
     texts[key] = value;
@@ -139,6 +145,7 @@ void Load() {
         {"VW_STALE_READBACK", "stale_readback"}, {"VW_FSR1", "fsr1"}, {"VW_ANIME4K", "anime4k"},
         {"VW_RCAS", "rcas"},                   {"VW_FRAMES_AHEAD", "frames_queued"},
         {"VW_STICK_DEAD_ZONE", "stick_dead_zone"},
+        {"VW_CONFIRM_BUTTON", "confirm_button"},
     };
     for (const auto& [env, key] : env_keys) {
         if (const char* value = std::getenv(env); value && value[0]) {
