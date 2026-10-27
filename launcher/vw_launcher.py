@@ -135,6 +135,8 @@ def check_game(game_info, folder):
         return False, f'This is {title or "an unknown game"}, not {name} ({title_id}).'
     if version != app_version:
         return False, f'This dump is version {version}. The port needs {app_version}: {game_info["version_hint"]}.'
+    if eboot_supported(game) is False:
+        return False, OTHER_BUILD.format(version=app_version)
     return True, f'{name}  ·  {title_id}  ·  v{version}'
 
 
@@ -216,10 +218,10 @@ def choose_dump(game_info, root, kind=None, language=None):
 
 
 OTHER_BUILD = ('This eboot.bin is a different build of version {version} than the one the PC port '
-               'was made for (another region or update package).\n\nThe game runs, but the PC '
-               'features that change the game\'s code stay off: Render Resolution, Button Icons '
-               'and the PC rows in the game\'s Options. The base game with the 1.04 update '
-               '(official or with the English patch) has the supported build.\n\nUse this folder anyway?')
+               'was made for (another region or update package), so the port cannot run it: its code '
+               'changes would land in the wrong places. Use the Asia version CUSA36381 with the 1.04 '
+               'update merged in (official or with the fan English patch); its eboot.bin has '
+               'SHA-256 de8e4970... (issue #14).')
 
 
 def tk_root():
@@ -274,12 +276,6 @@ def choose_game(game_info, start, dump=None, language=None):
                         if chosen[0] == found:
                             return folder, dump, language
                     continue
-            if ok and eboot_supported(folder) is False:
-                if messagebox.askyesno(f"{game_info['name']}: setup",
-                                       OTHER_BUILD.format(version=game_info['app_version']),
-                                       icon='warning', parent=root):
-                    return folder, dump, language
-                continue
             if ok:
                 return folder, dump, language
             if not messagebox.askretrycancel(f"{game_info['name']}: setup", message, parent=root):
