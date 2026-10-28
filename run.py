@@ -252,6 +252,11 @@ def main():
     game = Path(env['VW_GAME_DIR'])
     if not (game / 'eboot.bin').is_file():
         fail(f'No eboot.bin in {game} (set VW_GAME_DIR).')
+    from patches import eboot_supported
+    if eboot_supported(game) is False and not env.get('VW_ALLOW_OTHER_EBOOT'):
+        fail('eboot.bin is another build than the supported one (another region or update package), '
+             'so the port cannot run it. It needs CUSA36381 v01.04 or the Hong Kong 1.05 '
+             'package (issue #14). VW_ALLOW_OTHER_EBOOT=1 starts it anyway, for testing.')
     original_game = game.resolve()
     game = Path(run_script('mods.py', game, '--out', out,
                            '--mods-dir', env.get('VW_MODS_DIR', data / 'mods'),
@@ -271,13 +276,10 @@ def main():
             run_script('content_profile.py', game, '--out', out, '--sku', sku)
             prepare_cache.store(out, prepare_key)
 
-        from patches import (eboot_matches, eboot_supported, game_app_version, game_profile, game_title_id,
+        from patches import (eboot_matches, game_app_version, game_profile, game_title_id,
                              patch_requirements, selected_patches)
         profile = game_profile(game_title_id(game))
         LOG.write(f'Game: {game_title_id(game)} v{game_app_version(game)} · {original_game}')
-        if eboot_supported(game) is False:
-            LOG.write('Game: eboot.bin is another build than the supported one; render resolution, '
-                      'button icons and the Options rows stay off (issue #14)')
         support.update(game=game_title_id(game), game_version=game_app_version(game))
         diagnostics.write_summary(LOG.path, support)
         patched = bool(profile) and ((game_app_version(game) == profile[2] and eboot_matches(game, profile))

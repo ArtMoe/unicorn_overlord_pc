@@ -21,6 +21,12 @@ inline constexpr std::array<const char*, DisplayModeCount> DisplayModeNames = {
 inline constexpr std::array<std::string_view, 5> Resolutions = {"native", "720p", "900p", "1800p",
                                                                 "4K"};
 
+/// Text languages (the probe's text language patch, src/probe.c). "auto" leaves the game's
+/// choice: Traditional Chinese for the English system language the port reports, English with the
+/// English patch. Korean needs Unicorn_KO.CPK, which the Asia version does not ship.
+inline constexpr std::array<std::string_view, 5> TextLanguages = {"auto", "japanese", "traditional_chinese",
+                                                                  "simplified_chinese", "korean"};
+
 /// Aspect ratios of the game's image (the probe's ultrawide patch, src/unicorn_ultrawide.h):
 /// wider than 16:9 shows more of the scene at the sides; menus stay 16:9 in the middle. 21:9
 /// is 64:27 (2560x1080). Index 0 is the default.
@@ -40,6 +46,10 @@ inline int ParseDisplayMode(std::string_view text) {
 /// Index into Resolutions; unknown text is native.
 inline int ParseResolution(std::string_view text) {
     return IndexOf(Resolutions, text, 0);
+}
+/// Index into TextLanguages; unknown text is auto.
+inline int ParseTextLanguage(std::string_view text) {
+    return IndexOf(TextLanguages, text, 0);
 }
 
 /// Index into AspectRatios; unknown text is 16:9.

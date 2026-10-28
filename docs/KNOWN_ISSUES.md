@@ -24,9 +24,30 @@ Results from other hardware are welcome in the issues.
 
 ## Supported dump only
 
-Only **CUSA36381 (Asia) version 01.04**: the base game with the 1.04 update (English) merged on
-top. The start program refuses other regions (US, EU, Japan) and other versions; they have
-different executables and the port's code hooks would not match.
+**CUSA36381 (Asia) version 01.04**: the base game with the 1.04 update merged on
+top. Also the **Hong Kong 1.05 package** (`HP0177-CUSA36381_00-UNICORNOVERLORD0-A0100-V0105`,
+#33): its `param.sfo` says version 01.00 (master 1.05), and its `eboot.bin` is another build with
+the same code at other addresses, which `src/unicorn_build.h` maps. It has Traditional and
+Simplified Chinese, Korean and Japanese text, no English; tested to the opening scenes with every
+PC feature (Options rows, render resolution, 21:9, button icons, text language). The fan English patch only replaces the text files (`Unicorn_CN.CPK`, `Unicorn_TW.CPK`) and
+`param.sfo`; its `eboot.bin` is the official one, so both work.
+
+Text language: the game picks it from the PS4 system language, and on any language but Korean or
+Chinese it shows Traditional Chinese (English with the English patch). **Text Language** in
+System > Options (or the Insert menu) picks Japanese, Traditional or Simplified Chinese at the next
+start. Voice language is the game's own Voice Language option.
+
+Korean: the Asia release has no Korean text. Its base game (01.00) and the 1.04 update both ship
+only `Unicorn_CN.CPK` and `Unicorn_TW.CPK`, plus the Japanese text in `Unicorn.CPK`; the Korean
+fonts (`Font_4K/*_KO*.ftx`) are there, a Korean text file is not. The executable would load
+`Unicorn_KO.CPK` (Text Language: Korean) if one is put in the game folder; it is probably part of
+the separate Korean release (untested). Without it, Korean falls back to the game's default.
+
+The start program refuses other regions (US, EU, Japan) and other versions; they have different
+executables and the port's code hooks would not match. It also refuses any other build of
+`eboot.bin` (another region or update package): setup and every start check its SHA-256 against
+the two known builds (#14). `VW_ALLOW_OTHER_EBOOT=1` starts one
+anyway, for testing only.
 
 ## Performance
 
@@ -52,6 +73,11 @@ Measured on the test system above, 1080p:
 
 ## Graphics
 
+- **Chapter title card shows one box with the English patch** (#49): the card that opens a
+  chapter ("Call to Action") shows a single square instead of the title. The game draws those
+  titles in a large font that, in the Chinese releases the patch builds on, holds only the
+  Chinese titles' characters. The rest of the chapter is unaffected. Not fixed yet: pointing the
+  font at the English release's large font crashed the game when the card opened.
 - **Ultrawide (21:9, 32:9) is experimental.** It was made on a 16:9 screen and checked there
   with black bars; nobody has tried it on an ultrawide monitor yet. Menus and text stay 16:9 in
   the middle. Please report how it looks with the **Ultrawide report** issue template (README,

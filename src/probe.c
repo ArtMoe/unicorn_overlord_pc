@@ -7,6 +7,7 @@
 #include <inttypes.h>
 #include <time.h>
 #include "runtime.h"
+#include "unicorn_build.h"
 #include "unicorn_render_scale.h"
 #include "unicorn_ultrawide.h"
 #include "unicorn_button_icons.h"
@@ -402,16 +403,28 @@ static float aspect_ratio_setting(void) {
     return ratio > 16.0f / 9.0f + 0.001f && ratio <= 4.0f ? ratio : 16.0f / 9.0f;
 }
 
+/* Unicorn Overlord: the CUSA36381 builds the code changes know (src/unicorn_build.h), from
+ * param.sfo: v01.04 (APP_VER 01.04), or the Hong Kong base game 01.00 master 1.05 (APP_VER
+ * 01.00, VERSION 01.05). Sets unicorn_build; 0 for any other game or version. */
+static int unicorn_known_build(const char *app0) {
+    char path[4096], serial[32] = "", app[32] = "", master[32] = "";
+    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
+    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
+    sfo_value(path, "APP_VER", app, sizeof(app), NULL);
+    sfo_value(path, "VERSION", master, sizeof(master), NULL);
+    if (strcmp(serial, "CUSA36381")) return 0;
+    if (!strcmp(app, "01.04")) unicorn_build = UNICORN_V0104;
+    else if (!strcmp(app, "01.00") && !strcmp(master, "01.05")) unicorn_build = UNICORN_HK0105;
+    else return 0;
+    return 1;
+}
+
 /* Unicorn Overlord: the render size of this launch, 0x0 when native. Any other size runs the
  * game's PS4 Pro path (VW_NEO_MODE) with its 3840x2160 replaced: the Pro path lays out every
  * 2D layer from the target size, so 720p and 900p keep the 1080p framing too. An aspect ratio
  * wider than 16:9 widens the size (src/unicorn_ultrawide.h). */
 static int unicorn_render_size(const char *app0, uint32_t *width, uint32_t *height) {
-    char path[4096], serial[32] = "", version[32] = "";
-    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
-    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
-    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return 0;
+    if (!unicorn_known_build(app0)) return 0;
     float scale = render_scale_setting();
     if (!(scale > 0.0f)) scale = 1.0f;
     if (scale < 0.5f) scale = 0.5f;
@@ -490,12 +503,12 @@ static void install_unicorn_render_scale(void) {
     const uint32_t width = render_width, height = render_height;
     if (width != 3840 || height != 2160) {
         for (unsigned i = 0; i < 3; ++i) {
-            memcpy(image + unicorn_width_imm[i], &width, 4);
-            memcpy(image + unicorn_height_imm[i], &height, 4);
+            memcpy(image + unicorn_address(unicorn_width_imm[i]), &width, 4);
+            memcpy(image + unicorn_address(unicorn_height_imm[i]), &height, 4);
         }
         const float widthf = (float)width, heightf = (float)height;
-        memcpy(image + unicorn_width_float, &widthf, 4);
-        memcpy(image + unicorn_height_float, &heightf, 4);
+        memcpy(image + unicorn_address(unicorn_width_float), &widthf, 4);
+        memcpy(image + unicorn_address(unicorn_height_float), &heightf, 4);
     }
     if (width * 9 > height * 16) {
         /* The floats the patched instructions read: a page near the image (as for the CRI hook). */
@@ -560,14 +573,10 @@ static ABI int unicorn_cri_decompress_hook(void *context, const uint8_t *src, in
 }
 
 static void install_unicorn_cri_hook(const char *app0, Segment *segments, uint64_t count) {
-    char path[4096], serial[32] = "", version[32] = "";
-    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
-    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
-    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return;
+    if (!unicorn_known_build(app0)) return;
     const char *stats = getenv("VW_CRILAYLA_STATS");
     crilayla_stats = stats && *stats && strcmp(stats, "0");
-    const uint64_t at = UNICORN_CRILAYLA_OFFSET;
+    const uint64_t at = unicorn_address(UNICORN_CRILAYLA_OFFSET);
     if (!mapped(segments, count, at, sizeof(unicorn_crilayla_signature)) ||
         memcmp(image + at, unicorn_crilayla_signature, sizeof(unicorn_crilayla_signature))) {
         printf("Button icons: the game's decompressor is not where v01.04 has it; PlayStation icons only\n");
@@ -592,11 +601,7 @@ static void install_unicorn_cri_hook(const char *app0, Segment *segments, uint64
 /* Unicorn Overlord: the port's settings in the game's Options screen
  * (src/unicorn_native_settings.h). */
 static void install_unicorn_native_settings(const char *app0) {
-    char path[4096], serial[32] = "", version[32] = "";
-    snprintf(path, sizeof(path), "%s/sce_sys/param.sfo", app0 ? app0 : ".");
-    sfo_value(path, "TITLE_ID", serial, sizeof(serial), NULL);
-    sfo_value(path, "APP_VER", version, sizeof(version), NULL);
-    if (strcmp(serial, "CUSA36381") || strcmp(version, "01.04")) return;
+    if (!unicorn_known_build(app0)) return;
     unsigned char *code = allocate(page_size), *data = allocate(page_size);
     if (!native_settings_install(image, code, data)) {
         printf("Options: the game differs from v01.04 here; PC settings only in the Insert menu\n");
@@ -604,6 +609,77 @@ static void install_unicorn_native_settings(const char *app0) {
     }
     protect(code, page_size, 5);
     printf("Options: %u PC rows added to System > Options\n", native_settings.count);
+}
+
+/* Unicorn Overlord: the text language (text_language= in vw.ini, VW_TEXT_LANGUAGE; the menu's
+ * "Text language"). After its system language query the game stores its language at 0x233e34:
+ * 9 (Korean) gives 6, 10 (Traditional Chinese) 7, 11 (Simplified Chinese) 8, any other 7, and it
+ * then binds that language's CPK (6 Unicorn_KO, 7 Unicorn_TW, 8 Unicorn_CN). So an English or
+ * Japanese system got Chinese text. 0 binds none: the Japanese text in Unicorn.CPK. */
+#define UNICORN_TEXT_LANGUAGE_OFFSET 0x233e34
+/* lea ecx, [rax-9]; add eax, -3; mov edx, 7; cmp ecx, 3; cmovb edx, eax */
+static const unsigned char unicorn_text_language_signature[] = {
+    0x8d, 0x48, 0xf7, 0x83, 0xc0, 0xfd, 0xba, 0x07, 0x00, 0x00, 0x00, 0x83, 0xf9, 0x03, 0x0f, 0x42, 0xd0};
+
+/* The game's language for a TextLanguages key (gpu/shim/vw_graphics.h), -1 for auto. */
+static int unicorn_text_language_value(const char *text) {
+    static const struct { const char *key; int value; } languages[] = {
+        {"japanese", 0}, {"traditional_chinese", 7}, {"simplified_chinese", 8}, {"korean", 6}};
+    char key[32] = "";
+    while (*text == ' ' || *text == '\t') ++text;
+    size_t n = 0;
+    while (n + 1 < sizeof(key) && text[n] && !strchr(" \t\r\n", text[n])) { key[n] = text[n]; ++n; }
+    key[n] = 0;
+    for (size_t i = 0; i < sizeof(languages) / sizeof(*languages); ++i)
+        if (!strcmp(key, languages[i].key)) return languages[i].value;
+    return -1;
+}
+
+static int unicorn_text_language_setting(void) {
+    const char *env = getenv("VW_TEXT_LANGUAGE");
+    if (env && *env) return unicorn_text_language_value(env);
+    const char *config = getenv("VW_CONFIG");
+    FILE *f = config ? fopen(config, "r") : NULL;
+    int value = -1;
+    char line[256];
+    while (f && fgets(line, sizeof(line), f))
+        if (!strncmp(line, "text_language=", 14)) value = unicorn_text_language_value(line + 14);
+    if (f) fclose(f);
+    return value;
+}
+
+static void install_unicorn_text_language(const char *app0) {
+    char path[4096];
+    if (!unicorn_known_build(app0)) return;
+    const int language = unicorn_text_language_setting();
+    if (language < 0) return;
+    static const char *const names[] = {"Japanese", "", "", "", "", "", "Korean", "Traditional Chinese",
+                                        "Simplified Chinese"};
+    if (language == 6) {
+        /* The game opens it by this name; file names are matched without case. */
+        snprintf(path, sizeof(path), "%s/Unicorn_KO.CPK", app0 ? app0 : ".");
+        FILE *ko = fopen(path, "rb");
+        if (!ko) {
+            snprintf(path, sizeof(path), "%s/Unicorn_KO.cpk", app0 ? app0 : ".");
+            ko = fopen(path, "rb");
+        }
+        if (!ko) {
+            printf("Text language: Korean needs Unicorn_KO.CPK, which this game folder lacks; the game's default\n");
+            return;
+        }
+        fclose(ko);
+    }
+    const uint64_t at = unicorn_address(UNICORN_TEXT_LANGUAGE_OFFSET);
+    if (memcmp(image + at, unicorn_text_language_signature, sizeof(unicorn_text_language_signature))) {
+        printf("Text language: the game differs from v01.04 here; the game's default\n");
+        return;
+    }
+    /* mov edx, language; then nops up to the store */
+    memset(image + at, 0x90, sizeof(unicorn_text_language_signature));
+    image[at] = 0xba;
+    const uint32_t value = (uint32_t)language;
+    memcpy(image + at + 1, &value, 4);
+    printf("Text language: %s\n", names[language]);
 }
 
 /* G3PATCH2 (patches.py): the patches' image base, then byte writes at image offsets, applied
@@ -931,6 +1007,7 @@ int main(int argc, char **argv) {
     if (gpu_enabled) install_unicorn_render_scale();
     install_unicorn_cri_hook(app0, segments, ns);
     if (gpu_enabled) install_unicorn_native_settings(app0);
+    install_unicorn_text_language(app0);
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif
