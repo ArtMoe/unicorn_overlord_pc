@@ -509,9 +509,6 @@ static void install_unicorn_render_scale(void) {
             memcpy(image + unicorn_address(unicorn_width_imm[i]), &width, 4);
             memcpy(image + unicorn_address(unicorn_height_imm[i]), &height, 4);
         }
-        const float widthf = (float)width, heightf = (float)height;
-        memcpy(image + unicorn_address(unicorn_width_float), &widthf, 4);
-        memcpy(image + unicorn_address(unicorn_height_float), &heightf, 4);
     }
     if (width * 9 > height * 16) {
         /* The floats the patched instructions read: a page near the image (as for the CRI hook). */
@@ -611,6 +608,53 @@ static void install_unicorn_cri_hook(const char *app0, Segment *segments, uint64
     runtime_pad_on_button_icons(button_icons_set_style);
 }
 
+/* Unicorn Overlord: three-line story text smaller in the two-line speech bubble
+ * (src/unicorn_text_wrap.h, #73). */
+typedef ABI void (*BubbleSetText)(unsigned char *text_object, const unsigned char *message);
+static BubbleSetText bubble_set_text;
+
+static ABI void unicorn_bubble_set_text(unsigned char *text_object, const unsigned char *message) {
+    const int lines = text_fit_enabled() ? text_bubble_lines(message, 0x100) : 1;
+    if (lines < 3) {
+        bubble_set_text(text_object, message);
+        return;
+    }
+    float scale[2], fitted[2];
+    memcpy(scale, text_object + 0x164, sizeof(scale));
+    fitted[0] = text_bubble_scale(scale[0], lines);
+    fitted[1] = text_bubble_scale(scale[1], lines);
+    memcpy(text_object + 0x164, fitted, sizeof(fitted));
+    bubble_set_text(text_object, message); /* lays the text out at that scale */
+    memcpy(text_object + 0x164, scale, sizeof(scale));
+}
+
+static void install_unicorn_bubble_text(const char *app0, Segment *segments, uint64_t count) {
+    if (!unicorn_known_build(app0)) return;
+    const uint64_t call = unicorn_address(TEXT_BUBBLE_CALL), id = unicorn_address(TEXT_BUBBLE_SCALE_ID);
+    const uint64_t target = unicorn_address(TEXT_BUBBLE_SET_TEXT);
+    const uint64_t before = sizeof(text_bubble_call_signature) - 1;
+    int32_t relative;
+    if (!call || !id || !target || !mapped(segments, count, call - before, before + 5) ||
+        !mapped(segments, count, id, sizeof(text_bubble_scale_signature)) ||
+        memcmp(image + call - before, text_bubble_call_signature, sizeof(text_bubble_call_signature)) ||
+        memcmp(image + id, text_bubble_scale_signature, sizeof(text_bubble_scale_signature)) ||
+        (memcpy(&relative, image + call + 1, 4), call + 5 + (int64_t)relative != target)) {
+        printf("Speech bubbles: the game differs from v01.04 here; three-line text may overflow\n");
+        return;
+    }
+    unsigned char *stub = allocate(page_size);
+    const uintptr_t hook = (uintptr_t)unicorn_bubble_set_text;
+    stub[0] = 0x48; stub[1] = 0xb8; memcpy(stub + 2, &hook, 8); stub[10] = 0xff; stub[11] = 0xe0;
+    protect(stub, page_size, 5);
+    if (!jump_reaches(call, stub)) {
+        printf("Speech bubbles: hook not reachable; three-line text may overflow\n");
+        return;
+    }
+    bubble_set_text = (BubbleSetText)(uintptr_t)(image + target);
+    relative = (int32_t)((int64_t)(uintptr_t)stub - (int64_t)(uintptr_t)(image + call + 5));
+    memcpy(image + call + 1, &relative, 4);
+}
+
 /* Unicorn Overlord: the port's settings in the game's Options screen
  * (src/unicorn_native_settings.h). */
 static void install_unicorn_native_settings(const char *app0) {
@@ -628,7 +672,9 @@ static void install_unicorn_native_settings(const char *app0) {
  * "Text language"). After its system language query the game stores its language at 0x233e34:
  * 9 (Korean) gives 6, 10 (Traditional Chinese) 7, 11 (Simplified Chinese) 8, any other 7, and it
  * then binds that language's CPK (6 Unicorn_KO, 7 Unicorn_TW, 8 Unicorn_CN). So an English or
- * Japanese system got Chinese text. 0 binds none: the Japanese text in Unicorn.CPK. */
+ * Japanese system got Chinese text. 0 binds none: the Japanese text in Unicorn.CPK. 1-5 are the
+ * Western languages of the same code (Unicorn_US, FR, ES, DE, IT): their fonts are in Unicorn.CPK
+ * and the game wraps their lines itself, so only the archive is missing. */
 #define UNICORN_TEXT_LANGUAGE_OFFSET 0x233e34
 /* lea ecx, [rax-9]; add eax, -3; mov edx, 7; cmp ecx, 3; cmovb edx, eax */
 static const unsigned char unicorn_text_language_signature[] = {
@@ -637,7 +683,8 @@ static const unsigned char unicorn_text_language_signature[] = {
 /* The game's language for a TextLanguages key (gpu/shim/vw_graphics.h), -1 for auto. */
 static int unicorn_text_language_value(const char *text) {
     static const struct { const char *key; int value; } languages[] = {
-        {"japanese", 0}, {"traditional_chinese", 7}, {"simplified_chinese", 8}, {"korean", 6}};
+        {"japanese", 0}, {"english", 1}, {"french", 2}, {"spanish", 3}, {"german", 4}, {"italian", 5},
+        {"traditional_chinese", 7}, {"simplified_chinese", 8}, {"korean", 6}};
     char key[32] = "";
     while (*text == ' ' || *text == '\t') ++text;
     size_t n = 0;
@@ -666,21 +713,26 @@ static void install_unicorn_text_language(const char *app0) {
     if (!unicorn_known_build(app0)) return;
     const int language = unicorn_text_language_setting();
     if (language < 0) return;
-    static const char *const names[] = {"Japanese", "", "", "", "", "", "Korean", "Traditional Chinese",
-                                        "Simplified Chinese"};
-    if (language == 6) {
-        /* The game opens it by this name; file names are matched without case. */
-        snprintf(path, sizeof(path), "%s/Unicorn_KO.CPK", app0 ? app0 : ".");
-        FILE *ko = fopen(path, "rb");
-        if (!ko) {
-            snprintf(path, sizeof(path), "%s/Unicorn_KO.cpk", app0 ? app0 : ".");
-            ko = fopen(path, "rb");
+    static const char *const names[] = {"Japanese", "English", "French", "Spanish", "German", "Italian",
+                                        "Korean", "Traditional Chinese", "Simplified Chinese"};
+    /* The archives the game opens for languages 1-6 (a name table in the eboot, 0x140c608 in the Hong Kong 1.05 one). The Asia dump
+     * has none of them: Unicorn_KO.CPK comes from a Korean dump, the others are written from
+     * Switch archives in data/languages (scripts/mods.py, write_slots). */
+    static const char *const archives[] = {"", "US", "FR", "ES", "DE", "IT", "KO"};
+    if (language >= 1 && language <= 6) {
+        FILE *f = NULL;
+        for (int upper = 1; upper >= 0 && !f; --upper) {  /* matched without case by the game */
+            snprintf(path, sizeof(path), "%s/Unicorn_%s.%s", app0 ? app0 : ".", archives[language],
+                     upper ? "CPK" : "cpk");
+            f = fopen(path, "rb");
         }
-        if (!ko) {
-            printf("Text language: Korean needs Unicorn_KO.CPK, which this game folder lacks; the game's default\n");
+        if (!f) {
+            printf("Text language: %s needs Unicorn_%s.CPK (%s), which is missing; the game's default\n",
+                   names[language], archives[language],
+                   language == 6 ? "from a Korean dump" : "from the Switch version, in data/languages");
             return;
         }
-        fclose(ko);
+        fclose(f);
     }
     const uint64_t at = unicorn_address(UNICORN_TEXT_LANGUAGE_OFFSET);
     if (memcmp(image + at, unicorn_text_language_signature, sizeof(unicorn_text_language_signature))) {
@@ -693,6 +745,7 @@ static void install_unicorn_text_language(const char *app0) {
     const uint32_t value = (uint32_t)language;
     memcpy(image + at + 1, &value, 4);
     printf("Text language: %s\n", names[language]);
+    if (language >= 1 && language <= 5) text_fit_disable();
 }
 
 /* G3PATCH2 (patches.py): the patches' image base, then byte writes at image offsets, applied
@@ -1019,6 +1072,7 @@ int main(int argc, char **argv) {
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
     if (gpu_enabled) install_unicorn_render_scale();
     install_unicorn_cri_hook(app0, segments, ns);
+    install_unicorn_bubble_text(app0, segments, ns);
     if (gpu_enabled) install_unicorn_native_settings(app0);
     install_unicorn_text_language(app0);
 #ifdef _WIN32

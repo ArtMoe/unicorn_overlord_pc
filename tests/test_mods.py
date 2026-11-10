@@ -111,6 +111,129 @@ class ModTests(unittest.TestCase):
             self.assertEqual(mods.cpk.Archive(self.game / name).read('MsgSheet/UcSysMsg.fms'), b'old text')
         self.assertFalse((result / 'Unicorn_US.CPK').exists())
 
+    def test_switch_language_archives_become_the_games_western_archives(self):
+        merge = {'archives': ('Unicorn_US.CPK', 'Unicorn_FR.CPK'), 'into': ('Unicorn_TW.CPK',),
+                 'slots': {'english': 'Unicorn_US.CPK', 'french': 'Unicorn_FR.CPK', 'german': 'Unicorn_DE.CPK'}, 'skip': ('.ftx',)}
+        self.archive(self.game / 'Unicorn_TW.CPK', {'MsgSheet/UcSysMsg.fms': b'chinese'})
+        languages = self.root / 'languages'
+        (languages / 'romfs').mkdir(parents=True)
+        self.archive(languages / 'Unicorn_FR.CPK',
+                     {'MsgSheet/UcSysMsg.fms': b'francais', 'GUI/Interface.mbs': b'ui fr', 'Help/Help.ftx': b'nvt'})
+        self.archive(languages / 'romfs' / 'unicorn_de.cpk', {'MsgSheet/UcSysMsg.fms': b'deutsch'})
+        (languages / 'Unicorn.CPK').write_bytes(b'not a language archive')
+        (self.moddir / 'Fix').mkdir(parents=True)
+        self.archive(self.moddir / 'Fix' / 'Unicorn_FR.CPK', {'MsgSheet/UcSysMsg.fms': b'francais corrige'})
+        with mock.patch.object(mods, 'archive_merge', return_value=merge):
+            result = mods.build_overlay(self.game, self.root / 'out', [], languages, 'french')
+            german = mods.build_overlay(self.game, self.root / 'out', [], languages, 'german')
+            fixed = mods.build_overlay(self.game, self.root / 'out', [('Fix', self.moddir / 'Fix')], languages, 'french')
+            none = mods.build_overlay(self.game, self.root / 'out', [], self.root / 'missing', 'french')
+            chinese = mods.build_overlay(self.game, self.root / 'out', [], languages, 'traditional_chinese')
+        french = mods.cpk.Archive(result / 'Unicorn_FR.CPK')
+        self.assertEqual(set(french.files), {'MsgSheet/UcSysMsg.fms', 'GUI/Interface.mbs'})
+        self.assertEqual(french.read('MsgSheet/UcSysMsg.fms'), b'francais')
+        self.assertFalse((result / 'Unicorn_DE.CPK').exists())  # only the chosen language's archive
+        self.assertEqual(mods.cpk.Archive(german / 'Unicorn_DE.CPK').read('MsgSheet/UcSysMsg.fms'), b'deutsch')
+        self.assertFalse((result / 'Unicorn_US.CPK').exists())
+        self.assertEqual(mods.cpk.Archive(result / 'Unicorn_TW.CPK').read('MsgSheet/UcSysMsg.fms'), b'chinese')
+        # A mod's archive goes over the Switch one, and still into the Chinese archive as before.
+        self.assertEqual(mods.cpk.Archive(fixed / 'Unicorn_FR.CPK').read('MsgSheet/UcSysMsg.fms'), b'francais corrige')
+        self.assertEqual(mods.cpk.Archive(fixed / 'Unicorn_FR.CPK').read('GUI/Interface.mbs'), b'ui fr')
+        self.assertEqual(mods.cpk.Archive(fixed / 'Unicorn_TW.CPK').read('MsgSheet/UcSysMsg.fms'), b'francais corrige')
+        self.assertEqual(none, self.game.resolve())
+        self.assertEqual(chinese, self.game.resolve())  # no view, so no new preparation at start
+
+    def test_converted_textures_are_kept_for_the_next_start(self):
+        cache = self.root / 'switch_textures'
+        calls = []
+        with mock.patch.object(mods.Pictures, '_convert', staticmethod(
+                lambda stored, template: calls.append(stored) or stored.upper())):
+            first = mods.Pictures(self.game, {}, cache)
+            self.assertEqual(first._cached(b'font', b'template'), b'FONT')
+            self.assertEqual(first._cached(b'old', None), b'OLD')
+            again = mods.Pictures(self.game, {}, cache)  # the next start: only the font
+            self.assertEqual(again._cached(b'font', b'template'), b'FONT')
+            again.prune()
+        self.assertEqual(calls, [b'font', b'old'])
+        self.assertEqual(len(list(cache.iterdir())), 1)
+
+    def test_older_switch_sheets_get_the_games_entry_numbers(self):
+        import fms
+        def sheet(strings):
+            header = (b'FMSB' + bytes(4) + (0x20).to_bytes(4, 'little') + bytes(8)
+                      + len(strings).to_bytes(4, 'little') + (1).to_bytes(4, 'little') + bytes(4))
+            return fms.build(strings, fms.build([''] * len(strings), header))
+        merge = {'slots': {'french': 'Unicorn_FR.CPK'}, 'english_from': ('Unicorn_TW.CPK',), 'skip': ('.ftx',)}
+        self.archive(self.game / 'Unicorn_TW.CPK', {
+            'MsgSheet/UcOption.fms': sheet(['選項'] * 4),
+            'MsgSheet/UcSysMsg.fms': sheet(['請稍候'] * 3),
+            'MsgSheet/UcHelpList.fms': sheet(['說明'] * 2)})
+        languages = self.root / 'languages'
+        languages.mkdir()
+        # Switch 1.0.0: the update added an entry in the middle of UcOption and one at the end of
+        # UcSysMsg; UcHelpList is unchanged.
+        self.archive(languages / 'Unicorn_FR.CPK', {
+            'MsgSheet/UcOption.fms': sheet(['Options', 'Son', 'Langue']),
+            'MsgSheet/UcSysMsg.fms': sheet(['Oui', 'Non']),
+            'MsgSheet/UcHelpList.fms': sheet(['Aide', 'Carte']),
+            'GUI/Interface.mbs': b'1.0.0 layout', 'Help/Help_00.ftx': b'nvt'})
+        table = self.root / 'switch_text_100.json'
+        table.write_text(json.dumps({'MsgSheet/UcOption.fms': {'from': 3, 'to': 4, 'runs': [[0, 0, 1], [2, 1, 2]]}}))
+        with mock.patch.object(mods, 'archive_merge', return_value=merge), mock.patch.object(mods, 'SWITCH_100', table):
+            result = mods.build_overlay(self.game, self.root / 'out', [], languages, 'french')
+        french = mods.cpk.Archive(result / 'Unicorn_FR.CPK')
+        def strings(name):
+            return fms.parse(mods.cpk.crilayla(french.read(name)))
+        # An entry the update added keeps the game's own text.
+        self.assertEqual(strings('MsgSheet/UcOption.fms'), ['Options', '\u9078\u9805', 'Son', 'Langue'])
+        self.assertEqual(strings('MsgSheet/UcSysMsg.fms'), ['Oui', 'Non', '\u8acb\u7a0d\u5019'])  # no map: filled at the end
+        self.assertEqual(strings('MsgSheet/UcHelpList.fms'), ['Aide', 'Carte'])
+        # Only the text of a 1.0.0 archive: its UI layout lacks the rows added later.
+        self.assertEqual(set(french.files), {'MsgSheet/UcOption.fms', 'MsgSheet/UcSysMsg.fms', 'MsgSheet/UcHelpList.fms'})
+
+    def test_english_patch_archive_becomes_the_english_archive_when_english_is_chosen(self):
+        import fms
+        merge = {'slots': {'english': 'Unicorn_US.CPK'}, 'english_from': ('Unicorn_TW.CPK', 'Unicorn_CN.CPK'), 'skip': ('.ftx',)}
+        template = fms.build([''], b'FMSB' + bytes(4) + (0x20).to_bytes(4, 'little') + bytes(8)
+                             + (1).to_bytes(4, 'little') + (1).to_bytes(4, 'little') + bytes(4))
+        chinese = fms.build(['\u8acb\u7a0d\u5019\u3002\u8acb\u7a0d\u5019\u3002'], template)
+        english = fms.build(['Please wait. Saving the game in progress.'], template)
+        self.archive(self.game / 'Unicorn_TW.CPK', {'MsgSheet/UcSysMsg.fms': chinese})
+        self.archive(self.game / 'Unicorn_CN.CPK', {'MsgSheet/UcSysMsg.fms': english, 'GUI/Interface.mbs': b'ui',
+                                                   'Help/Help_00.ftx': b'ps4 picture',
+                                                   'MsgSheet/UcScriptMsgConv.fms': b'one\ntwo',
+                                                   'MsgSheet/UcScriptMsgConv_original.fms': b'one two'})
+        with mock.patch.object(mods, 'archive_merge', return_value=merge):
+            result = mods.build_overlay(self.game, self.root / 'out', [], None, 'english')
+            other = mods.build_overlay(self.game, self.root / 'out', [], None, 'traditional_chinese')
+            self.assertEqual(mods.TEXT_LANGUAGE, 'traditional_chinese')
+            default = mods.build_overlay(self.game, self.root / 'out', [], None, 'auto')
+            self.assertEqual(mods.TEXT_LANGUAGE, 'english')  # Game Default is English with the patch
+        us = mods.cpk.Archive(result / 'Unicorn_US.CPK')
+        self.assertEqual(us.read('MsgSheet/UcSysMsg.fms'), english)
+        self.assertEqual(us.read('GUI/Interface.mbs'), b'ui')
+        self.assertEqual(us.read('Help/Help_00.ftx'), b'ps4 picture')  # the patch's pictures are PS4 ones
+        self.assertEqual(us.read('MsgSheet/UcScriptMsgConv.fms'), b'one two')  # the game breaks the lines
+        self.assertEqual(other, self.game.resolve())  # no view otherwise
+        self.assertEqual(mods.cpk.Archive(default / 'Unicorn_US.CPK').read('MsgSheet/UcSysMsg.fms'), english)
+        # A translation mod is read in Chinese mode: Game Default stays there.
+        (self.moddir / 'Portuguese').mkdir(parents=True)
+        self.archive(self.moddir / 'Portuguese' / 'Unicorn_US.CPK', {'MsgSheet/UcSysMsg.fms': english})
+        with mock.patch.object(mods, 'archive_merge', return_value={**merge, 'archives': ('Unicorn_US.CPK',), 'into': ('Unicorn_TW.CPK',)}):
+            translated = mods.build_overlay(self.game, self.root / 'out', [('Portuguese', self.moddir / 'Portuguese')], None, 'auto')
+        self.assertEqual(mods.TEXT_LANGUAGE, 'auto')
+        self.assertFalse((translated / 'Unicorn_US.CPK').exists())
+        # The patch installed as a mod over the official (Chinese) dump.
+        (self.moddir / 'Patch').mkdir()
+        newer = fms.build(['Please wait. The game is being saved.'], template)
+        self.archive(self.moddir / 'Patch' / 'Unicorn_TW.CPK', {'MsgSheet/UcSysMsg.fms': newer})
+        with mock.patch.object(mods, 'archive_merge', return_value=merge):
+            patched = mods.build_overlay(self.game, self.root / 'out', [('Patch', self.moddir / 'Patch')], None, 'auto')
+        self.assertEqual(mods.TEXT_LANGUAGE, 'english')
+        self.assertEqual(mods.cpk.Archive(patched / 'Unicorn_US.CPK').read('MsgSheet/UcSysMsg.fms'), newer)  # the mod wins
+        self.assertTrue(mods.english_text(self.game / 'Unicorn_CN.CPK'))
+        self.assertFalse(mods.english_text(self.game / 'Unicorn_TW.CPK'))
+
     def test_translation_sheets_merged_into_language_archives(self):
         import fms
         merge = {'archives': (), 'into': ('Unicorn_TW.CPK', 'Unicorn_CN.CPK'), 'folders': ('MsgSheet',)}
@@ -181,7 +304,7 @@ class ModTests(unittest.TestCase):
             result = subprocess.run([sys.executable, str(ROOT / 'scripts/mods.py'), str(self.game),
                 '--out', str(self.root / 'out'), '--mods-dir', str(self.moddir), '--enabled', enabled],
                 capture_output=True, text=True, check=True)
-            self.assertEqual((Path(result.stdout.strip()) / 'game_data/data/a.wad').read_bytes(), expected)
+            self.assertEqual((Path(result.stdout.splitlines()[0]) / 'game_data/data/a.wad').read_bytes(), expected)
 
     def test_app0_wrapped_mod_discovered(self):
         self.moddir.mkdir()

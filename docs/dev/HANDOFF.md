@@ -1,4 +1,147 @@
-# Handoff (2026-10-20)
+# Handoff (2026-11-09)
+
+Start here. The sections below this one are older (2026-10-20 and before) and kept for history.
+
+## Next: #74 on the Windows PC (RX 9070 XT)
+
+The ROG Ally report (#74, bika66) points at AMD's Windows driver, not raw GPU power:
+
+- **Reporter:** Z1 Extreme (CPU family 25 model 116, 780M-class RDNA3 iGPU, 8 GB of 16 GB given
+  to the GPU), Windows 11, AMD Vulkan driver 2.0.388, port v1.5.0 (before #81). 15 FPS
+  (68 ms) on the **title and world map** at 720p with the GPU at 96-100%; **battles and
+  cutscenes smooth**. Settings: fullscreen, vsync off, **FSR1 and Anime4K (Fast) on**, deferred
+  and stale readback on. Says every setting behaves the same. Their log
+  (run-20261109-140712) has no errors.
+- **Here (Linux, RADV):** the much weaker Vega 8 runs the title at ~60 and the field at ~40;
+  its slowest scene is the battle. The reporter sees the opposite, so suspect something the
+  Windows driver runs badly.
+
+What to do on the Windows PC:
+
+1. Build main (it has #81) and also keep the v1.5.0 zip for comparison. Point setup at the
+   CUSA36381 dump; bring a save on the world map (Linux: `run_uo/user/savedata`).
+2. Run with profiling, from a Command Prompt in the port folder:
+   `set VW_GPU_PROFILE=1 && set VW_FRAME_STATS=1 && "Unicorn Overlord.exe"` (run.py starts
+   from the caller's environment; check that the lines reach `logs/`). Stay 30 s on the title,
+   30 s on the world map, 30 s in a battle.
+3. The 9070 XT is far faster than the Ally, so look at **uncapped FPS and ms per pass**, not
+   whether it reaches 60: the title and world map should run at several hundred FPS. A pass
+   that costs far more there than in battle is the suspect. Repeat at 4K with FSR1 + Anime4K
+   on (the reporter's setup), and with Anime4K off.
+4. If one pass stands out: dump its shaders (`VW_DUMP_SHADERS=1` with an empty
+   `user/shader` folder, so they compile again) and compare with what RADV does.
+5. If the 9070 XT is clean, the problem may be RDNA3 or iGPU-specific: ask bika66 for the same
+   profile. A reply draft (not posted yet): turn Anime4K off and check the title; then run with
+   the two variables above and attach the new log.
+
+Also possible on Linux: AMDVLK shares the Windows driver's backend. The 2025.Q2.1 package was
+unpacked into a session scratchpad but not run (downloaded driver code needs the owner's OK).
+
+## What happened on 2026-11-09, evening (branch `claude/enhancements`)
+
+- **#74 iGPU:** render target clears that the game does with a compute fill are now image clears
+  (`ExecuteFillShaderHLE`, vk_shader_hle.cpp; toggle 1 << 53). Vega 8 battle map 25.8 -> 32.5
+  FPS native, 37.6 -> 46.2 FPS at 720p; RX 560X unchanged at 60. Details and what is left
+  (the game's own 127-sample blur at a fixed 960x540) in [parallel_gpu.md](parallel_gpu.md).
+  Profile with `VW_GPU_PROFILE=1`; pick the iGPU with
+  `MESA_VK_DEVICE_SELECT=1002:15dd MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE=1`.
+- **#50 keyboard prompts:** F1 shows a table of which key is which pad button (built from the
+  current bindings), and an 8-second hint says so at the first key press of a session.
+- **Language list:** `game_profiles.py` `slots` is the one Python list; `tests/test_languages.py`
+  checks probe.c's tables and `vw_graphics.h` against it.
+- **#51 Switch mods: dropped (owner's call).** For the record: every Unicorn Overlord mod on
+  GameBanana is an `exefs/main.pchtxt` against the Switch 1.05 executable (build ID
+  C841FFE2...); none replaces data files. The big ones patch data tables in the executable,
+  which a prototype mapped to the PS4 eboot for about 80% of the writes.
+- **#71:** the save layouts match up to save+0x1FB880 ([SWITCH_SAVES.md](SWITCH_SAVES.md)).
+
+## What happened on 2026-11-08/09
+
+Merged into `main`: #75 (windowed mode opens at the render size and fits the screen, #70), #76
+(World Map canvas pass stays 3840x2160 below 4K, #69), #77 (three-line story text fits the speech
+bubble, #73). Issue #56's Anime4K fix was already in v1.4.0 (`1d1dfef`); the reporter has not
+confirmed it yet.
+
+**PR #78, text languages** (`claude/western-languages`; issues #54, #71, #49):
+
+- The Asia eboot still has the game's Western languages: text language 1-5 open
+  `Unicorn_US/FR/ES/DE/IT.CPK` (a name table beside `_KO/_TW/_CN`), and `Unicorn.CPK` has their
+  fonts (`KiaroFont_L`, `AlbertusNovaFont_L` for title cards). Only the archives are missing.
+  The Switch archives have the same format and the same entry counts in every sheet.
+- **Text language** (Insert menu) has English, Français, Español, Deutsch, Italiano after the old
+  five keys (vw.ini indices unchanged). `src/probe.c` sets the game's language and falls back
+  with a log line when the archive is missing. In 1-5 the #73 re-wrap and bubble scaling are
+  off (`text_fit_disable`): the game breaks lines and sizes bubbles itself.
+- `scripts/mods.py` (`write_slots`, `build_overlay`): the chosen language's archive only, from
+  `data/languages/Unicorn_XX.CPK` (`VW_LANGUAGES_DIR`), a mod's `Unicorn_XX.CPK`, or for English
+  the fan patch's `Unicorn_TW/CN.CPK` (`english_from`, also from a mod). Switch pictures (`.ftx`)
+  are left out. `<sheet>_original.fms` replaces `<sheet>.fms`: the patch's story without the
+  breaks it added for the Chinese boxes (with them, narration lines overlapped in English mode).
+  Writing a slot makes a view of the game folder, and a view makes the start prepare the game
+  image again (`prepare_cache.key` has the folder path): that is why only the chosen slot is
+  written, and nothing for Chinese/Japanese.
+- **#49 (chapter title card shows one box)** is fixed when the text language is English: the
+  card used Traditional Chinese's large font, which has no Latin letters. Checked: chapter 1's
+  "The Unicorn Ring" shows with the Switch English text and with the fan patch's text.
+  Since `claude/english-default` this is also the default for patch players (open item 1).
+
+Checked in the game (Linux, RX 560X): French, German and English through the title, load screen,
+loading tips, the prologue story, the prologue battle, chapter 1's start; saves load across
+languages. Render resolutions: see "Regression runs" below. `tests/test_mods.py` covers the
+archive building.
+
+## Regression runs (2026-11-09, Linux, RX 560X, English-patch dump)
+
+- `tools/uo_story.sh`, New Game to chapter 1, text language English from the patch: native and
+  720p. The battle, the story and the title card were fine. Before the `_original.fms` fix the
+  opening narration's lines overlapped; now there is one line at a time.
+- Save A from #34 (field dialogue), default text language (Chinese mode, the patch's text) at
+  900p, 1800p, 4K and native: the dialogue is unchanged from before the branch (the patch's
+  typewriter-style Latin font, two-line bubble). English at 4K: the Western dialogue font, with
+  the game's own wrapping.
+- French and German from the Switch 1.05 archives: the title, menus, the opening and the camp
+  dialogue (native).
+- Not run on Windows. `run_uo/languages` on this machine is empty again: the Switch archives
+  are in `~/Downloads/uo_switch/romfs_upd/`.
+
+## Open items, in order
+
+1. **#49 for patch players: done after #78** (branch `claude/english-default`). Game Default
+   is the game's English mode when the English patch is in the dump or a mod (`mods.py`
+   `TEXT_LANGUAGE`, passed to the game as `VW_TEXT_LANGUAGE` by run.py). It stays Chinese mode
+   with a translation mod (JSON sheets or a Switch archive merged into the Chinese ones), and
+   Traditional/Simplified Chinese in the menu shows the patch the old way. The preparation
+   cache now keys on what preparation reads (eboot.bin, sce_module, sce_sys), not on the folder,
+   so the view no longer costs a preparation. The second patch release's 14 English tutorial
+   pictures are kept. Setups that had Simplified Chinese written for a CN-only patch move to Game
+   Default once (`english_mode` in launcher.json). Checked: two starts on the patch dump (English
+   title, "preparation skipped" on the view), unit tests. Not checked: Windows, and a full
+   chapter with the second patch release.
+2. **#71 Switch saves:** not possible yet; see [SWITCH_SAVES.md](SWITCH_SAVES.md). The Switch
+   save struct has the same header and version but is 0x2CF0 bytes larger with moved blocks.
+   Needs a Switch save from the reporter.
+3. **#74 (ROG Ally, 14 FPS on the title and field):** not reproduced. Here title, field and
+   battle run at 60 on the RX 560X, and on the Vega 8 iGPU the battle is the slowest (27 FPS),
+   the opposite of the report. Asked the reporter for overlay screenshots, logs, power mode and
+   RAM/UMA size. Note: a hidden or minimized window here throttles vsync to ~20 FPS (Wayland),
+   so measure with `VW_VSYNC=0` or a visible window.
+4. Review leftovers: `english_text` is shared now (the launcher uses `mods.english_text`).
+   `--export-text` exporting the Chinese archive is right: JSON translations are read in Chinese
+   mode. Still open: the language list lives in five places (probe.c tables, `vw_graphics.h`,
+   overlay labels, `game_profiles.py` slots, `mods.py` `SLOT_OF_LANGUAGE`); Switch languages use
+   the PS4 dump's tutorial pictures; three system messages name the Switch.
+
+## Driving the game unattended (Linux)
+
+- `tools/uo_pad.sh --launch <game>` starts the game wired to a pad file; then
+  `tools/uo_pad.sh "cross wait2000 lx=0:300 dump"` presses buttons, pushes the stick (0-255, ms)
+  and dumps frames into `run_uo/drive/dumps` (it uses a raw-to-PNG helper; check its path).
+- `tools/uo_story.sh <game>` plays New Game through the prologue battle into chapter 1 (about
+  15 min): the title card is among the last frames. It finds Ilenia and Valmore on the battle
+  map by reading the unit panels with tesseract (`tools/uo_ocr.sh`).
+- `VW_TEXT_LANGUAGE=english` etc. pass through; `render_resolution=` is in `run_uo/vw.ini`.
+
+# Handoff (2026-10-20, older)
 
 Read this first. The port's history and reverse-engineering notes are in
 [unicorn/HANDOFF.md](unicorn/HANDOFF.md), the GPU pipeline in [parallel_gpu.md](parallel_gpu.md).

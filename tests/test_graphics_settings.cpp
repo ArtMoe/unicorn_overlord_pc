@@ -30,13 +30,22 @@ int main() {
     assert(G::ParseResolution("1800p") == 3 && G::ParseResolution("4K") == 4 && G::ParseResolution("8K") == 0);
     assert(G::ParseResolution("1440p") == 0);  // removed: a vw.ini that still has it starts native
     assert(G::ParseTextLanguage("japanese") == 1 && G::ParseTextLanguage("korean") == 4 &&
-           G::ParseTextLanguage("english") == 0);
+           G::ParseTextLanguage("english") == 5 && G::ParseTextLanguage("italian") == 9 &&
+           G::ParseTextLanguage("klingon") == 0);
     assert(G::ParseFramesQueued(2) == 2 && G::ParseFramesQueued(0) == 0 && G::ParseFramesQueued(5) == 1);
     assert(G::ParseRcasStrength(100) == 100 && G::ParseRcasStrength(101) == 75 && G::ParseRcasStrength(-1) == 75);
     assert(G::RcasAttenuation(100) == 0.0f && G::RcasAttenuation(0) == 2.0f && G::RcasAttenuation(75) == 0.5f);
     assert(G::FsrPassRuns(true, false, 1280, 720, 2560, 1440) && !G::FsrPassRuns(false, false, 1280, 720, 2560, 1440));
     assert(G::FsrPassRuns(false, true, 1920, 1080, 1920, 1080) && !G::FsrPassRuns(true, false, 1920, 1080, 1920, 1080));
     assert(!G::FsrPassRuns(true, true, 2560, 1440, 1920, 1080));  // larger image: regular scaling
+    // Windowed: the render size up to 1080 tall, shrunk to the usable area (issue #70).
+    {
+        const G::Size a = G::WindowedSize(1, 16, 9, 2560, 1400), b = G::WindowedSize(4, 16, 9, 3840, 2100);
+        const G::Size c = G::WindowedSize(0, 16, 9, 1280, 984), d = G::WindowedSize(0, 64, 27, 1920, 1040);
+        const G::Size e = G::WindowedSize(0, 16, 9, 0, 0);
+        assert(a.w == 1280 && a.h == 720 && b.w == 1920 && b.h == 1080);
+        assert(c.w == 1280 && c.h == 720 && d.w == 1920 && d.h == 810 && e.w == 1920 && e.h == 1080);
+    }
     assert(G::ParseAnime4k(2) == G::Anime4kQuality && G::ParseAnime4k(3) == G::Anime4kOff && G::ParseAnime4k(-1) == 0);
     // Anime4K's x2 runs above 1.2 times both ways: 1080p to 1440p, not 1080p to 1200p or 1080p.
     assert(G::Anime4kUpscales(1920, 1080, 2560, 1440) && G::Anime4kUpscales(1280, 720, 1920, 1080));

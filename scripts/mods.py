@@ -185,10 +185,129 @@ def child_name(archive, name):
     return next(n for n in archive.files if n.casefold() == name.casefold())
 
 
-def merge_archives(overlay, merge, archives, loose=()):
+# Where the entries of the Switch 1.0.0 text sheets go in the PS4 v01.04 (= Switch 1.05) ones:
+# {sheet: {'from': 1.0.0 count, 'to': count, 'runs': [[index, 1.0.0 index, length], ...]}}
+# (tools/re/switch_text_map.py).
+SWITCH_100 = Path(__file__).with_name('switch_text_100.json')
+SWITCH_FONTS = 'switch_fonts'  # in the overlay: the fonts write_slots converted
+
+
+def fit_sheets(files, reference, memory):
+    """Gives each text sheet in `files` (casefolded name -> (name, archive, name there)) the
+    number of entries of the sheet of that name in `reference` (the game's own language archive):
+    the game reads entries by number, and a short sheet crashed it at start (#83, #85: the
+    Switch 1.0.0 archives). A Switch 1.0.0 sheet is laid out again with SWITCH_100; an entry
+    1.05 added keeps the reference's text (English with the fan patch). Any other short sheet is
+    filled up at its end from the reference. Returns the names of the sheets changed."""
+    import fms
+    table = json.loads(SWITCH_100.read_text())
+    changed = []
+    for key, (spelling, archive, original) in list(files.items()):
+        if not key.endswith('.fms') or archive is reference:
+            continue
+        try:
+            template = cpk.crilayla(reference.read(child_name(reference, spelling)))
+            ours = fms.parse(template)
+            theirs = fms.parse(memory.read(original) if archive is memory else cpk.crilayla(archive.read(original)))
+        except (StopIteration, KeyError, ValueError):
+            continue  # not a sheet the game has, or not a text sheet
+        if len(theirs) == len(ours):
+            continue
+        layout = next((t for n, t in table.items() if n.casefold() == key), None)
+        strings = list(ours)
+        if layout and (layout['from'], layout['to']) == (len(theirs), len(ours)):
+            for start, source, length in layout['runs']:
+                strings[start:start + length] = theirs[source:source + length]
+        elif len(theirs) < len(ours):
+            strings[:len(theirs)] = theirs
+        else:
+            continue  # longer: the game never reads past its own count
+        memory.add(spelling, fms.build(strings, template))
+        files[key] = (spelling, memory, spelling)
+        changed.append(spelling)
+    return changed
+
+
+class Pictures:
+    """Switch textures (.ftx, NVT) of a mod or language archive as PS4 ones (ftx.convert), with
+    the game's file of the same name (merge['pictures_from'] in `overlay`, the first that has
+    it) as the template: a translation's fonts (#84). Each is converted once per start, and kept
+    in `cache` (a folder) for the next starts: converting takes seconds a texture."""
+
+    def __init__(self, overlay, merge, cache=None):
+        self.templates = [cpk.Archive(child(overlay, name)) for name in merge.get('pictures_from', ())
+                          if child(overlay, name).exists()]
+        self.done = {}
+        self.cache, self.used = (Path(cache) if cache else None), set()
+
+    def __call__(self, archive, name):
+        """The PS4 file for `name` in `archive`, or None (not a Switch texture, no template, or a
+        layout ftx.convert does not handle)."""
+        key = (str(archive.path), name)
+        if key not in self.done:
+            template = next((t for t in self.templates if name in t.files), None)
+            self.done[key] = self._cached(archive.read(name), template and template.read(name))
+        return self.done[key]
+
+    def _cached(self, stored, template):
+        import hashlib
+        digest = hashlib.sha256(stored + b'\0' + (template or b'')).hexdigest()
+        path = self.cache / f'{digest}.ftx' if self.cache else None
+        if path:
+            self.used.add(path.name)
+            try:
+                data = path.read_bytes()
+                return data or None  # empty: not convertible
+            except OSError:
+                pass
+        data = self._convert(stored, template)
+        if path:
+            try:
+                self.cache.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data or b'')
+            except OSError:
+                pass
+        return data
+
+    @staticmethod
+    def _convert(stored, template):
+        import ftx
+        try:
+            data = cpk.crilayla(stored)
+            if template and ftx.is_switch(data):
+                return ftx.convert(data, cpk.crilayla(template))
+        except ValueError:  # e.g. the 1.05 French Help_St_Break1.ftx, whose stream is damaged
+            pass
+        return None
+
+    def prune(self):
+        """Removes the cached textures this start did not use."""
+        if self.cache and self.cache.is_dir():
+            for path in self.cache.glob('*.ftx'):
+                if path.name not in self.used:
+                    try:
+                        path.unlink()
+                    except OSError:
+                        pass
+
+
+def older_switch(archive):
+    """Whether `archive` is a Switch 1.0.0 language archive (a sheet has the 1.0.0 entry count of
+    SWITCH_100). Only its text sheets (and textures) are used: its GUI/Interface.mbs is the 1.0.0
+    layout, without the rows later updates added, and broke the Options screen."""
+    import fms
+    for sheet, layout in json.loads(SWITCH_100.read_text()).items():
+        try:
+            return len(fms.parse(cpk.crilayla(archive.read(child_name(archive, sheet))))) == layout['from']
+        except (StopIteration, KeyError, ValueError):
+            continue
+    return False
+
+
+def merge_archives(overlay, merge, archives, loose=(), pictures=None):
     """Writes each of the game's merge['into'] archives in `overlay` again with the files of
-    `archives` ((mod, path) in mod order: a later mod's file wins) in place of or beside its own,
-    leaving out names ending in merge['skip']. Then the `loose` files ((mod, path in the
+    `archives` ((mod, path) in mod order: a later mod's file wins) in place of or beside its own;
+    names ending in merge['skip'] (Switch textures) are converted (Pictures) or left out. Then the `loose` files ((mod, path in the
     archive, source) in mod order): a .fms sheet replaces the archive's, a .json one replaces
     the entries it lists (fms.apply). The merge['rewrap'] sheets an archive brings get line
     breaks where the PS4 boxes need them (fms.rewrap)."""
@@ -196,21 +315,34 @@ def merge_archives(overlay, merge, archives, loose=()):
     sources = [(mod, cpk.Archive(path)) for mod, path in archives]
     rewrapped = {}  # the same sheet for each target archive
     mods = list(dict.fromkeys([m for m, _ in archives] + [m for m, _, _ in loose]))
+    pictures = pictures or Pictures(overlay, merge)
     for target in merge['into']:
         destination = child(overlay, target)
         if not is_link(destination):
             continue
         base = cpk.Archive(link_target(destination))
         files = {name.casefold(): (name, base, name) for name in base.files}
-        taken, skipped = set(), 0
-        for mod, archive in sources:
-            for name in archive.files:
-                if name.casefold().endswith(tuple(merge.get('skip', ()))):
-                    skipped += 1
-                    continue
-                files[name.casefold()] = (files.get(name.casefold(), (name,))[0], archive, name)
-                taken.add(name.casefold())
+        taken, skipped, converted = set(), 0, 0
         memory = cpk.Memory()
+        for mod, archive in sources:
+            text_only = older_switch(archive)
+            for name in archive.files:
+                spelling = files.get(name.casefold(), (name,))[0]
+                if name.casefold().endswith(tuple(merge.get('skip', ()))):
+                    data = pictures(archive, name)
+                    if data is None:
+                        skipped += 1
+                        continue
+                    memory.add(spelling, data)
+                    files[name.casefold()] = (spelling, memory, spelling)
+                    taken.add(name.casefold())
+                    converted += 1
+                    continue
+                if text_only and not name.casefold().endswith('.fms'):
+                    continue
+                files[name.casefold()] = (spelling, archive, name)
+                taken.add(name.casefold())
+        fitted = fit_sheets(files, base, memory)
         for sheet in merge.get('rewrap', ()):
             spelling, archive, original = files.get(sheet.casefold(), (None, base, None))
             if archive is base:
@@ -243,24 +375,141 @@ def merge_archives(overlay, merge, archives, loose=()):
         remove_link(destination)
         cpk.write(destination, {name: (archive, original) for name, archive, original in files.values()})
         print(f'Mods (experimental): {destination.name}: {len(taken)} files from {", ".join(mods)}'
+              f'{f", {converted} Switch textures converted" if converted else ""}'
               f'{f", {skipped} left out (another platform)" if skipped else ""}', file=sys.stderr)
+        print_fitted(destination.name, fitted)
 
 
-def build_overlay(game, out, mods):
+def print_fitted(archive, sheets):
+    if sheets:
+        print(f'Languages: {archive}: {len(sheets)} text sheets fitted to this version\'s entries '
+              f'(an older Switch archive: only its text is used): {", ".join(sheets)}', file=sys.stderr)
+
+
+def language_files(folder, slots):
+    """(label, path, slot) of the language archives (`slots`, matched without case) in
+    `folder` or one folder level below it (a dump's romfs folder copied as it is), sorted by
+    path; each fills the slot of its own name."""
+    folder = Path(folder) if folder else None
+    if not folder or not folder.is_dir():
+        return []
+    wanted = {name.casefold() for name in slots}
+    found = [p for p in folder.iterdir() if p.is_file() and p.name.casefold() in wanted]
+    found += [p for d in folder.iterdir() if d.is_dir() for p in d.iterdir()
+              if p.is_file() and p.name.casefold() in wanted]
+    return [(folder.name, p, p.name) for p in sorted(found)]
+
+
+# The text language the game starts with (build_overlay: 'auto' becomes 'english' with the fan
+# English patch); main() prints it after the folder for run.py.
+TEXT_LANGUAGE = 'auto'
+
+ENGLISH_PATCH = 'the English patch'  # the label of its archive among the language sources
+
+def english_text(path):
+    """Whether a language archive's text is mostly Latin letters (the fan English patch's
+    Unicorn_TW/CN.CPK) rather than CJK, judged from MsgSheet/UcSysMsg.fms."""
+    try:
+        text = cpk.Archive(path).extract('MsgSheet/UcSysMsg.fms')
+    except (OSError, ValueError, KeyError):
+        return False
+    latin = sum(text.count(c) for c in b'etaoinsrhl')
+    return latin > sum(1 for b in text if 0xe0 <= b <= 0xef)
+
+
+def write_slots(overlay, merge, sources, pictures=None):
+    """The game's language archives for Western text (merge['slots'].values(): the game opens
+    Unicorn_US/FR/ES/DE/IT.CPK for text languages 1-5, which the Asia dump lacks), each from
+    the archives for it in `sources` ((label, path, slot) in order: a later file wins),
+    over the game's own archive when it has one. Names ending in merge['skip'] (Switch
+    textures) are converted (Pictures) or left out, except from the English patch (PS4 ones):
+    the game then shows those of Unicorn.CPK."""
+    # The game's own language archive (Traditional Chinese, or the English patch): the number of
+    # entries each sheet must have (fit_sheets).
+    reference = next((child(overlay, name) for name in merge.get('english_from', ())
+                      if child(overlay, name).exists()), None)
+    pictures = pictures or Pictures(overlay, merge)
+    by_slot = {}
+    for label, path, slot in sources:
+        by_slot.setdefault(slot.casefold(), []).append((label, path))
+    for slot in merge.get('slots', {}).values():
+        parts = by_slot.get(slot.casefold())
+        if not parts:
+            continue
+        destination = child(overlay, slot)
+        files, skipped, converted, memory, fonts = {}, 0, 0, cpk.Memory(), {}
+        if is_link(destination):
+            base = cpk.Archive(link_target(destination))
+            files = {name.casefold(): (name, base, name) for name in base.files}
+            remove_link(destination)
+        for label, path in parts:
+            archive = cpk.Archive(path)
+            text_only = older_switch(archive)
+            for name in archive.files:
+                spelling = files.get(name.casefold(), (name,))[0]
+                # The patch's own pictures are PS4 ones (the English tutorial pictures).
+                if label != ENGLISH_PATCH and name.casefold().endswith(tuple(merge.get('skip', ()))):
+                    data = pictures(archive, name)
+                    if data is None:
+                        skipped += 1
+                    else:
+                        memory.add(spelling, data)
+                        files[name.casefold()] = (spelling, memory, spelling)
+                        converted += 1
+                        if name.casefold().startswith('font_4k/'):
+                            fonts[Path(name).stem] = data
+                    continue
+                if text_only and not name.casefold().endswith('.fms'):
+                    continue
+                files[name.casefold()] = (spelling, archive, name)
+            # The fan English patch keeps its story without the line breaks it added for the
+            # Chinese boxes as <sheet>_original.fms. The game breaks Western lines itself, and
+            # the added breaks made narration lines overlap there: the slot takes the original.
+            for name in archive.files:
+                if name.casefold().endswith('_original.fms'):
+                    sheet = name[:-len('_original.fms')] + '.fms'
+                    files[sheet.casefold()] = (files.get(sheet.casefold(), (sheet,))[0], archive, name)
+        fitted = fit_sheets(files, cpk.Archive(reference), memory) if reference else []
+        # The converted fonts, for their glyph tables (scripts/glyphs.py, from patches.py).
+        for stem, data in fonts.items():
+            (overlay / SWITCH_FONTS).mkdir(exist_ok=True)
+            (overlay / SWITCH_FONTS / f'{stem}.ftx').write_bytes(data)
+        cpk.write(destination, {name: (archive, original) for name, archive, original in files.values()})
+        print(f'Languages: {destination.name} from {", ".join(dict.fromkeys(l for l, _ in parts))}: '
+              f'{len(files)} files{f", {converted} Switch textures converted" if converted else ""}'
+              f'{f", {skipped} pictures left out (Switch format)" if skipped else ""}',
+              file=sys.stderr)
+        print_fitted(destination.name, fitted)
+
+
+def build_overlay(game, out, mods, languages=None, text_language=None):
+    """The game folder as the game sees it: `game` itself, or a view (links) with the mods'
+    files and the language archives (`languages`: a folder of Switch Unicorn_XX.CPK files).
+    Only the archive of `text_language` (a vw.ini key) is written, since a view makes the start
+    prepare the game image again. For 'english' or 'auto' without a Unicorn_US.CPK, the fan
+    English patch's archive (merge['english_from'], in a mod or the game) becomes it, and the
+    language English (TEXT_LANGUAGE): the game's English mode shows the patch's text with the
+    Western fonts (chapter title cards, #49)."""
     game = Path(game).resolve(strict=True)
     names = game_names(game)
     merge = archive_merge(game) or {}
     merged = {name.casefold() for name in merge.get('archives', ())}
     folders = {name.casefold() for name in merge.get('folders', ())}
+    slots = {name.casefold() for name in merge.get('slots', {}).values()}
     replacements = []
     archives = []
     loose = []
     owners = {}
+    slot_sources = language_files(languages, merge.get('slots', {}).values())
     for name, root in mods:
         count = 0
         for relative, source in mod_files(root, names):
-            if len(relative.parts) == 1 and relative.name.casefold() in merged:
+            top = relative.name.casefold() if len(relative.parts) == 1 else None
+            if top in merged:  # also into the Chinese archives, as before the slots
                 archives.append((name, source))
+            if top in slots:
+                slot_sources.append((name, source, relative.name))
+            if top in merged | slots:
                 count += 1
                 continue
             if relative.parts[0].casefold() in folders:
@@ -276,7 +525,28 @@ def build_overlay(game, out, mods):
             replacements.append((relative, source))
             count += 1
         print(f'Mods: {name}: {count} files', file=sys.stderr)
-    if not replacements and not archives and not loose:
+    # Only the chosen language's slot: a view makes the start prepare the game image again.
+    # 'auto' (the game's default) is English with the fan English patch: Chinese mode would show
+    # its text in the Chinese fonts, and chapter title cards as one box (#49).
+    global TEXT_LANGUAGE
+    TEXT_LANGUAGE = text_language or 'auto'
+    wanted = merge.get('slots', {}).get(TEXT_LANGUAGE)
+    slot_sources = [source for source in slot_sources if source[2].casefold() == (wanted or '').casefold()]
+    # Translation mods (JSON sheets, a Switch archive merged into the Chinese ones) are read in
+    # Chinese mode: with one, Game Default stays there.
+    translation = bool(archives or loose)
+    if (TEXT_LANGUAGE == 'english' or (TEXT_LANGUAGE == 'auto' and not translation)) and not slot_sources:
+        english_from = {name.casefold() for name in merge.get('english_from', ())}
+        # A mod's Unicorn_TW/CN.CPK (the patch installed as a mod) replaces the game's.
+        sources = [source for relative, source in reversed(replacements)
+                   if len(relative.parts) == 1 and relative.name.casefold() in english_from]
+        sources += [child(game, name) for name in merge.get('english_from', ())]
+        for path in sources:
+            if path.is_file() and english_text(path):
+                slot_sources.append((ENGLISH_PATCH, path, merge['slots']['english']))
+                TEXT_LANGUAGE = 'english'
+                break
+    if not replacements and not archives and not loose and not slot_sources:
         return game
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -304,8 +574,12 @@ def build_overlay(game, out, mods):
                 added += 1
             make_link(destination, source)
         print(f'Mods: {replaced} game files replaced, {added} added', file=sys.stderr)
+        pictures = Pictures(overlay, merge, out / 'switch_textures')
         if archives or loose:
-            merge_archives(overlay, merge, archives, loose)
+            merge_archives(overlay, merge, archives, loose, pictures)
+        if slot_sources:
+            write_slots(overlay, merge, slot_sources, pictures)
+        pictures.prune()
         return overlay
     except BaseException:
         shutil.rmtree(overlay)
@@ -319,6 +593,9 @@ def main():
     parser.add_argument('--mods-dir', required=True, type=Path)
     parser.add_argument('--config', type=Path)
     parser.add_argument('--enabled', choices=('0', '1'), default='1')
+    parser.add_argument('--text-language', default='', help="vw.ini's text_language")
+    parser.add_argument('--languages-dir', type=Path,
+                        help='Switch language archives (Unicorn_US/FR/ES/DE/IT.CPK) for the text languages')
     args = parser.parse_args()
     layers = []
     if args.enabled == '1':
@@ -333,7 +610,8 @@ def main():
         else:
             for name in selected(args.mods_dir, args.config, names):
                 layers.append((name, args.mods_dir / name))
-    print(build_overlay(args.game, args.out, layers))
+    print(build_overlay(args.game, args.out, layers, args.languages_dir, args.text_language))
+    print(TEXT_LANGUAGE)
 
 
 if __name__ == '__main__':
