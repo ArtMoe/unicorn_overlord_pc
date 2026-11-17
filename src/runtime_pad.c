@@ -115,7 +115,7 @@ static const struct { const char *name; uint32_t ps; } ps_names[]={
 typedef struct { int source; uint32_t ps; } ButtonSource;
 typedef struct { ButtonSource entries[48]; size_t count; } ButtonMap;
 static ButtonMap pad_map={{
-    {SDL_GAMEPAD_BUTTON_SOUTH,BTN_CROSS}, {SDL_GAMEPAD_BUTTON_EAST,BTN_CIRCLE},
+    {SDL_GAMEPAD_BUTTON_SOUTH,BTN_CIRCLE}, {SDL_GAMEPAD_BUTTON_EAST,BTN_CROSS},
     {SDL_GAMEPAD_BUTTON_WEST,BTN_SQUARE}, {SDL_GAMEPAD_BUTTON_NORTH,BTN_TRIANGLE},
     {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,BTN_L1}, {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,BTN_R1},
     {SDL_GAMEPAD_BUTTON_LEFT_STICK,BTN_L3}, {SDL_GAMEPAD_BUTTON_RIGHT_STICK,BTN_R3},
@@ -125,7 +125,7 @@ static ButtonMap pad_map={{
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT,BTN_LEFT}, {SDL_GAMEPAD_BUTTON_DPAD_RIGHT,BTN_RIGHT},
 },15};
 static ButtonMap key_map={{
-    {SDL_SCANCODE_SPACE,BTN_CROSS}, {SDL_SCANCODE_LSHIFT,BTN_CIRCLE}, {SDL_SCANCODE_E,BTN_SQUARE},
+    {SDL_SCANCODE_SPACE,BTN_CIRCLE}, {SDL_SCANCODE_LSHIFT,BTN_CROSS}, {SDL_SCANCODE_E,BTN_SQUARE},
     {SDL_SCANCODE_Q,BTN_TRIANGLE}, {SDL_SCANCODE_1,BTN_L1}, {SDL_SCANCODE_3,BTN_R1},
     {SDL_SCANCODE_R,BTN_L2}, {SDL_SCANCODE_F,BTN_R2}, {SDL_SCANCODE_Z,BTN_L3}, {SDL_SCANCODE_C,BTN_R3},
     {SDL_SCANCODE_RETURN,BTN_OPTIONS},
@@ -225,8 +225,8 @@ static const char *source_name(int source, bool keyboard) {
 /* A gamepad button as the menu shows it: Xbox and PlayStation names. */
 static const char *pad_label(int source) {
     switch (source) {
-    case SDL_GAMEPAD_BUTTON_SOUTH: return "A / Cross";
-    case SDL_GAMEPAD_BUTTON_EAST: return "B / Circle";
+    case SDL_GAMEPAD_BUTTON_SOUTH: return "A / Circle";
+    case SDL_GAMEPAD_BUTTON_EAST: return "B / Cross";
     case SDL_GAMEPAD_BUTTON_WEST: return "X / Square";
     case SDL_GAMEPAD_BUTTON_NORTH: return "Y / Triangle";
     case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: return "LB / L1";
@@ -318,7 +318,7 @@ void runtime_pad_spec(int keyboard, char *out, size_t size) {
 static void key_axis(uint8_t *axis, bool negative, bool positive) {
     if (negative || positive) *axis=(uint8_t)(128-(negative ? 128 : 0)+(positive ? 127 : 0));
 }
-/* Mouse buttons over the game window: left Cross, right Circle. The click that focuses the window
+/* Mouse buttons over the game window: left Circle, right Cross. The click that focuses the window
  * is not passed on (held buttons wait for release after the window gains focus). */
 static uint32_t mouse_buttons(void) {
     if (!SDL_WasInit(SDL_INIT_VIDEO)) return 0;
@@ -328,8 +328,8 @@ static uint32_t mouse_buttons(void) {
     if (!w || !(SDL_GetWindowFlags(w)&SDL_WINDOW_INPUT_FOCUS)) { wait_release=1; return 0; }
     if (wait_release) { if (!held) wait_release=0; return 0; }
     uint32_t b=0;
-    if (held&SDL_BUTTON_LMASK) b|=BTN_CROSS;
-    if (held&SDL_BUTTON_RMASK) b|=BTN_CIRCLE;
+    if (held&SDL_BUTTON_LMASK) b|=BTN_CIRCLE;
+    if (held&SDL_BUTTON_RMASK) b|=BTN_CROSS;
     return b;
 }
 static void sample_host(PadData *d) {
