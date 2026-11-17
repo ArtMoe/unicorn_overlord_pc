@@ -402,7 +402,7 @@ bool HandleBindingEvent(const SDL_Event& event) {
 }
 
 void ControlsTab() {
-    static const char* const labels[] = {"Cross", "Circle", "Square", "Triangle", "L1", "R1", "L2", "R2", "L3",
+    static const char* const labels[] = {"Circle", "Cross", "Square", "Triangle", "L1", "R1", "L2", "R2", "L3",
                                          "R3", "Options", "Touchpad", "D-pad up", "D-pad down", "D-pad left",
                                          "D-pad right"};
     const int count = std::min(runtime_pad_button_count(), int(std::size(labels)));
@@ -701,7 +701,7 @@ void TextEntryBox() {
     ImGui::SetWindowFontScale(1.0f);
     ImGui::Separator();
     ImGui::TextDisabled("Keyboard: type, Backspace to erase, Enter = OK, Esc = cancel");
-    ImGui::TextDisabled("Controller: Cross (A) = OK, Circle (B) = cancel");
+    ImGui::TextDisabled("Controller: Circle (A) = OK, Cross (B) = cancel");
     ImGui::End();
 }
 
@@ -754,7 +754,7 @@ void ChoiceBox() {
         }
     }
     ImGui::Separator();
-    ImGui::TextDisabled("Up/Down or D-pad: choose   Enter or Cross (A): OK   Esc or Circle (B): cancel");
+    ImGui::TextDisabled("Up/Down or D-pad: choose   Enter or Circle (A): OK   Esc or Cross (B): cancel");
     ImGui::End();
 }
 
@@ -789,7 +789,7 @@ bool KeyHintShowing() {
 // What the game's icon looks like for each of runtime_pad's buttons (its order): the Xbox letter
 // (what keyboard-only play shows) and the PlayStation name.
 constexpr const char* kLegendIcons[][2] = {
-    {"A", "Cross"}, {"B", "Circle"}, {"X", "Square"}, {"Y", "Triangle"}, {"LB", "L1"}, {"RB", "R1"},
+    {"A", "Circle"}, {"B", "Cross"}, {"X", "Square"}, {"Y", "Triangle"}, {"LB", "L1"}, {"RB", "R1"},
     {"LT", "L2"}, {"RT", "R2"}, {"LS (press)", "L3"}, {"RS (press)", "R3"}, {"Menu", "Options"},
     {"View", "Touchpad"}, {"D-pad up", "Up"}, {"D-pad down", "Down"}, {"D-pad left", "Left"},
     {"D-pad right", "Right"}};
@@ -983,7 +983,7 @@ bool HandleChoiceEvent(const SDL_Event& event) {
     } else if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
         const u8 button = event.gbutton.button;
         move = button == SDL_GAMEPAD_BUTTON_DPAD_UP ? -1 : button == SDL_GAMEPAD_BUTTON_DPAD_DOWN ? 1 : 0;
-        finish = button == SDL_GAMEPAD_BUTTON_SOUTH ? 1 : button == SDL_GAMEPAD_BUTTON_EAST ? 2 : 0;
+        finish = button == SDL_GAMEPAD_BUTTON_EAST ? 1 : button == SDL_GAMEPAD_BUTTON_SOUTH ? 2 : 0;
     } else {
         return event.type == SDL_EVENT_KEY_UP || event.type == SDL_EVENT_GAMEPAD_BUTTON_UP;
     }
