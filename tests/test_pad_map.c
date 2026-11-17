@@ -74,6 +74,6 @@ int main(void) {
     runtime_pad_spec(1,text,sizeof(text));
     assert(!text[0]);
     runtime_pad_describe(0,0,text,sizeof(text));
-    assert(!strcmp(text,"A / Circle"));
+    assert(!strcmp(text,"B / Cross"));
     puts("PASS: pad and key maps");
 }
