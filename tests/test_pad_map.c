@@ -26,17 +26,17 @@ int main(void) {
     assert(apply_button_map(&keys,NULL,true)==0 && apply_button_map(&keys,"",true)==0);
     assert(keys.count==key_map.count);
 
-    /* Swap: Q presses Cross, Space presses Triangle; Space no longer presses Cross. */
+    /* Swap: Q presses Cross, Space presses Triangle; Space no longer presses Circle. */
     assert(apply_button_map(&keys," cross = Q , triangle=Space",true)==2);
     assert(pressed_by(&keys,SDL_SCANCODE_Q)==BTN_CROSS);
-    assert(pressed_by(&keys,SDL_SCANCODE_SPACE)==BTN_TRIANGLE);
+    assert(pressed_by(&keys,SDL_SCANCODE_SPACE)==(BTN_CIRCLE|BTN_TRIANGLE));
     assert(pressed_by(&keys,SDL_SCANCODE_E)==BTN_SQUARE);
 
     /* Names with spaces, any case; the last entry for a button wins. */
     ButtonMap again=key_map;
     assert(apply_button_map(&again,"CIRCLE=left shift,circle=Left Ctrl",true)==2);
     assert(pressed_by(&again,SDL_SCANCODE_LCTRL)==BTN_CIRCLE);
-    assert(pressed_by(&again,SDL_SCANCODE_LSHIFT)==0);
+    assert(pressed_by(&again,SDL_SCANCODE_LSHIFT)==BTN_CROSS);
 
     /* Bad entries are skipped and leave the defaults alone. */
     ButtonMap bad=key_map;
