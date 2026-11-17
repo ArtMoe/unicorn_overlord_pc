@@ -41,7 +41,7 @@ int main(void) {
     /* Bad entries are skipped and leave the defaults alone. */
     ButtonMap bad=key_map;
     assert(apply_button_map(&bad,"bogus=Q,cross=NotAKey,circle,=Q,square=,,",true)==0);
-    assert(bad.count==key_map.count && pressed_by(&bad,SDL_SCANCODE_SPACE)==BTN_CROSS);
+    assert(bad.count==key_map.count && pressed_by(&bad,SDL_SCANCODE_SPACE)==BTN_CIRCLE);
 
     /* Gamepad: Xbox layout swap; both touchpad sources go when touchpad is remapped. */
     ButtonMap pad=pad_map;
@@ -74,6 +74,6 @@ int main(void) {
     runtime_pad_spec(1,text,sizeof(text));
     assert(!text[0]);
     runtime_pad_describe(0,0,text,sizeof(text));
-    assert(!strcmp(text,"A / Cross"));
+    assert(!strcmp(text,"A / Circle"));
     puts("PASS: pad and key maps");
 }
